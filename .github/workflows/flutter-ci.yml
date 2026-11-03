@@ -1,0 +1,110 @@
+name: Flutter checks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify project root
+        run: test -f pubspec.yaml && test -d backend && test -d lib
+
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
+
+      - name: Show Flutter and Dart versions
+        run: flutter --version
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Static analysis
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        run: flutter test --reporter expanded
+
+  backend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify project root
+        run: test -f pubspec.yaml && test -d backend && test -d lib
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies and test runner
+        run: python -m pip install -r backend/requirements.txt pytest
+
+      - name: Run backend tests
+        run: python -m pytest -q backend
+
+  android-apk:
+    needs: [flutter-test, backend-test]
+    # Android scaffold is generated on the runner until platform files are
+    # committed to the project. This keeps local sources platform-neutral.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify project root
+        run: test -f pubspec.yaml && test -d backend && test -d lib
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-android-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
+
+      - name: Generate Android platform project
+        run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: editore-foto-video-ia-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

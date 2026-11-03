@@ -1,0 +1,48 @@
+# Flutter / Dart generated files
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Android generated / local secrets
+android/.gradle/
+android/local.properties
+android/key.properties
+**/keystore.properties
+*.jks
+*.keystore
+
+# iOS / macOS generated
+**/Pods/
+**/DerivedData/
+**/Flutter/ ephemeral/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# App-generated user content (keep only directory placeholders)
+media_data/assets/*
+media_data/outputs/*
+!media_data/assets/.gitkeep
+!media_data/outputs/.gitkeep
