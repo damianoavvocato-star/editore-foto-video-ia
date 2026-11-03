@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/models/editor_project.dart';
 import 'package:editore_foto_video_ia/models/export_settings.dart';

@@ -43,7 +43,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             DropdownButtonFormField<ExportContainer>(
-              value: settings.container,
+              initialValue: settings.container,
               decoration: const InputDecoration(labelText: 'Formato contenitore'),
               items: ExportContainer.values
                   .map((v) => DropdownMenuItem(value: v, child: Text(v.name.toUpperCase())))
@@ -53,7 +53,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
               },
             ),
             DropdownButtonFormField<ExportResolution>(
-              value: settings.resolution,
+              initialValue: settings.resolution,
               decoration: const InputDecoration(labelText: 'Risoluzione'),
               items: ExportResolution.values
                   .map((v) => DropdownMenuItem(
@@ -66,7 +66,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
               },
             ),
             DropdownButtonFormField<ExportCodec>(
-              value: settings.codec,
+              initialValue: settings.codec,
               decoration: const InputDecoration(labelText: 'Codec'),
               items: ExportCodec.values
                   .map((v) => DropdownMenuItem(value: v, child: Text(v.name.toUpperCase())))

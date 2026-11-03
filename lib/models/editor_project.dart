@@ -149,6 +149,23 @@ class EditorProject {
   final int fps;
   final List<EditorTrack> tracks;
 
+  EditorProject copyWith({
+    String? id,
+    String? name,
+    int? width,
+    int? height,
+    int? fps,
+    List<EditorTrack>? tracks,
+  }) =>
+      EditorProject(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        fps: fps ?? this.fps,
+        tracks: tracks ?? this.tracks,
+      );
+
   Map<String, Object?> toJson() => {
         'schemaVersion': 1,
         'id': id,
