@@ -231,18 +231,34 @@ void main() {
           startMs: 0, durationMs: 1000),
       ]),
     ]);
-    const request = ExportRequest(project: project, settings: ExportSettings(),
-      outputPath: '/tmp/out.mp4');
+    const request = ExportRequest(
+      project: project,
+      settings: ExportSettings(),
+      outputPath: '/tmp/out.mp4',
+    );
 
     final events = <ExportProgress>[];
-    final done = coordinator.start(request).listen(events.add);
+    final cancelled = Completer<ExportProgress>();
+
+    final subscription = coordinator.start(request).listen((event) {
+      events.add(event);
+      if (event.phase == ExportPhase.cancelled && !cancelled.isCompleted) {
+        cancelled.complete(event);
+      }
+    });
+
     await Future<void>.delayed(Duration.zero);
     await coordinator.cancel();
-    await done.asFuture<void>();
+
+    final terminalEvent = await cancelled.future.timeout(
+      const Duration(seconds: 2),
+    );
+    await subscription.cancel();
 
     expect(backend.cancelCalls, 1);
+    expect(terminalEvent.phase, ExportPhase.cancelled);
+    expect(terminalEvent.isTerminal, isTrue);
     expect(events.last.phase, ExportPhase.cancelled);
-    expect(events.last.isTerminal, isTrue);
   });
 
   test('coordinator reports failure when backend closes without terminal result', () async {
