@@ -26,7 +26,6 @@ void main() {
       throwsArgumentError,
     );
   });
-}
 
 test('rejects duplicate asset IDs in one import batch', () {
   const asset = ImportedMediaAsset(
@@ -57,3 +56,4 @@ test('rejects invalid size and MIME metadata before timeline insertion', () {
     );
   }
 });
+}
