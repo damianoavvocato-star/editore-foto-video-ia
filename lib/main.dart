@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'models/editor_project.dart';
@@ -220,6 +221,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   PlatformFile? media;
   VideoPlayerController? videoController;
+  AudioPlayer? audioController;
   double zoom = 1;
   int selectedTab = 0;
   EditorProject project = const EditorProject(id: 'draft', name: 'Nuovo progetto');
@@ -234,70 +236,184 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _makeProjectForMedia(PlatformFile file, bool isVideo) {
-    final clip = EditorClip(
-      id: 'clip_${DateTime.now().microsecondsSinceEpoch}',
-      source: file.path!,
-      kind: isVideo ? MediaKind.video : MediaKind.image,
-      startMs: 0,
-      durationMs: isVideo && videoController != null
-          ? (videoController!.value.duration.inMilliseconds.clamp(500, 60000))
-          : 5000,
-      title: file.name,
-    );
-    final track = EditorTrack(
-      id: 'track_main',
-      name: 'Media',
-      kind: clip.kind,
-      clips: [clip],
-    );
-    project = EditorProject(
-      id: 'project_${DateTime.now().millisecondsSinceEpoch}',
-      name: file.name,
-      tracks: [track],
-    );
-    _persistProject(project);
+  void _handleProjectChanged(EditorProject updated) {
+    if (!mounted) return;
+    setState(() => project = updated);
+    _persistProject(updated);
   }
 
   String t(String key) => Copy.get(widget.language, key);
 
   Future<void> importMedia() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.media,
-      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: [
+        'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v',
+        'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp',
+        'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'flac', 'aiff', 'wma',
+      ],
+      allowMultiple: true,
       withData: false,
     );
+
     if (result == null || result.files.isEmpty) return;
-    final file = result.files.single;
-    final path = file.path;
-    if (path == null) {
-      if (mounted) _message(t('unsupported'));
+
+    var updatedProject = project;
+    var importedCount = 0;
+    PlatformFile? lastImported;
+    VideoPlayerController? previewController;
+    AudioPlayer? previewAudioPlayer;
+
+    final hasExistingClips =
+        updatedProject.tracks.any((track) => track.clips.isNotEmpty);
+
+    if (!hasExistingClips) {
+      updatedProject = EditorProject(
+        id: 'project_${DateTime.now().millisecondsSinceEpoch}',
+        name: 'Nuovo progetto',
+        tracks: updatedProject.tracks,
+      );
+    }
+
+    int nextStartMs() {
+      var end = 0;
+      for (final track in updatedProject.tracks) {
+        for (final clip in track.clips) {
+          if (clip.endMs > end) end = clip.endMs;
+        }
+      }
+      return end;
+    }
+
+    for (var i = 0; i < result.files.length; i++) {
+      final file = result.files[i];
+      final path = file.path;
+
+      if (path == null) continue;
+
+      final isVideo = _isVideo(file.name);
+      final isAudio = _isAudio(file.name);
+      final kind = isVideo
+          ? MediaKind.video
+          : isAudio
+              ? MediaKind.audio
+              : MediaKind.image;
+      var durationMs = 5000;
+      VideoPlayerController? candidateController;
+      AudioPlayer? candidateAudioPlayer;
+
+      if (isVideo) {
+        try {
+          candidateController =
+              VideoPlayerController.file(File(path));
+          await candidateController.initialize();
+          durationMs = candidateController.value.duration.inMilliseconds
+              .clamp(500, 7200000).toInt();
+        } catch (_) {
+          await candidateController?.dispose();
+          candidateController = null;
+          continue;
+        }
+      }
+
+      if (isAudio) {
+        try {
+          candidateAudioPlayer = AudioPlayer();
+          await candidateAudioPlayer.setFilePath(path);
+          final audioDurationMs =
+              candidateAudioPlayer.duration?.inMilliseconds;
+          if (audioDurationMs != null && audioDurationMs > 0) {
+            durationMs = audioDurationMs.clamp(500, 7200000).toInt();
+          }
+        } catch (_) {
+          await candidateAudioPlayer?.dispose();
+          candidateAudioPlayer = null;
+          continue;
+        }
+      }
+
+      final clip = EditorClip(
+        id: 'clip_${DateTime.now().microsecondsSinceEpoch}_$i',
+        source: path,
+        kind: kind,
+        startMs: nextStartMs(),
+        durationMs: durationMs,
+        title: file.name,
+      );
+
+      final tracks = [...updatedProject.tracks];
+      final trackIndex = tracks.indexWhere(
+        (track) => track.kind == kind && !track.locked,
+      );
+
+      if (trackIndex >= 0) {
+        final track = tracks[trackIndex];
+        tracks[trackIndex] = track.copyWith(
+          clips: [...track.clips, clip]
+            ..sort((a, b) => a.startMs.compareTo(b.startMs)),
+        );
+      } else {
+        tracks.add(
+          EditorTrack(
+            id: 'track_${kind.name}_${DateTime.now().microsecondsSinceEpoch}',
+            name: isVideo ? 'Video' : isAudio ? 'Audio' : 'Foto',
+            kind: kind,
+            clips: [clip],
+          ),
+        );
+      }
+
+      updatedProject = updatedProject.copyWith(tracks: tracks);
+      importedCount++;
+      lastImported = file;
+
+      if (previewController != null) {
+        await previewController.dispose();
+        previewController = null;
+      }
+
+      if (candidateController != null) {
+        previewController = candidateController;
+      }
+      if (previewAudioPlayer != null) {
+        await previewAudioPlayer.dispose();
+        previewAudioPlayer = null;
+      }
+      if (candidateAudioPlayer != null) {
+        previewAudioPlayer = candidateAudioPlayer;
+      }
+    }
+
+    if (!mounted) {
+      await previewController?.dispose();
+      await previewAudioPlayer?.dispose();
       return;
     }
 
-    final isVideo = _isVideo(file.name);
-    await videoController?.dispose();
-    videoController = null;
+    if (importedCount == 0 || lastImported == null) {
+      await previewController?.dispose();
+      await previewAudioPlayer?.dispose();
+      _message(t('unsupported'));
+      return;
+    }
 
-    if (isVideo) {
-      final controller = VideoPlayerController.file(File(path));
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        media = file;
-        videoController = controller;
-        zoom = 1;
-        _makeProjectForMedia(file, true);
-      });
-    } else {
-      setState(() {
-        media = file;
-        zoom = 1;
-        _makeProjectForMedia(file, false);
-      });
+    final oldController = videoController;
+    final oldAudioController = audioController;
+
+    setState(() {
+      project = updatedProject;
+      media = lastImported;
+      videoController = previewController;
+      audioController = previewAudioPlayer;
+      zoom = 1;
+    });
+
+    await oldController?.dispose();
+    await oldAudioController?.dispose();
+    await _persistProject(updatedProject);
+
+    if (mounted) {
+      _message('Importati $importedCount file nella timeline.');
     }
   }
 
@@ -307,6 +423,14 @@ class _HomePageState extends State<HomePage> {
         .any(lower.endsWith);
   }
 
+  bool _isAudio(String name) {
+    final lower = name.toLowerCase();
+    return [
+      '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus',
+      '.flac', '.aiff', '.wma',
+    ].any(lower.endsWith);
+  }
+
   void _message(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
@@ -314,6 +438,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     videoController?.dispose();
+    audioController?.dispose();
     super.dispose();
   }
 
@@ -452,7 +577,7 @@ class _HomePageState extends State<HomePage> {
             child: SessionTimelineEditor(
               key: ValueKey(project.id),
               project: project,
-              onProjectChanged: _persistProject,
+              onProjectChanged: _handleProjectChanged,
             ),
           )
         else
@@ -502,6 +627,43 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
+        ),
+      );
+    }
+    if (_isAudio(file.name)) {
+      final player = audioController;
+      if (player == null) {
+        return const Center(
+          child: Icon(Icons.audio_file, size: 88, color: Colors.white),
+        );
+      }
+      return Center(
+        child: StreamBuilder<PlayerState>(
+          stream: player.playerStateStream,
+          builder: (context, snapshot) {
+            final playing = snapshot.data?.playing ?? player.playing;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.audio_file, size: 88, color: Colors.white),
+                const SizedBox(height: 12),
+                Text(file.name,
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center),
+                IconButton.filledTonal(
+                  iconSize: 42,
+                  onPressed: () {
+                    if (player.playing) {
+                      player.pause();
+                    } else {
+                      player.play();
+                    }
+                  },
+                  icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                ),
+              ],
+            );
+          },
         ),
       );
     }
