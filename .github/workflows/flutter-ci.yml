@@ -100,17 +100,10 @@ jobs:
 
       - name: Set Android compile SDK to 36
         run: |
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
-          elif [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 36/' android/app/build.gradle
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle
-          else
-            echo "Android app Gradle file not found"
-            exit 1
-          fi
+          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle.kts 2>/dev/null || true
+          sed -i "s/compileSdk flutter.compileSdkVersion/compileSdk 36/" android/app/build.gradle 2>/dev/null || true
+          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle 2>/dev/null || true
           grep -n compileSdk android/app/build.gradle*
-
       - name: Build release APK
         run: flutter build apk --release
 
