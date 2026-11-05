@@ -46,3 +46,7 @@ media_data/assets/*
 media_data/outputs/*
 !media_data/assets/.gitkeep
 !media_data/outputs/.gitkeep
+
+# Local backup files
+lib/main.dart.audio-backup
+lib/main.dart.backup
