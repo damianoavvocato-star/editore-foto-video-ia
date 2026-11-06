@@ -16,6 +16,7 @@ class EditorClip {
     required this.kind,
     required this.startMs,
     required this.durationMs,
+    this.sourceStartMs = 0,
     this.title = '',
     this.speed = 1,
     this.transitionAfterMs = 0,
@@ -27,6 +28,8 @@ class EditorClip {
   final MediaKind kind;
   final int startMs;
   final int durationMs;
+  /// Offset within the original source file, distinct from timeline startMs.
+  final int sourceStartMs;
   final String title;
   final double speed;
   /// Transition applied after this clip when joining the next clip.
@@ -38,6 +41,7 @@ class EditorClip {
   EditorClip copyWith({
     int? startMs,
     int? durationMs,
+    int? sourceStartMs,
     String? title,
     double? speed,
     int? transitionAfterMs,
@@ -49,6 +53,7 @@ class EditorClip {
         kind: kind,
         startMs: startMs ?? this.startMs,
         durationMs: durationMs ?? this.durationMs,
+        sourceStartMs: sourceStartMs ?? this.sourceStartMs,
         title: title ?? this.title,
         speed: speed ?? this.speed,
         transitionAfterMs: transitionAfterMs ?? this.transitionAfterMs,
@@ -61,6 +66,7 @@ class EditorClip {
         'kind': kind.name,
         'startMs': startMs,
         'durationMs': durationMs,
+        'sourceStartMs': sourceStartMs,
         'title': title,
         'speed': speed,
         'transitionAfterMs': transitionAfterMs,
@@ -73,6 +79,7 @@ class EditorClip {
         kind: _mediaKindFromJson(json['kind']),
         startMs: json['startMs'] as int? ?? 0,
         durationMs: json['durationMs'] as int? ?? 3000,
+        sourceStartMs: json['sourceStartMs'] as int? ?? 0,
         title: json['title'] as String? ?? '',
         speed: (json['speed'] as num?)?.toDouble() ?? 1,
         transitionAfterMs: json['transitionAfterMs'] as int? ?? 0,
