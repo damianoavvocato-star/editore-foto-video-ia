@@ -359,8 +359,8 @@ def create_ai_job(body: dict[str, Any]):
     asset_ids = body.get('assetIds')
     if asset_ids is None:
         asset_ids = [body.get('assetId')]
-    if not isinstance(asset_ids, list) or not 1 <= len(asset_ids) <= 12:
-        raise HTTPException(422, 'Seleziona da 1 a 12 foto o video.')
+    if not isinstance(asset_ids, list) or not 1 <= len(asset_ids) <= 20:
+        raise HTTPException(422, 'Seleziona da 1 a 20 foto o video.')
     if any(not isinstance(asset_id, str) or not _valid_id(asset_id) for asset_id in asset_ids):
         raise HTTPException(422, 'Identificativo media non valido.')
     if len(set(asset_ids)) != len(asset_ids):
