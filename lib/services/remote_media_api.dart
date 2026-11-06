@@ -228,9 +228,29 @@ class RemoteAiBackend implements AiProcessingBackend {
           resultPath = status['resultPath']?.toString();
         }
       }
-      yield AiJobProgress(jobId: request.jobId, task: request.task, state: mapped,
-        fraction: progress, message: status['message']?.toString() ?? '',
-        resultPath: resultPath, error: status['error'], result: status['result'] as Map<String, dynamic>?);
+      final rawResult = status['result'];
+      Map<String, dynamic>? result;
+      if (rawResult is Map) {
+        result = Map<String, dynamic>.from(rawResult);
+        if (request.task == AiTaskKind.magicIAedit) {
+          // Keep local file paths on-device so a reviewed plan can be applied
+          // to the timeline without exposing those paths to the cloud service.
+          result['sourcePaths'] = Map<String, String>.fromIterables(
+            assetIds,
+            request.mediaPaths,
+          );
+        }
+      }
+      yield AiJobProgress(
+        jobId: request.jobId,
+        task: request.task,
+        state: mapped,
+        fraction: progress,
+        message: status['message']?.toString() ?? '',
+        resultPath: resultPath,
+        error: status['error'],
+        result: result,
+      );
       if (mapped == AiJobState.succeeded || mapped == AiJobState.failed || mapped == AiJobState.cancelled) return;
       await Future<void>.delayed(pollInterval);
     }
