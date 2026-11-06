@@ -19,11 +19,12 @@ from typing import Any
 
 from PIL import Image
 
-MAX_MEDIA = 12
+MAX_MEDIA = 20
 MAX_PLAN_CLIPS = 24
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
+MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024
 MAX_ASSET_BYTES = 100 * 1024 * 1024
-MAX_TOTAL_ASSET_BYTES = 250 * 1024 * 1024
+MAX_TOTAL_ASSET_BYTES = 400 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 25_000_000
 ALLOWED_TRANSITIONS = {
     "fade", "wipeleft", "wiperight", "slideleft", "slideright",
@@ -176,11 +177,18 @@ def create_magic_plan(
             asset_bytes = path.stat().st_size
         except OSError as exc:
             raise MagicIAError(f"Impossibile accedere al media {asset_id}.") from exc
-        if asset_bytes <= 0 or asset_bytes > MAX_ASSET_BYTES:
-            raise MagicIAError("Ogni foto o video deve essere inferiore a 100 MB.")
+        suffix = path.suffix.lower()
+        if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
+            if asset_bytes <= 0 or asset_bytes > MAX_IMAGE_ASSET_BYTES:
+                raise MagicIAError("Ogni immagine per MagicIAedit deve essere inferiore a 20 MB.")
+        elif suffix in {".mp4", ".mov", ".avi", ".webm", ".m4v"}:
+            if asset_bytes <= 0 or asset_bytes > MAX_ASSET_BYTES:
+                raise MagicIAError("Ogni video per MagicIAedit deve essere inferiore a 100 MB.")
+        else:
+            raise MagicIAError("Formato media non supportato da MagicIAedit.")
         total_bytes += asset_bytes
     if total_bytes > MAX_TOTAL_ASSET_BYTES:
-        raise MagicIAError("La selezione supera il limite complessivo di 250 MB.")
+        raise MagicIAError("La selezione supera il limite complessivo di 400 MB.")
     if cancel_event is not None and cancel_event.is_set():
         raise MagicIAError("Elaborazione annullata.")
 
