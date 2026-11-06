@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
 import 'package:editore_foto_video_ia/services/remote_media_api.dart';
 
 void main() {
