@@ -106,3 +106,36 @@ def test_ai_job_returns_validated_plan(monkeypatch, tmp_path):
         time.sleep(0.01)
     assert status["state"] == "succeeded"
     assert status["result"]["title"] == "Viaggio"
+
+
+def test_magic_plan_rejects_single_oversized_asset(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAGICIA_API_KEY", "test-key")
+    monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
+    monkeypatch.setenv("MAGICIA_API_BASE_URL", "https://provider.example/v1")
+    asset = tmp_path / "large.mp4"
+    with asset.open("wb") as stream:
+        stream.truncate(magiciaedit.MAX_ASSET_BYTES + 1)
+    try:
+        magiciaedit.create_magic_plan({"a" * 32: asset})
+    except magiciaedit.MagicIAError as exc:
+        assert "inferiore a 100 MB" in str(exc)
+    else:
+        raise AssertionError("Oversized media must be rejected")
+
+
+def test_magic_plan_rejects_oversized_combined_selection(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAGICIA_API_KEY", "test-key")
+    monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
+    monkeypatch.setenv("MAGICIA_API_BASE_URL", "https://provider.example/v1")
+    assets = {}
+    for index in range(3):
+        asset = tmp_path / f"media-{index}.mp4"
+        with asset.open("wb") as stream:
+            stream.truncate(90 * 1024 * 1024)
+        assets[str(index) * 32] = asset
+    try:
+        magiciaedit.create_magic_plan(assets)
+    except magiciaedit.MagicIAError as exc:
+        assert "250 MB" in str(exc)
+    else:
+        raise AssertionError("Oversized combined selection must be rejected")
