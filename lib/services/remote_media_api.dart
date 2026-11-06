@@ -156,7 +156,7 @@ class RemoteAiBackend implements AiProcessingBackend {
       }
       yield AiJobProgress(jobId: request.jobId, task: request.task, state: mapped,
         fraction: progress, message: status['message']?.toString() ?? '',
-        resultPath: resultPath, error: status['error']);
+        resultPath: resultPath, error: status['error'], result: status['result'] as Map<String, dynamic>?);
       if (mapped == AiJobState.succeeded || mapped == AiJobState.failed || mapped == AiJobState.cancelled) return;
       await Future<void>.delayed(pollInterval);
     }
@@ -230,10 +230,7 @@ class RemoteRenderBackend implements MediaRenderBackend {
       yield ExportProgress(phase: phase, fraction: fraction,
         message: status['message']?.toString() ?? '',
         outputPath: request.outputPath,
-        error: status['error'],
-        result: status['result'] is Map<String, dynamic>
-            ? status['result'] as Map<String, dynamic>
-            : null);
+        error: status['error']);
       if (phase == ExportPhase.completed || phase == ExportPhase.failed || phase == ExportPhase.cancelled) {
         _activeJobId = null;
         return;
