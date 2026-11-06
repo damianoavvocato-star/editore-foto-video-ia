@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+import warnings
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,9 @@ from PIL import Image
 MAX_MEDIA = 12
 MAX_PLAN_CLIPS = 24
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
+MAX_ASSET_BYTES = 100 * 1024 * 1024
+MAX_TOTAL_ASSET_BYTES = 250 * 1024 * 1024
+Image.MAX_IMAGE_PIXELS = 25_000_000
 ALLOWED_TRANSITIONS = {
     "fade", "wipeleft", "wiperight", "slideleft", "slideright",
     "circleopen", "circleclose", "dissolve",
@@ -101,10 +105,12 @@ def _media_parts(asset_paths: dict[str, Path]) -> list[dict[str, Any]]:
         suffix = path.suffix.lower()
         if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
             try:
-                with Image.open(path) as image:
-                    parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=immagine."})
-                    parts.append({"type": "image_url", "image_url": {"url": _image_data_url(image)}})
-            except (OSError, ValueError) as exc:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", Image.DecompressionBombWarning)
+                    with Image.open(path) as image:
+                        parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=immagine."})
+                        parts.append({"type": "image_url", "image_url": {"url": _image_data_url(image)}})
+            except (OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
                 raise MagicIAError(f"Impossibile leggere l'immagine {asset_id}.") from exc
         elif suffix in {".mp4", ".mov", ".avi", ".webm", ".m4v"}:
             frames = _video_frames(path)
@@ -164,6 +170,17 @@ def create_magic_plan(
         raise MagicIAError("Provider cloud non configurato: MagicIAedit non è ancora attivo.")
     if not asset_paths or len(asset_paths) > MAX_MEDIA:
         raise MagicIAError(f"Seleziona da 1 a {MAX_MEDIA} foto o video.")
+    total_bytes = 0
+    for asset_id, path in asset_paths.items():
+        try:
+            asset_bytes = path.stat().st_size
+        except OSError as exc:
+            raise MagicIAError(f"Impossibile accedere al media {asset_id}.") from exc
+        if asset_bytes <= 0 or asset_bytes > MAX_ASSET_BYTES:
+            raise MagicIAError("Ogni foto o video deve essere inferiore a 100 MB.")
+        total_bytes += asset_bytes
+    if total_bytes > MAX_TOTAL_ASSET_BYTES:
+        raise MagicIAError("La selezione supera il limite complessivo di 250 MB.")
     if cancel_event is not None and cancel_event.is_set():
         raise MagicIAError("Elaborazione annullata.")
 
