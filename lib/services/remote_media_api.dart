@@ -122,10 +122,14 @@ class RemoteAiBackend implements AiProcessingBackend {
 
   @override
   Stream<AiJobProgress> run(AiTaskRequest request) async* {
+    final assetIds = <String>[];
+    for (final path in request.mediaPaths) {
+      assetIds.add(await api.uploadFile(path));
+    }
     final created = await api.request('POST', '/v1/ai/jobs', body: {
       'jobId': request.jobId,
       'task': request.task.name,
-      'assetId': await api.uploadFile(request.inputPath),
+      'assetIds': assetIds,
       'options': request.options,
     });
     final id = (created['jobId'] ?? request.jobId).toString();
@@ -226,7 +230,10 @@ class RemoteRenderBackend implements MediaRenderBackend {
       yield ExportProgress(phase: phase, fraction: fraction,
         message: status['message']?.toString() ?? '',
         outputPath: request.outputPath,
-        error: status['error']);
+        error: status['error'],
+        result: status['result'] is Map<String, dynamic>
+            ? status['result'] as Map<String, dynamic>
+            : null);
       if (phase == ExportPhase.completed || phase == ExportPhase.failed || phase == ExportPhase.cancelled) {
         _activeJobId = null;
         return;
