@@ -32,18 +32,18 @@ void main() {
   });
 
   test('MagicIAedit rejects selections above 400 MB before upload', () async {
-    final first = File('${tempDirectory.path}/first.mp4');
-    final second = File('${tempDirectory.path}/second.mp4');
-    final firstHandle = await first.open(mode: FileMode.write);
-    await firstHandle.truncate(210 * 1024 * 1024);
-    await firstHandle.close();
-    final secondHandle = await second.open(mode: FileMode.write);
-    await secondHandle.truncate(210 * 1024 * 1024);
-    await secondHandle.close();
+    final paths = <String>[];
+    for (var index = 0; index < 5; index++) {
+      final file = File('${tempDirectory.path}/clip-$index.mp4');
+      final handle = await file.open(mode: FileMode.write);
+      await handle.truncate(90 * 1024 * 1024);
+      await handle.close();
+      paths.add(file.path);
+    }
     final api = RemoteMediaApi(baseUri: Uri.parse('https://example.invalid'));
     final backend = RemoteAiBackend(api);
     await expectLater(
-      backend.validateMagicIAeditMediaPaths([first.path, second.path]),
+      backend.validateMagicIAeditMediaPaths(paths),
       throwsA(isA<ArgumentError>()),
     );
     api.close();
