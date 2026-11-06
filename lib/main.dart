@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'models/editor_project.dart';
 import 'services/project_store.dart';
+import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
 
 void main() => runApp(const EditoreApp());
@@ -22,6 +23,19 @@ class EditoreApp extends StatefulWidget {
 
 class _EditoreAppState extends State<EditoreApp> {
   AppLanguage language = AppLanguage.it;
+  late final SmartShieldManager _smartShield;
+
+  @override
+  void initState() {
+    super.initState();
+    _smartShield = SmartShieldManager()..start();
+  }
+
+  @override
+  void dispose() {
+    _smartShield.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
