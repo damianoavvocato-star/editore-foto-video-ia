@@ -21,6 +21,7 @@ void main() {
                 kind: MediaKind.video,
                 startMs: 1000,
                 durationMs: 5000,
+                sourceStartMs: 1500,
                 title: 'Sample',
               ),
             ],
@@ -61,6 +62,8 @@ void main() {
     expect(result.tracks.first.clips[0].durationMs, 2500);
     expect(result.tracks.first.clips[1].startMs, 3500);
     expect(result.tracks.first.clips[1].durationMs, 2500);
+    expect(result.tracks.first.clips[0].sourceStartMs, 1500);
+    expect(result.tracks.first.clips[1].sourceStartMs, 4000);
   });
 
   test('split refuses a duplicate clip ID', () {
@@ -156,6 +159,7 @@ void main() {
     expect(result.tracks.first.clips, hasLength(2));
     expect(result.tracks.first.clips.last.id, 'c2');
     expect(result.tracks.first.clips.last.startMs, 7000);
+    expect(result.tracks.first.clips.last.sourceStartMs, 1500);
   });
 
   test('duplicate clip clamps its end to safe timeline bounds', () {
