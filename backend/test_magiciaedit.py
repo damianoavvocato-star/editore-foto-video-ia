@@ -19,7 +19,7 @@ def test_provider_requires_https(monkeypatch, tmp_path):
     try:
         magiciaedit.create_magic_plan({"a" * 32: tmp_path / "photo.jpg"})
     except magiciaedit.MagicIAError as exc:
-        assert "HTTPS" in str(exc)
+        assert "non configurato" in str(exc)
     else:
         raise AssertionError("HTTP provider URL must be rejected")
 
