@@ -704,9 +704,7 @@ class _HomePageState extends State<HomePage> {
       );
     }
     if (file.path != null) {
-      final previewScale = widget.smartShield.mode == SmartShieldMode.conservative
-          ? 0.65
-          : 1.0;
+      final previewScale = widget.smartShield.previewDecodeScale;
       final decodeWidth = (MediaQuery.sizeOf(context).width *
               MediaQuery.devicePixelRatioOf(context) *
               previewScale)
