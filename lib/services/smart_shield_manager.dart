@@ -20,6 +20,9 @@ class SmartShieldPolicy {
     if (ratio <= 0.08) return SmartShieldMode.balanced;
     return current; // Hysteresis prevents profile oscillation.
   }
+
+  double previewDecodeScale(SmartShieldMode mode) =>
+      mode == SmartShieldMode.conservative ? 0.65 : 1.0;
 }
 
 /// Lightweight runtime guard based only on signals Flutter actually exposes.
@@ -43,6 +46,7 @@ class SmartShieldManager with WidgetsBindingObserver, ChangeNotifier {
   bool _started = false;
 
   SmartShieldMode get mode => _mode;
+  double get previewDecodeScale => _policy.previewDecodeScale(_mode);
   bool get isInBackground => _isInBackground;
   int get measuredFrames => _frameSamples.length;
   int get slowFrames => _frameSamples.where((slow) => slow).length;
