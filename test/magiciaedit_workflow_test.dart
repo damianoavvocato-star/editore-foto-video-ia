@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/models/magiciaedit_plan.dart';
 import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
@@ -19,6 +21,26 @@ class _FakeAiBackend implements AiProcessingBackend {
   @override
   Future<void> cancel(String jobId) async {
     cancelledJob = jobId;
+  }
+}
+
+class _HoldingAiBackend implements AiProcessingBackend {
+  final StreamController<AiJobProgress> controller =
+      StreamController<AiJobProgress>();
+  String? cancelledJob;
+
+  @override
+  Stream<AiJobProgress> run(AiTaskRequest request) => controller.stream;
+
+  @override
+  Future<void> cancel(String jobId) async {
+    cancelledJob = jobId;
+    controller.add(AiJobProgress(
+      jobId: jobId,
+      task: AiTaskKind.magicIAedit,
+      state: AiJobState.cancelled,
+    ));
+    await controller.close();
   }
 }
 
@@ -92,25 +114,21 @@ void main() {
     );
   });
 
-  test('workflow reports cancellation and delegates cancel requests', () async {
-    final backend = _FakeAiBackend([
-      const AiJobProgress(
-        jobId: 'magic-cancel',
-        task: AiTaskKind.magicIAedit,
-        state: AiJobState.cancelled,
-      ),
-    ]);
+  test('workflow reports cancellation and delegates active cancel requests', () async {
+    final backend = _HoldingAiBackend();
     final workflow = MagicIAeditWorkflow(AiProcessingService(backend));
+    final generation = workflow.generate(
+      jobId: 'magic-cancel',
+      mediaPaths: ['/media/clip.mp4'],
+    );
+    await Future<void>.delayed(Duration.zero);
 
+    await workflow.cancel('magic-cancel');
     await expectLater(
-      workflow.generate(
-        jobId: 'magic-cancel',
-        mediaPaths: ['/media/clip.mp4'],
-      ),
+      generation,
       throwsA(isA<MagicIAeditException>()),
     );
-    await workflow.cancel('another-job');
-    expect(backend.cancelledJob, 'another-job');
+    expect(backend.cancelledJob, 'magic-cancel');
   });
 
   test('workflow rejects a successful response without a valid plan', () async {
