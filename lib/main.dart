@@ -88,6 +88,8 @@ class Copy {
       'noMedia': 'Importa un video o una foto per vedere l’anteprima.',
       'exportNote': 'Esportazione/rendering: da collegare al motore video nella prossima fase.',
       'shareNote': 'La condivisione di sistema sarà collegata dopo l’esportazione.',
+      'savedProjects': 'Progetti salvati',
+      'noSavedProjects': 'Nessun progetto salvato.',
     },
     AppLanguage.en: {
       'app': 'AI Photo & Video Editor',
@@ -119,6 +121,8 @@ class Copy {
       'noMedia': 'Import a video or photo to preview it.',
       'exportNote': 'Export/rendering will be connected to the media engine in the next phase.',
       'shareNote': 'System sharing will be connected after export.',
+      'savedProjects': 'Saved projects',
+      'noSavedProjects': 'No saved projects yet.',
     },
     AppLanguage.fr: {
       'app': 'Éditeur photo et vidéo IA',
@@ -150,6 +154,8 @@ class Copy {
       'noMedia': 'Importez une vidéo ou une photo pour l’aperçu.',
       'exportNote': 'Le rendu sera connecté au moteur média dans la prochaine étape.',
       'shareNote': 'Le partage système sera connecté après l’export.',
+      'savedProjects': 'Projets enregistrés',
+      'noSavedProjects': 'Aucun projet enregistré.',
     },
     AppLanguage.es: {
       'app': 'Editor de foto y vídeo IA',
@@ -181,6 +187,8 @@ class Copy {
       'noMedia': 'Importa un vídeo o una foto para previsualizarlo.',
       'exportNote': 'El renderizado se conectará al motor multimedia en la siguiente fase.',
       'shareNote': 'El uso compartido del sistema se conectará después de exportar.',
+      'savedProjects': 'Proyectos guardados',
+      'noSavedProjects': 'Todavía no hay proyectos guardados.',
     },
     AppLanguage.ar: {
       'app': 'محرر الصور والفيديو بالذكاء الاصطناعي',
@@ -212,6 +220,8 @@ class Copy {
       'noMedia': 'استورد فيديو أو صورة لمعاينتها.',
       'exportNote': 'سيتم ربط التصدير بمحرك الوسائط في المرحلة التالية.',
       'shareNote': 'ستتم إضافة المشاركة بعد التصدير.',
+      'savedProjects': 'المشاريع المحفوظة',
+      'noSavedProjects': 'لا توجد مشاريع محفوظة بعد.',
     },
   };
 
@@ -257,7 +267,42 @@ class _HomePageState extends State<HomePage> {
   double zoom = 1;
   int selectedTab = 0;
   EditorProject project = const EditorProject(id: 'draft', name: 'Nuovo progetto');
+  List<EditorProject> savedProjects = const [];
+  bool _loadingSavedProjects = true;
   final ProjectSaveQueue _projectSaveQueue = ProjectSaveQueue();
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSavedProjects();
+  }
+
+  Future<void> _refreshSavedProjects() async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final projects = await const ProjectStore().listProjects(
+        Directory('${directory.path}/editore_progetti'),
+      );
+      if (!mounted) return;
+      setState(() => savedProjects = projects);
+    } catch (error) {
+      if (mounted) _message('Impossibile caricare i progetti salvati: $error');
+    } finally {
+      if (mounted) setState(() => _loadingSavedProjects = false);
+    }
+  }
+
+  void _upsertSavedProject(EditorProject updated) {
+    final projects = [...savedProjects];
+    final index = projects.indexWhere((item) => item.id == updated.id);
+    if (index >= 0) {
+      projects[index] = updated;
+    } else {
+      projects.add(updated);
+    }
+    projects.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    setState(() => savedProjects = projects);
+  }
 
   Future<void> _persistProject(EditorProject updated) async {
     try {
@@ -266,8 +311,89 @@ class _HomePageState extends State<HomePage> {
         updated,
         Directory('${directory.path}/editore_progetti'),
       );
+      if (mounted) _upsertSavedProject(updated);
     } catch (error) {
       if (mounted) _message('Salvataggio progetto non riuscito: $error');
+    }
+  }
+
+  Future<void> _activateSavedProject({
+    required EditorProject saved,
+    PlatformFile? preview,
+    VideoPlayerController? nextVideo,
+    AudioPlayer? nextAudio,
+    required String message,
+  }) async {
+    if (!mounted) {
+      await nextVideo?.dispose();
+      await nextAudio?.dispose();
+      return;
+    }
+    final oldVideo = videoController;
+    final oldAudio = audioController;
+    setState(() {
+      project = saved;
+      media = preview;
+      videoController = nextVideo;
+      audioController = nextAudio;
+      selectedTab = 0;
+      zoom = 1;
+    });
+    await oldVideo?.dispose();
+    await oldAudio?.dispose();
+    if (mounted) _message(message);
+  }
+
+  Future<void> _openSavedProject(EditorProject saved) async {
+    final clips = saved.tracks
+        .expand((track) => track.clips)
+        .where((clip) => clip.kind != MediaKind.text)
+        .toList()
+      ..sort((a, b) => a.startMs.compareTo(b.startMs));
+
+    if (clips.isEmpty) {
+      await _activateSavedProject(
+        saved: saved,
+        message: 'Progetto caricato. Non contiene ancora file multimediali.',
+      );
+      return;
+    }
+
+    final source = File(clips.first.source);
+    if (!await source.exists()) {
+      await _activateSavedProject(
+        saved: saved,
+        message: 'Progetto aperto, ma il file sorgente non è disponibile.',
+      );
+      return;
+    }
+
+    VideoPlayerController? nextVideo;
+    AudioPlayer? nextAudio;
+    try {
+      if (clips.first.kind == MediaKind.video) {
+        nextVideo = VideoPlayerController.file(source);
+        await nextVideo.initialize();
+      } else if (clips.first.kind == MediaKind.audio) {
+        nextAudio = AudioPlayer();
+        await nextAudio.setFilePath(source.path);
+      }
+      final preview = PlatformFile(
+        name: source.uri.pathSegments.last,
+        size: await source.length(),
+        path: source.path,
+      );
+      await _activateSavedProject(
+        saved: saved,
+        preview: preview,
+        nextVideo: nextVideo,
+        nextAudio: nextAudio,
+        message: 'Progetto caricato.',
+      );
+    } catch (error) {
+      await nextVideo?.dispose();
+      await nextAudio?.dispose();
+      if (mounted) _message('Impossibile aprire il progetto: $error');
     }
   }
 
