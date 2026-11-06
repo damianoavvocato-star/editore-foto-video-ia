@@ -733,7 +733,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 12),
-        if (media != null)
+        if (project.tracks.any((track) => track.clips.isNotEmpty))
           SizedBox(
             height: 300,
             child: SessionTimelineEditor(
@@ -868,6 +868,36 @@ class _HomePageState extends State<HomePage> {
           _sideItem(Icons.dashboard_customize, t('templates'), 3),
           _sideItem(Icons.card_giftcard, t('invite'), 4),
           _sideItem(Icons.workspace_premium, t('premium'), 5),
+          const Divider(),
+          Text(t('savedProjects'), style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          if (_loadingSavedProjects)
+            const LinearProgressIndicator()
+          else if (savedProjects.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                t('noSavedProjects'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            )
+          else
+            ...savedProjects.map(
+              (saved) => ListTile(
+                dense: true,
+                selected: saved.id == project.id,
+                leading: const Icon(Icons.folder_open_outlined),
+                title: Text(
+                  saved.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                onTap: () => _openSavedProject(saved),
+              ),
+            ),
           const Divider(),
           _sideItem(Icons.settings, t('settings'), 6),
           if (selectedTab == 2)
