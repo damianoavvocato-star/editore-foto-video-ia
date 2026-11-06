@@ -120,8 +120,47 @@ class RemoteAiBackend implements AiProcessingBackend {
     await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(jobId)}');
   }
 
+  static const int maxImageBytes = 20 * 1024 * 1024;
+  static const int maxVideoBytes = 100 * 1024 * 1024;
+  static const int maxSelectionBytes = 400 * 1024 * 1024;
+
+  /// Check local file sizes before uploading anything, so an unsupported
+  /// selection fails early and does not waste mobile data or server storage.
+  Future<void> validateMagicIAeditMediaPaths(List<String> paths) async {
+    if (paths.isEmpty || paths.length > 20) {
+      throw ArgumentError('MagicIAedit accetta da 1 a 20 media.');
+    }
+    var totalBytes = 0;
+    for (final path in paths) {
+      final file = File(path);
+      if (!await file.exists()) {
+        throw FileSystemException('Media sorgente non trovato', path);
+      }
+      final size = await file.length();
+      final extension = path.toLowerCase().split('.').last;
+      final isImage = {'jpg', 'jpeg', 'png', 'webp'}.contains(extension);
+      final isVideo = {'mp4', 'mov', 'avi', 'webm', 'm4v'}.contains(extension);
+      if (isImage && (size == 0 || size > maxImageBytes)) {
+        throw ArgumentError('Ogni immagine per MagicIAedit deve essere inferiore a 20 MB.');
+      }
+      if (isVideo && (size == 0 || size > maxVideoBytes)) {
+        throw ArgumentError('Ogni video per MagicIAedit deve essere inferiore a 100 MB.');
+      }
+      if (!isImage && !isVideo) {
+        throw ArgumentError('Formato media non supportato da MagicIAedit.');
+      }
+      totalBytes += size;
+      if (totalBytes > maxSelectionBytes) {
+        throw ArgumentError('La selezione MagicIAedit supera 400 MB complessivi.');
+      }
+    }
+  }
+
   @override
   Stream<AiJobProgress> run(AiTaskRequest request) async* {
+    if (request.task == AiTaskKind.magicIAedit) {
+      await validateMagicIAeditMediaPaths(request.mediaPaths);
+    }
     final assetIds = <String>[];
     for (final path in request.mediaPaths) {
       assetIds.add(await api.uploadFile(path));
