@@ -32,9 +32,12 @@ class MagicIAError(RuntimeError):
 
 
 def provider_configured() -> bool:
-    return all(os.getenv(key, "").strip() for key in (
-        "MAGICIA_API_KEY", "MAGICIA_MODEL", "MAGICIA_API_BASE_URL"
-    ))
+    base_url = os.getenv("MAGICIA_API_BASE_URL", "").strip()
+    return (
+        bool(os.getenv("MAGICIA_API_KEY", "").strip())
+        and bool(os.getenv("MAGICIA_MODEL", "").strip())
+        and base_url.startswith("https://")
+    )
 
 
 def _image_data_url(image: Image.Image) -> str:
@@ -123,7 +126,7 @@ def _normalise_plan(raw: Any, asset_ids: set[str]) -> dict[str, Any]:
             raise MagicIAError("Il piano IA contiene un media non selezionato.")
         source_start = max(0, min(86_400_000, int(item.get("sourceStartMs", 0))))
         duration = max(500, min(20_000, int(item.get("durationMs", 3000))))
-        transition_ms = max(0, min(2000, int(item.get("transitionAfterMs", 0))))
+        transition_ms = max(0, min(2000, int(item.get("transitionAfterMs", 0)), int(duration * 0.45))
         transition = str(item.get("transitionAfter", "fade")).lower()
         if transition not in ALLOWED_TRANSITIONS:
             transition = "fade"
