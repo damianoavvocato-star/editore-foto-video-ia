@@ -63,7 +63,7 @@ class AiTaskRequest {
     if (mediaPaths.isEmpty || mediaPaths.any((path) => path.trim().isEmpty)) {
       throw ArgumentError('È richiesto almeno un percorso media valido.');
     }
-    if (mediaPaths.length > 12) throw ArgumentError('MagicIAedit accetta al massimo 12 media.');
+    if (mediaPaths.length > 20) throw ArgumentError('MagicIAedit accetta al massimo 20 media.');
     if (options.keys.any((key) => key.trim().isEmpty)) {
       throw ArgumentError('Le chiavi delle opzioni non possono essere vuote.');
     }
