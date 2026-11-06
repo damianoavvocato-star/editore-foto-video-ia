@@ -19,7 +19,6 @@ void main() {
     );
     expect(request.validate, throwsA(isA<ArgumentError>()));
   });
-}
 
   test('MagicIAedit accepts a bounded list of media paths', () {
     const request = AiTaskRequest(
@@ -41,3 +40,5 @@ void main() {
     );
     expect(request.validate, throwsA(isA<ArgumentError>()));
   });
+
+}
