@@ -16,12 +16,48 @@ class RemoteMediaApi {
     if (!baseUri.hasScheme || !{'http', 'https'}.contains(baseUri.scheme)) {
       throw ArgumentError.value(baseUri, 'baseUri', 'È richiesto un URL HTTP(S).');
     }
+    if (baseUri.userInfo.isNotEmpty || baseUri.fragment.isNotEmpty) {
+      throw ArgumentError.value(
+        baseUri,
+        'baseUri',
+        'L’indirizzo API non può contenere credenziali o frammenti.',
+      );
+    }
   }
 
   final Uri baseUri;
   final HttpClient _client;
   final String? bearerToken;
   static const Duration requestTimeout = Duration(minutes: 3);
+
+  bool _hasSameOrigin(Uri uri) =>
+      uri.scheme.toLowerCase() == baseUri.scheme.toLowerCase() &&
+      uri.host.toLowerCase() == baseUri.host.toLowerCase() &&
+      uri.port == baseUri.port;
+
+  Uri _resolveApiUri(String path) {
+    final uri = baseUri.resolve(path);
+    if (!_hasSameOrigin(uri) || uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
+      throw ArgumentError.value(path, 'path', 'L’API deve restare sullo stesso host.');
+    }
+    return uri;
+  }
+
+  Uri _resolveDownloadUri(String downloadUrl) {
+    final parsed = Uri.parse(downloadUrl);
+    final uri = parsed.hasScheme ? parsed : baseUri.resolveUri(parsed);
+    if (!{'http', 'https'}.contains(uri.scheme) ||
+        !_hasSameOrigin(uri) ||
+        uri.userInfo.isNotEmpty ||
+        uri.fragment.isNotEmpty) {
+      throw ArgumentError.value(
+        downloadUrl,
+        'downloadUrl',
+        'Il download deve provenire dallo stesso host dell’API.',
+      );
+    }
+    return uri;
+  }
 
   void _authorize(HttpClientRequest req) {
     if (bearerToken != null && bearerToken!.isNotEmpty) {
@@ -31,8 +67,9 @@ class RemoteMediaApi {
 
   Future<Map<String, dynamic>> request(String method, String path,
       {Map<String, Object?>? body}) async {
-    final uri = baseUri.resolve(path);
+    final uri = _resolveApiUri(path);
     final req = await _client.openUrl(method, uri).timeout(requestTimeout);
+    req.followRedirects = false;
     req.headers.contentType = ContentType.json;
     _authorize(req);
     if (body != null) req.write(jsonEncode(body));
@@ -54,8 +91,9 @@ class RemoteMediaApi {
     final file = File(filePath);
     if (!await file.exists()) throw FileSystemException('Media sorgente non trovato', filePath);
     final boundary = '----EditoreMedia${DateTime.now().microsecondsSinceEpoch}';
-    final uri = baseUri.resolve('/v1/assets');
+    final uri = _resolveApiUri('/v1/assets');
     final req = await _client.postUrl(uri).timeout(requestTimeout);
+    req.followRedirects = false;
     _authorize(req);
     req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
     final filename = Uri.encodeComponent(file.uri.pathSegments.last);
@@ -81,12 +119,9 @@ class RemoteMediaApi {
 
   /// Downloads a completed asset to the requested local destination.
   Future<void> downloadFile(String downloadUrl, String outputPath) async {
-    final parsed = Uri.parse(downloadUrl);
-    final uri = parsed.hasScheme ? parsed : baseUri.resolveUri(parsed);
-    if (uri.scheme != 'https' && uri.scheme != 'http') {
-      throw ArgumentError.value(downloadUrl, 'downloadUrl', 'URL HTTP(S) richiesto.');
-    }
+    final uri = _resolveDownloadUri(downloadUrl);
     final req = await _client.getUrl(uri).timeout(requestTimeout);
+    req.followRedirects = false;
     _authorize(req);
     final response = await req.close().timeout(requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
