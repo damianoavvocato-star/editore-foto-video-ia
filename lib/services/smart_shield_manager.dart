@@ -1,0 +1,94 @@
+import 'dart:collection';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
+
+enum SmartShieldMode { balanced, conservative }
+
+/// Pure policy so thresholds can be verified without physical devices.
+class SmartShieldPolicy {
+  const SmartShieldPolicy();
+
+  SmartShieldMode evaluate({
+    required int measuredFrames,
+    required int slowFrames,
+    required SmartShieldMode current,
+  }) {
+    if (measuredFrames < 30) return current;
+    final ratio = slowFrames / measuredFrames;
+    if (ratio >= 0.25) return SmartShieldMode.conservative;
+    if (ratio <= 0.08) return SmartShieldMode.balanced;
+    return current; // Hysteresis prevents profile oscillation.
+  }
+}
+
+/// Lightweight runtime guard based only on signals Flutter actually exposes.
+/// It deliberately does not guess free RAM, CPU/GPU clocks, or thermal state.
+class SmartShieldManager with WidgetsBindingObserver, ChangeNotifier {
+  SmartShieldManager({
+    SmartShieldPolicy policy = const SmartShieldPolicy(),
+    int maxFrameSamples = 60,
+    Duration slowFrameThreshold = const Duration(milliseconds: 17),
+  })  : _policy = policy,
+        _maxFrameSamples = maxFrameSamples,
+        _slowFrameThreshold = slowFrameThreshold;
+
+  final SmartShieldPolicy _policy;
+  final int _maxFrameSamples;
+  final Duration _slowFrameThreshold;
+  final Queue<bool> _frameSamples = Queue<bool>();
+
+  SmartShieldMode _mode = SmartShieldMode.balanced;
+  bool _isInBackground = false;
+  bool _started = false;
+
+  SmartShieldMode get mode => _mode;
+  bool get isInBackground => _isInBackground;
+  int get measuredFrames => _frameSamples.length;
+  int get slowFrames => _frameSamples.where((slow) => slow).length;
+
+  void start() {
+    if (_started) return;
+    _started = true;
+    WidgetsBinding.instance.addObserver(this);
+    SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final next = state != AppLifecycleState.resumed;
+    if (_isInBackground == next) return;
+    _isInBackground = next;
+    notifyListeners();
+  }
+
+  void _onFrameTimings(List<FrameTiming> timings) {
+    if (_isInBackground) return;
+    for (final timing in timings) {
+      _frameSamples.addLast(timing.totalSpan > _slowFrameThreshold);
+      while (_frameSamples.length > _maxFrameSamples) {
+        _frameSamples.removeFirst();
+      }
+    }
+    final next = _policy.evaluate(
+      measuredFrames: measuredFrames,
+      slowFrames: slowFrames,
+      current: _mode,
+    );
+    if (next != _mode) {
+      _mode = next;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_started) {
+      WidgetsBinding.instance.removeObserver(this);
+      SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
+      _started = false;
+    }
+    super.dispose();
+  }
+}
