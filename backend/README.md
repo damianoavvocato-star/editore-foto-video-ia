@@ -13,7 +13,7 @@ Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` e `FFPROBE_PATH` permetton
 
 ### MagicIAedit cloud
 
-MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Configurare **solo sul server** (mai nell'app mobile) le variabili `MAGICIA_API_BASE_URL` (URL HTTPS del provider, senza `/chat/completions`), `MAGICIA_MODEL` e `MAGICIA_API_KEY`. Il servizio invia immagini ridimensionate e fino a tre fotogrammi campionati per ciascun video, quindi valida il piano ricevuto contro gli asset caricati. Le chiavi non vengono restituite dall'API. Senza tutte e tre le variabili il job risponde 503 e `/health` mantiene `aiProvider: false`. Il provider, il modello, i costi, la conservazione dei dati e i limiti di utilizzo devono essere scelti e verificati prima dell'attivazione pubblica.
+MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Configurare **solo sul server** (mai nell'app mobile) le variabili `MAGICIA_API_BASE_URL` (URL HTTPS del provider, senza `/chat/completions`), `MAGICIA_MODEL` e `MAGICIA_API_KEY`. Il servizio invia immagini ridimensionate e fino a tre fotogrammi campionati per ciascun video, quindi valida il piano ricevuto contro gli asset caricati. Le chiavi non vengono restituite dall'API. Limiti attuali della richiesta AI: massimo 20 media, immagini fino a 20 MB ciascuna, video fino a 100 MB ciascuno e 400 MB complessivi. I limiti sono applicati sul server prima dell'inferenza; l'app dovrà inoltre controllare dimensioni e memoria disponibili sul dispositivo prima di caricare i file. Senza tutte e tre le variabili il job risponde 503 e `/health` mantiene `aiProvider: false`. Il provider, il modello, i costi, la conservazione dei dati e i limiti di utilizzo devono essere scelti e verificati prima dell'attivazione pubblica.
 
 ## API disponibili
 
@@ -23,7 +23,7 @@ MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Confi
 - `GET /v1/jobs/{job_id}`: stato e progresso del job.
 - `DELETE /v1/jobs/{job_id}`: richiede annullamento cooperativo.
 - `GET /v1/outputs/{job_id}`: download consentito solo dopo stato `completed`.
-- `POST /v1/ai/jobs`: crea un job MagicIAedit con da 1 a 12 `assetIds`; il risultato strutturato è restituito nel campo `result` di `GET /v1/jobs/{job_id}`. Supporta immagini e video (campionamento di fotogrammi).
+- `POST /v1/ai/jobs`: crea un job MagicIAedit con da 1 a 20 `assetIds`; il risultato strutturato è restituito nel campo `result` di `GET /v1/jobs/{job_id}`. Supporta immagini e video (campionamento di fotogrammi).
 
 Se `MEDIA_API_TOKEN` è impostato, tutte le route tranne `/health` richiedono `Authorization: Bearer <token>`; il confronto del token usa una funzione constant-time per ridurre differenze temporali osservabili. Gli ID job sono validati come UUID esadecimali; output parziali o job non completati non vengono scaricati.
 
