@@ -5,6 +5,12 @@ on:
     branches: [ main, master ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_android_apk:
+        description: 'Build the Android APK (use only in development phase 6)'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,6 +73,7 @@ jobs:
         run: python -m pytest -q backend
 
   android-apk:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true
     needs: [flutter-test, backend-test]
     # Android scaffold is generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
