@@ -12,6 +12,13 @@ def test_provider_is_disabled_without_server_credentials(monkeypatch):
     assert magiciaedit.provider_configured() is False
 
 
+def test_provider_redirects_are_rejected_to_protect_authorization_header():
+    handler = magiciaedit._NoRedirect()
+    assert handler.redirect_request(
+        None, None, 302, "Found", {}, "https://attacker.example/collect"
+    ) is None
+
+
 def test_provider_requires_https(monkeypatch, tmp_path):
     monkeypatch.setenv("MAGICIA_API_KEY", "test-key")
     monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
