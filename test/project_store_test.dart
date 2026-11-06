@@ -78,6 +78,25 @@ void main() {
     expect(await file.exists(), isTrue);
   });
 
+  test('project save queue serializes rapid writes to the same project', () async {
+    final directory = await Directory.systemTemp.createTemp('editor_project_queue');
+    addTearDown(() => directory.delete(recursive: true));
+    final queue = ProjectSaveQueue();
+    const initial = EditorProject(id: 'queued-project', name: 'Version 1');
+    final second = initial.copyWith(name: 'Version 2');
+    final third = initial.copyWith(name: 'Version 3');
+
+    await Future.wait([
+      queue.save(initial, directory),
+      queue.save(second, directory),
+      queue.save(third, directory),
+    ]);
+
+    final restored = await const ProjectStore().load(initial.id, directory);
+    expect(restored.name, 'Version 3');
+    expect(await File('${directory.path}/queued-project.editproj.bak').exists(), isTrue);
+  });
+
   test('delete removes project and sidecar files', () async {
     final directory = await Directory.systemTemp.createTemp('editor_project_delete');
     addTearDown(() => directory.delete(recursive: true));
