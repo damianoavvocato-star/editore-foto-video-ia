@@ -252,6 +252,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     widget.smartShield.addListener(_handleSmartShieldChange);
+    _refreshSavedProjects();
   }
 
   void _handleSmartShieldChange() {
@@ -270,12 +271,6 @@ class _HomePageState extends State<HomePage> {
   List<EditorProject> savedProjects = const [];
   bool _loadingSavedProjects = true;
   final ProjectSaveQueue _projectSaveQueue = ProjectSaveQueue();
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshSavedProjects();
-  }
 
   Future<void> _refreshSavedProjects() async {
     try {
