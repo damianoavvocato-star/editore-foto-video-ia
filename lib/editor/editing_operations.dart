@@ -104,6 +104,7 @@ class EditingOperations {
             kind: clip.kind,
             startMs: splitAtMs,
             durationMs: secondDuration,
+            sourceStartMs: clip.sourceStartMs + firstDuration,
             title: clip.title.isEmpty ? 'Split clip' : '${clip.title} (2)',
             speed: clip.speed,
           ));
@@ -160,7 +161,9 @@ class EditingOperations {
       final duplicate = EditorClip(
         id: newClipId, source: source.source, kind: source.kind,
         startMs: safeStart,
-        durationMs: safeDuration, title: source.title.isEmpty ? 'Copy' : '${source.title} (copy)',
+        durationMs: safeDuration,
+        sourceStartMs: source.sourceStartMs,
+        title: source.title.isEmpty ? 'Copy' : '${source.title} (copy)',
         speed: source.speed, transitionAfterMs: source.transitionAfterMs,
         transitionAfter: source.transitionAfter,
       );
