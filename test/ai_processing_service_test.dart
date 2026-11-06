@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
 import 'package:editore_foto_video_ia/services/smart_shield_manager.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('AI task rejects blank input', () {
     const request = AiTaskRequest(
       jobId: 'job-1',
@@ -68,6 +71,41 @@ void main() {
     test('conservative mode reduces preview image decode workload', () {
       expect(policy.previewDecodeScale(SmartShieldMode.balanced), 1.0);
       expect(policy.previewDecodeScale(SmartShieldMode.conservative), 0.65);
+    });
+
+    test('manager follows app background and resume lifecycle', () {
+      final manager = SmartShieldManager();
+      var notifications = 0;
+      manager.addListener(() => notifications++);
+      manager.start();
+      manager.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(manager.isInBackground, isTrue);
+      manager.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(notifications, 1);
+      manager.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(manager.isInBackground, isFalse);
+      expect(notifications, 2);
+      manager.dispose();
+      manager.dispose();
+    });
+
+    test('manager bounds the frame sample window', () {
+      final manager = SmartShieldManager(maxFrameSamples: 1);
+      expect(manager.maxFrameSamples, 30);
+      manager.dispose();
+    });
+
+    test('manager rejects a non-positive frame threshold', () {
+      expect(
+        () => SmartShieldManager(slowFrameThreshold: Duration.zero),
+        throwsArgumentError,
+      );
+    });
+
+    test('manager cannot be restarted after disposal', () {
+      final manager = SmartShieldManager();
+      manager.dispose();
+      expect(manager.start, throwsStateError);
     });
   });
 
