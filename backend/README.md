@@ -9,7 +9,11 @@ pip install -r backend/requirements.txt
 MEDIA_API_TOKEN='inserire-un-segreto-lungo' uvicorn backend.server:app --host 127.0.0.1 --port 8080
 ```
 
-Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` permette di indicare il binario FFmpeg; `MEDIA_DATA_DIR` indica la directory persistente per asset, lavori e output. `/health` è pubblico e segnala esplicitamente `aiProvider: false` finché non viene configurato un provider AI reale.
+Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` e `FFPROBE_PATH` permettono di indicare i binari; `MEDIA_DATA_DIR` indica la directory persistente per asset, lavori e output. `/health` è pubblico e segnala `aiProvider: true` solo quando sono configurate tutte le variabili cloud richieste.
+
+### MagicIAedit cloud
+
+MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Configurare **solo sul server** (mai nell'app mobile) le variabili `MAGICIA_API_BASE_URL` (URL HTTPS del provider, senza `/chat/completions`), `MAGICIA_MODEL` e `MAGICIA_API_KEY`. Il servizio invia immagini ridimensionate e fino a tre fotogrammi campionati per ciascun video, quindi valida il piano ricevuto contro gli asset caricati. Le chiavi non vengono restituite dall'API. Senza tutte e tre le variabili il job risponde 503 e `/health` mantiene `aiProvider: false`. Il provider, il modello, i costi, la conservazione dei dati e i limiti di utilizzo devono essere scelti e verificati prima dell'attivazione pubblica.
 
 ## API disponibili
 
@@ -19,7 +23,7 @@ Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` permette di indicare il bi
 - `GET /v1/jobs/{job_id}`: stato e progresso del job.
 - `DELETE /v1/jobs/{job_id}`: richiede annullamento cooperativo.
 - `GET /v1/outputs/{job_id}`: download consentito solo dopo stato `completed`.
-- `POST /v1/ai/jobs`: risponde 503 in modo esplicito finché non è configurato un provider AI reale.
+- `POST /v1/ai/jobs`: crea un job MagicIAedit con da 1 a 12 `assetIds`; il risultato strutturato è restituito nel campo `result` di `GET /v1/jobs/{job_id}`. Supporta immagini e video (campionamento di fotogrammi).
 
 Se `MEDIA_API_TOKEN` è impostato, tutte le route tranne `/health` richiedono `Authorization: Bearer <token>`; il confronto del token usa una funzione constant-time per ridurre differenze temporali osservabili. Gli ID job sono validati come UUID esadecimali; output parziali o job non completati non vengono scaricati.
 
@@ -34,7 +38,7 @@ Se `MEDIA_API_TOKEN` è impostato, tutte le route tranne `/health` richiedono `A
 
 ## Limiti e requisiti prima della produzione
 
-Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider AI reale non è configurato: nessuna generazione AI viene dichiarata attiva. I job e gli asset sono conservati in memoria/directory locale, senza coda persistente né proprietà per utente. Prima dell'esposizione pubblica servono autenticazione individuale, autorizzazione per asset/job/output, HTTPS, rate limiting, quote, scansione/validazione contenuti, retention e pulizia automatica, coda persistente e test di carico.
+Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider cloud MagicIAedit è predisposto ma non è attivo finché le credenziali e il modello non vengono configurati sul server. I job e gli asset sono conservati in memoria/directory locale, senza coda persistente né proprietà per utente. Prima dell'esposizione pubblica servono autenticazione individuale, autorizzazione per asset/job/output, HTTPS, rate limiting, quote, scansione/validazione contenuti, retention e pulizia automatica, coda persistente e test di carico.
 
 ## Test
 
