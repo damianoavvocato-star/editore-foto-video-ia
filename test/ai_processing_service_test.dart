@@ -64,6 +64,11 @@ void main() {
       expect(policy.evaluate(measuredFrames: 60, slowFrames: 9,
         current: SmartShieldMode.conservative), SmartShieldMode.conservative);
     });
+
+    test('conservative mode reduces preview image decode workload', () {
+      expect(policy.previewDecodeScale(SmartShieldMode.balanced), 1.0);
+      expect(policy.previewDecodeScale(SmartShieldMode.conservative), 0.65);
+    });
   });
 
 }
