@@ -11,6 +11,7 @@ from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
+from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -38,7 +39,7 @@ async def auth(request, call_next):
 
 @app.get('/health')
 def health():
-    return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': False}
+    return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': provider_configured()}
 
 @app.post('/v1/assets')
 async def upload_asset(file: UploadFile = File(...)):
@@ -317,6 +318,74 @@ def download_output(job_id: str):
     if not matches: raise HTTPException(404,'Output non disponibile')
     return FileResponse(matches[0], filename='editore_video'+matches[0].suffix)
 
+def _magic_job(job_id: str, asset_paths: dict[str, Path], options: dict[str, Any]):
+    try:
+        with lock:
+            if cancel_events[job_id].is_set():
+                jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
+                return
+            jobs[job_id].update(state='rendering', progress=0.1, message='Analisi dei media')
+        plan = create_magic_plan(asset_paths, options, cancel_events[job_id])
+        with lock:
+            if cancel_events[job_id].is_set():
+                jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
+            else:
+                jobs[job_id].update(
+                    state='succeeded', progress=1.0,
+                    message='Proposta MagicIAedit pronta', result=plan,
+                )
+    except MagicIAError as exc:
+        with lock:
+            state = 'cancelled' if cancel_events[job_id].is_set() else 'failed'
+            jobs[job_id].update(state=state, progress=0.0, message=str(exc))
+    except Exception:
+        with lock:
+            jobs[job_id].update(
+                state='failed', progress=0.0,
+                message='Errore interno durante l’elaborazione MagicIAedit',
+            )
+
+
 @app.post('/v1/ai/jobs')
-def ai_unavailable():
-    raise HTTPException(503, 'Provider AI non configurato: collegare un modello autorizzato prima di attivare i job AI.')
+def create_ai_job(body: dict[str, Any]):
+    if not provider_configured():
+        raise HTTPException(
+            503,
+            'Provider cloud non configurato: impostare MAGICIA_API_BASE_URL, MAGICIA_MODEL e MAGICIA_API_KEY sul server.',
+        )
+    task = str(body.get('task', 'magicIAedit')).lower()
+    if task not in {'magiciaedit', 'magic_ia_edit'}:
+        raise HTTPException(422, 'Attività IA non supportata da questo endpoint.')
+    asset_ids = body.get('assetIds')
+    if asset_ids is None:
+        asset_ids = [body.get('assetId')]
+    if not isinstance(asset_ids, list) or not 1 <= len(asset_ids) <= 12:
+        raise HTTPException(422, 'Seleziona da 1 a 12 foto o video.')
+    if any(not isinstance(asset_id, str) or not _valid_id(asset_id) for asset_id in asset_ids):
+        raise HTTPException(422, 'Identificativo media non valido.')
+    if len(set(asset_ids)) != len(asset_ids):
+        raise HTTPException(422, 'La selezione contiene media duplicati.')
+
+    asset_paths: dict[str, Path] = {}
+    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v'}
+    for asset_id in asset_ids:
+        matches = [
+            path for path in ASSETS.glob(asset_id + '.*')
+            if path.is_file() and path.suffix.lower() in allowed
+            and path.resolve().parent == ASSETS.resolve()
+        ]
+        if not matches:
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+        asset_paths[asset_id] = matches[0]
+
+    options = body.get('options', {})
+    if not isinstance(options, dict):
+        raise HTTPException(422, 'Opzioni MagicIAedit non valide.')
+    job_id = uuid.uuid4().hex
+    with lock:
+        jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
+        cancel_events[job_id] = threading.Event()
+    threading.Thread(
+        target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
+    ).start()
+    return {'jobId': job_id}
