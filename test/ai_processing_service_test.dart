@@ -20,3 +20,24 @@ void main() {
     expect(request.validate, throwsA(isA<ArgumentError>()));
   });
 }
+
+  test('MagicIAedit accepts a bounded list of media paths', () {
+    const request = AiTaskRequest(
+      jobId: 'magic-1',
+      task: AiTaskKind.magicIAedit,
+      inputPath: '',
+      inputPaths: ['/tmp/one.jpg', '/tmp/two.mp4'],
+    );
+    expect(request.validate, returnsNormally);
+    expect(request.mediaPaths, hasLength(2));
+  });
+
+  test('MagicIAedit rejects more than twelve media paths', () {
+    final request = AiTaskRequest(
+      jobId: 'magic-2',
+      task: AiTaskKind.magicIAedit,
+      inputPath: '/tmp/one.jpg',
+      inputPaths: List<String>.generate(13, (index) => '/tmp/$index.jpg'),
+    );
+    expect(request.validate, throwsA(isA<ArgumentError>()));
+  });
