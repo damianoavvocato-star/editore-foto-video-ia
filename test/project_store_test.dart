@@ -24,6 +24,7 @@ void main() {
               kind: MediaKind.video,
               startMs: 120,
               durationMs: 3400,
+              sourceStartMs: 850,
             ),
           ],
         ),
@@ -34,6 +35,7 @@ void main() {
     final restored = await store.load(project.id, directory);
     expect(restored.name, 'Demo');
     expect(restored.tracks.single.clips.single.durationMs, 3400);
+    expect(restored.tracks.single.clips.single.sourceStartMs, 850);
   });
 
   test('project store recovers a corrupted current file from backup', () async {
