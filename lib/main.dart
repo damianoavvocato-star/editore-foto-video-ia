@@ -49,6 +49,7 @@ class _EditoreAppState extends State<EditoreApp> {
       ),
       home: HomePage(
         language: language,
+        smartShield: _smartShield,
         onLanguageChanged: (value) => setState(() => language = value),
       ),
     );
@@ -222,10 +223,12 @@ class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
     required this.language,
+    required this.smartShield,
     required this.onLanguageChanged,
   });
 
   final AppLanguage language;
+  final SmartShieldManager smartShield;
   final ValueChanged<AppLanguage> onLanguageChanged;
 
   @override
@@ -234,6 +237,21 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   PlatformFile? media;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.smartShield.addListener(_handleSmartShieldChange);
+  }
+
+  void _handleSmartShieldChange() {
+    if (widget.smartShield.isInBackground) {
+      // Stop decoders and audio output while the app is not visible.
+      videoController?.pause();
+      audioController?.pause();
+    }
+    if (mounted) setState(() {});
+  }
   VideoPlayerController? videoController;
   AudioPlayer? audioController;
   double zoom = 1;
@@ -454,6 +472,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    widget.smartShield.removeListener(_handleSmartShieldChange);
     videoController?.dispose();
     audioController?.dispose();
     super.dispose();
@@ -685,9 +704,22 @@ class _HomePageState extends State<HomePage> {
       );
     }
     if (file.path != null) {
+      final previewScale = widget.smartShield.mode == SmartShieldMode.conservative
+          ? 0.65
+          : 1.0;
+      final decodeWidth = (MediaQuery.sizeOf(context).width *
+              MediaQuery.devicePixelRatioOf(context) *
+              previewScale)
+          .round()
+          .clamp(256, 4096)
+          .toInt();
       return Transform.scale(
         scale: zoom,
-        child: Image.file(File(file.path!), fit: BoxFit.contain),
+        child: Image.file(
+          File(file.path!),
+          fit: BoxFit.contain,
+          cacheWidth: decodeWidth,
+        ),
       );
     }
     return const Icon(Icons.broken_image, color: Colors.white);
