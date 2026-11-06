@@ -31,6 +31,13 @@ class MagicIAError(RuntimeError):
     """Safe, user-displayable MagicIAedit failure."""
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject provider redirects so Authorization cannot reach another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def provider_configured() -> bool:
     base_url = os.getenv("MAGICIA_API_BASE_URL", "").strip()
     return (
@@ -196,7 +203,8 @@ def create_magic_plan(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=150) as response:
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(request, timeout=150) as response:
             result = json.loads(response.read(8 * 1024 * 1024).decode("utf-8"))
     except urllib.error.HTTPError as exc:
         # Do not return provider response bodies; they can contain sensitive details.
