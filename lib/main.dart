@@ -240,14 +240,23 @@ class _HomePageState extends State<HomePage> {
   int selectedTab = 0;
   EditorProject project = const EditorProject(id: 'draft', name: 'Nuovo progetto');
   final ProjectStore _projectStore = const ProjectStore();
+  // Timeline changes can arrive faster than disk writes complete. Serialize
+  // autosaves so they never race over the same .tmp/.bak files.
+  Future<void> _saveQueue = Future<void>.value();
 
-  Future<void> _persistProject(EditorProject updated) async {
-    try {
-      final directory = await getApplicationSupportDirectory();
-      await _projectStore.save(updated, Directory('${directory.path}/editore_progetti'));
-    } catch (error) {
-      if (mounted) _message('Salvataggio progetto non riuscito: $error');
-    }
+  Future<void> _persistProject(EditorProject updated) {
+    _saveQueue = _saveQueue.then((_) async {
+      try {
+        final directory = await getApplicationSupportDirectory();
+        await _projectStore.save(
+          updated,
+          Directory('${directory.path}/editore_progetti'),
+        );
+      } catch (error) {
+        if (mounted) _message('Salvataggio progetto non riuscito: $error');
+      }
+    });
+    return _saveQueue;
   }
 
   void _handleProjectChanged(EditorProject updated) {
