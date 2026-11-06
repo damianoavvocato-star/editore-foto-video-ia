@@ -79,6 +79,15 @@ def test_ai_endpoint_rejects_duplicate_asset_ids(monkeypatch):
     assert response.status_code == 422
 
 
+def test_ai_endpoint_rejects_more_than_twenty_assets(monkeypatch):
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    response = TestClient(server.app).post(
+        "/v1/ai/jobs",
+        json={"task": "magicIAedit", "assetIds": [f"{index:032x}" for index in range(21)]},
+    )
+    assert response.status_code == 422
+
+
 def test_ai_job_returns_validated_plan(monkeypatch, tmp_path):
     asset_id = "a" * 32
     monkeypatch.setattr(server, "provider_configured", lambda: True)
@@ -128,7 +137,7 @@ def test_magic_plan_rejects_oversized_combined_selection(monkeypatch, tmp_path):
     monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
     monkeypatch.setenv("MAGICIA_API_BASE_URL", "https://provider.example/v1")
     assets = {}
-    for index in range(3):
+    for index in range(5):
         asset = tmp_path / f"media-{index}.mp4"
         with asset.open("wb") as stream:
             stream.truncate(90 * 1024 * 1024)
@@ -136,6 +145,35 @@ def test_magic_plan_rejects_oversized_combined_selection(monkeypatch, tmp_path):
     try:
         magiciaedit.create_magic_plan(assets)
     except magiciaedit.MagicIAError as exc:
-        assert "250 MB" in str(exc)
+        assert "400 MB" in str(exc)
     else:
         raise AssertionError("Oversized combined selection must be rejected")
+
+
+
+def test_magic_plan_rejects_image_over_twenty_megabytes(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAGICIA_API_KEY", "test-key")
+    monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
+    monkeypatch.setenv("MAGICIA_API_BASE_URL", "https://provider.example/v1")
+    asset = tmp_path / "large.jpg"
+    with asset.open("wb") as stream:
+        stream.truncate(magiciaedit.MAX_IMAGE_ASSET_BYTES + 1)
+    try:
+        magiciaedit.create_magic_plan({"a" * 32: asset})
+    except magiciaedit.MagicIAError as exc:
+        assert "20 MB" in str(exc)
+    else:
+        raise AssertionError("Oversized image must be rejected")
+
+
+def test_magic_plan_rejects_more_than_twenty_media(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAGICIA_API_KEY", "test-key")
+    monkeypatch.setenv("MAGICIA_MODEL", "vision-model")
+    monkeypatch.setenv("MAGICIA_API_BASE_URL", "https://provider.example/v1")
+    assets = {f"{index:032x}": tmp_path / f"{index}.mp4" for index in range(21)}
+    try:
+        magiciaedit.create_magic_plan(assets)
+    except magiciaedit.MagicIAError as exc:
+        assert "1 a 20" in str(exc)
+    else:
+        raise AssertionError("More than twenty media must be rejected")
