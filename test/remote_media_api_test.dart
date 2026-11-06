@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/services/remote_media_api.dart';
+import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
 
 void main() {
   late Directory tempDirectory;
@@ -71,6 +73,72 @@ void main() {
         baseUri: Uri.parse('https://user:password@media.example.test'),
       ),
       throwsArgumentError,
+    );
+  });
+
+  test('MagicIAedit maps uploaded asset IDs to local source paths', () async {
+    final source = File('${tempDirectory.path}/scene.jpg');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      request.response.headers.contentType = ContentType.json;
+      switch (request.uri.path) {
+        case '/v1/assets':
+          request.response.write(jsonEncode({'assetId': 'asset-1'}));
+        case '/v1/ai/jobs':
+          request.response.write(jsonEncode({'jobId': 'magic-job'}));
+        case '/v1/jobs/magic-job':
+          request.response.write(jsonEncode({
+            'state': 'succeeded',
+            'progress': 1,
+            'result': {
+              'title': 'Montaggio',
+              'clips': [
+                {
+                  'assetId': 'asset-1',
+                  'sourceStartMs': 0,
+                  'durationMs': 1000,
+                  'startMs': 0,
+                  'transitionAfterMs': 0,
+                  'transitionAfter': 'fade',
+                },
+              ],
+            },
+          }));
+        default:
+          request.response.statusCode = HttpStatus.notFound;
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteAiBackend(api, pollInterval: Duration.zero);
+    const request = AiTaskRequest(
+      jobId: 'magic-job',
+      task: AiTaskKind.magicIAedit,
+      inputPath: '',
+      inputPaths: [],
+    );
+    final actualRequest = AiTaskRequest(
+      jobId: request.jobId,
+      task: request.task,
+      inputPath: source.path,
+      inputPaths: [source.path],
+    );
+    final updates = await backend.run(actualRequest).toList();
+
+    expect(updates.last.state, AiJobState.succeeded);
+    expect(
+      updates.last.result?['sourcePaths'],
+      {'asset-1': source.path},
     );
   });
 
