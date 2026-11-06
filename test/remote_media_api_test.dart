@@ -16,6 +16,64 @@ void main() {
     }
   });
 
+  test('download URLs must stay on the API origin', () async {
+    final api = RemoteMediaApi(baseUri: Uri.parse('https://media.example.test'));
+    await expectLater(
+      api.downloadFile(
+        'https://attacker.example/steal',
+        '${tempDirectory.path}/download.bin',
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(await File('${tempDirectory.path}/download.bin').exists(), isFalse);
+    api.close();
+  });
+
+  test('API request paths cannot change the destination host', () async {
+    final api = RemoteMediaApi(baseUri: Uri.parse('https://media.example.test'));
+    await expectLater(
+      api.request('GET', '//attacker.example/collect'),
+      throwsA(isA<ArgumentError>()),
+    );
+    api.close();
+  });
+
+  test('API client rejects redirects instead of forwarding bearer credentials', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+      bearerToken: 'local-test-token',
+    );
+    server.listen((request) async {
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer local-test-token',
+      );
+      request.response.statusCode = HttpStatus.found;
+      request.response.headers.set(
+        HttpHeaders.locationHeader,
+        'https://attacker.example/collect',
+      );
+      await request.response.close();
+    });
+
+    await expectLater(
+      api.request('GET', '/redirect'),
+      throwsA(isA<HttpException>()),
+    );
+    api.close();
+    await server.close(force: true);
+  });
+
+  test('API base URL rejects embedded credentials', () {
+    expect(
+      () => RemoteMediaApi(
+        baseUri: Uri.parse('https://user:password@media.example.test'),
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('MagicIAedit rejects images above 20 MB before upload', () async {
     final image = File('${tempDirectory.path}/large.jpg');
     final imageHandle = await image.open(mode: FileMode.write);
