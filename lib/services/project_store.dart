@@ -138,3 +138,25 @@ class ProjectStore {
     return value;
   }
 }
+
+/// Serializes writes for the same project so rapid timeline edits cannot race
+/// while replacing the primary, temporary, and backup files.
+class ProjectSaveQueue {
+  ProjectSaveQueue({ProjectStore store = const ProjectStore()}) : _store = store;
+
+  final ProjectStore _store;
+  final Map<String, Future<void>> _pending = {};
+
+  Future<void> save(EditorProject project, Directory directory) {
+    final key = '${directory.absolute.path}/${project.id}';
+    final previous = _pending[key] ?? Future<void>.value();
+    final next = previous.then(
+      (_) => _store.save(project, directory),
+      onError: (Object _, StackTrace __) => _store.save(project, directory),
+    );
+    _pending[key] = next;
+    return next.whenComplete(() {
+      if (identical(_pending[key], next)) _pending.remove(key);
+    });
+  }
+}
