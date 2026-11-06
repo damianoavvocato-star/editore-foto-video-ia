@@ -89,8 +89,10 @@ void main() {
       switch (request.uri.path) {
         case '/v1/assets':
           request.response.write(jsonEncode({'assetId': 'asset-1'}));
+          break;
         case '/v1/ai/jobs':
           request.response.write(jsonEncode({'jobId': 'magic-job'}));
+          break;
         case '/v1/jobs/magic-job':
           request.response.write(jsonEncode({
             'state': 'succeeded',
@@ -109,6 +111,7 @@ void main() {
               ],
             },
           }));
+          break;
         default:
           request.response.statusCode = HttpStatus.notFound;
       }
@@ -121,19 +124,13 @@ void main() {
     });
 
     final backend = RemoteAiBackend(api, pollInterval: Duration.zero);
-    const request = AiTaskRequest(
+    final request = AiTaskRequest(
       jobId: 'magic-job',
       task: AiTaskKind.magicIAedit,
-      inputPath: '',
-      inputPaths: [],
-    );
-    final actualRequest = AiTaskRequest(
-      jobId: request.jobId,
-      task: request.task,
       inputPath: source.path,
       inputPaths: [source.path],
     );
-    final updates = await backend.run(actualRequest).toList();
+    final updates = await backend.run(request).toList();
 
     expect(updates.last.state, AiJobState.succeeded);
     expect(
