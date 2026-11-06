@@ -19,8 +19,9 @@ void main() {
 
   test('MagicIAedit rejects images above 20 MB before upload', () async {
     final image = File('${tempDirectory.path}/large.jpg');
-    await image.writeAsBytes(List<int>.filled(20 * 1024 * 1024 + 1, 0),
-        flush: true);
+    final imageHandle = await image.open(mode: FileMode.write);
+    await imageHandle.truncate(20 * 1024 * 1024 + 1);
+    await imageHandle.close();
     final api = RemoteMediaApi(baseUri: Uri.parse('https://example.invalid'));
     final backend = RemoteAiBackend(api);
     await expectLater(
@@ -33,10 +34,12 @@ void main() {
   test('MagicIAedit rejects selections above 400 MB before upload', () async {
     final first = File('${tempDirectory.path}/first.mp4');
     final second = File('${tempDirectory.path}/second.mp4');
-    await first.openWrite().close();
-    await second.openWrite().close();
-    await first.open(mode: FileMode.write).truncate(210 * 1024 * 1024);
-    await second.open(mode: FileMode.write).truncate(210 * 1024 * 1024);
+    final firstHandle = await first.open(mode: FileMode.write);
+    await firstHandle.truncate(210 * 1024 * 1024);
+    await firstHandle.close();
+    final secondHandle = await second.open(mode: FileMode.write);
+    await secondHandle.truncate(210 * 1024 * 1024);
+    await secondHandle.close();
     final api = RemoteMediaApi(baseUri: Uri.parse('https://example.invalid'));
     final backend = RemoteAiBackend(api);
     await expectLater(
