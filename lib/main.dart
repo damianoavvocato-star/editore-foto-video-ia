@@ -90,6 +90,13 @@ class Copy {
       'shareNote': 'La condivisione di sistema sarà collegata dopo l’esportazione.',
       'savedProjects': 'Progetti salvati',
       'noSavedProjects': 'Nessun progetto salvato.',
+      'renameProject': 'Rinomina',
+      'deleteProject': 'Elimina',
+      'renameProjectTitle': 'Rinomina progetto',
+      'deleteProjectTitle': 'Elimina progetto',
+      'deleteProjectQuestion': 'Vuoi eliminare definitivamente questo progetto e i suoi backup?',
+      'cancel': 'Annulla',
+      'save': 'Salva',
     },
     AppLanguage.en: {
       'app': 'AI Photo & Video Editor',
@@ -123,6 +130,13 @@ class Copy {
       'shareNote': 'System sharing will be connected after export.',
       'savedProjects': 'Saved projects',
       'noSavedProjects': 'No saved projects yet.',
+      'renameProject': 'Rename',
+      'deleteProject': 'Delete',
+      'renameProjectTitle': 'Rename project',
+      'deleteProjectTitle': 'Delete project',
+      'deleteProjectQuestion': 'Permanently delete this project and its backups?',
+      'cancel': 'Cancel',
+      'save': 'Save',
     },
     AppLanguage.fr: {
       'app': 'Éditeur photo et vidéo IA',
@@ -156,6 +170,13 @@ class Copy {
       'shareNote': 'Le partage système sera connecté après l’export.',
       'savedProjects': 'Projets enregistrés',
       'noSavedProjects': 'Aucun projet enregistré.',
+      'renameProject': 'Renommer',
+      'deleteProject': 'Supprimer',
+      'renameProjectTitle': 'Renommer le projet',
+      'deleteProjectTitle': 'Supprimer le projet',
+      'deleteProjectQuestion': 'Supprimer définitivement ce projet et ses sauvegardes ?',
+      'cancel': 'Annuler',
+      'save': 'Enregistrer',
     },
     AppLanguage.es: {
       'app': 'Editor de foto y vídeo IA',
@@ -189,6 +210,13 @@ class Copy {
       'shareNote': 'El uso compartido del sistema se conectará después de exportar.',
       'savedProjects': 'Proyectos guardados',
       'noSavedProjects': 'Todavía no hay proyectos guardados.',
+      'renameProject': 'Renombrar',
+      'deleteProject': 'Eliminar',
+      'renameProjectTitle': 'Renombrar proyecto',
+      'deleteProjectTitle': 'Eliminar proyecto',
+      'deleteProjectQuestion': '¿Eliminar definitivamente este proyecto y sus copias de seguridad?',
+      'cancel': 'Cancelar',
+      'save': 'Guardar',
     },
     AppLanguage.ar: {
       'app': 'محرر الصور والفيديو بالذكاء الاصطناعي',
@@ -222,6 +250,13 @@ class Copy {
       'shareNote': 'ستتم إضافة المشاركة بعد التصدير.',
       'savedProjects': 'المشاريع المحفوظة',
       'noSavedProjects': 'لا توجد مشاريع محفوظة بعد.',
+      'renameProject': 'إعادة تسمية',
+      'deleteProject': 'حذف',
+      'renameProjectTitle': 'إعادة تسمية المشروع',
+      'deleteProjectTitle': 'حذف المشروع',
+      'deleteProjectQuestion': 'هل تريد حذف هذا المشروع ونسخه الاحتياطية نهائياً؟',
+      'cancel': 'إلغاء',
+      'save': 'حفظ',
     },
   };
 
@@ -299,7 +334,7 @@ class _HomePageState extends State<HomePage> {
     setState(() => savedProjects = projects);
   }
 
-  Future<void> _persistProject(EditorProject updated) async {
+  Future<bool> _persistProject(EditorProject updated) async {
     try {
       final directory = await getApplicationSupportDirectory();
       await _projectSaveQueue.save(
@@ -307,8 +342,91 @@ class _HomePageState extends State<HomePage> {
         Directory('${directory.path}/editore_progetti'),
       );
       if (mounted) _upsertSavedProject(updated);
+      return true;
     } catch (error) {
       if (mounted) _message('Salvataggio progetto non riuscito: $error');
+      return false;
+    }
+  }
+
+  Future<void> _renameSavedProject(EditorProject saved) async {
+    final controller = TextEditingController(text: saved.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t('renameProjectTitle')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: Text(t('save')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == saved.name) return;
+    final updated = saved.copyWith(name: trimmed);
+    if (await _persistProject(updated) && mounted && project.id == updated.id) {
+      setState(() => project = updated);
+    }
+  }
+
+  Future<void> _deleteSavedProject(EditorProject saved) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t('deleteProjectTitle')),
+        content: Text(t('deleteProjectQuestion')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(t('deleteProject')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final directory = await getApplicationSupportDirectory();
+      await const ProjectStore().delete(
+        saved.id,
+        Directory('${directory.path}/editore_progetti'),
+      );
+      if (!mounted) return;
+      final wasOpen = project.id == saved.id;
+      final oldVideo = wasOpen ? videoController : null;
+      final oldAudio = wasOpen ? audioController : null;
+      setState(() {
+        savedProjects = savedProjects.where((item) => item.id != saved.id).toList();
+        if (wasOpen) {
+          project = const EditorProject(id: 'draft', name: 'Nuovo progetto');
+          media = null;
+          videoController = null;
+          audioController = null;
+          selectedTab = 0;
+        }
+      });
+      await oldVideo?.dispose();
+      await oldAudio?.dispose();
+      if (mounted) _message('Progetto eliminato.');
+    } catch (error) {
+      if (mounted) _message('Eliminazione progetto non riuscita: $error');
     }
   }
 
@@ -889,6 +1007,22 @@ class _HomePageState extends State<HomePage> {
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
+                ),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'rename') _renameSavedProject(saved);
+                    if (action == 'delete') _deleteSavedProject(saved);
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'rename',
+                      child: Text(t('renameProject')),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(t('deleteProject')),
+                    ),
+                  ],
                 ),
                 onTap: () => _openSavedProject(saved),
               ),
