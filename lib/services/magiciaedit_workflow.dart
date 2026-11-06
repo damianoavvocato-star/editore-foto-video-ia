@@ -45,7 +45,7 @@ class MagicIAeditWorkflow {
           try {
             return MagicIAeditPlan.fromResult(result);
           } on FormatException catch (error) {
-            throw MagicIAeditException(error.message);
+            throw MagicIAeditException(error.message.toString());
           }
         case AiJobState.failed:
           final message = progress.message.trim().isNotEmpty
