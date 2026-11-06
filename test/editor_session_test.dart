@@ -18,6 +18,7 @@ void main() {
             kind: MediaKind.video,
             startMs: 0,
             durationMs: 5000,
+            sourceStartMs: 1200,
           ),
         ],
       ),
@@ -30,6 +31,8 @@ void main() {
     session.setPlayhead(2500);
     session.splitSelected();
     expect(session.project.tracks.single.clips, hasLength(2));
+    expect(session.project.tracks.single.clips.first.sourceStartMs, 1200);
+    expect(session.project.tracks.single.clips.last.sourceStartMs, 3700);
     expect(session.canUndo, isTrue);
     session.undo();
     expect(session.project.tracks.single.clips, hasLength(1));
