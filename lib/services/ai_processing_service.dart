@@ -10,6 +10,7 @@ enum AiTaskKind {
   autoCaptions,
   sceneDetection,
   smartCrop,
+  magicIAedit,
 }
 
 enum AiJobState { queued, running, succeeded, failed, cancelled }
@@ -23,6 +24,7 @@ class AiJobProgress {
     this.message = '',
     this.resultPath,
     this.error,
+    this.result,
   });
 
   final String jobId;
@@ -32,6 +34,7 @@ class AiJobProgress {
   final String message;
   final String? resultPath;
   final Object? error;
+  final Map<String, dynamic>? result;
 
   bool get isTerminal => state == AiJobState.succeeded ||
       state == AiJobState.failed ||
@@ -43,17 +46,24 @@ class AiTaskRequest {
     required this.jobId,
     required this.task,
     required this.inputPath,
+    this.inputPaths = const [],
     this.options = const {},
   });
 
   final String jobId;
   final AiTaskKind task;
   final String inputPath;
+  final List<String> inputPaths;
   final Map<String, Object?> options;
+
+  List<String> get mediaPaths => inputPaths.isEmpty ? [inputPath] : inputPaths;
 
   void validate() {
     if (jobId.trim().isEmpty) throw ArgumentError('jobId è obbligatorio.');
-    if (inputPath.trim().isEmpty) throw ArgumentError('inputPath è obbligatorio.');
+    if (mediaPaths.isEmpty || mediaPaths.any((path) => path.trim().isEmpty)) {
+      throw ArgumentError('È richiesto almeno un percorso media valido.');
+    }
+    if (mediaPaths.length > 12) throw ArgumentError('MagicIAedit accetta al massimo 12 media.');
     if (options.keys.any((key) => key.trim().isEmpty)) {
       throw ArgumentError('Le chiavi delle opzioni non possono essere vuote.');
     }
