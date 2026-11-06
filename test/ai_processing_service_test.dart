@@ -31,12 +31,12 @@ void main() {
     expect(request.mediaPaths, hasLength(2));
   });
 
-  test('MagicIAedit rejects more than twelve media paths', () {
+  test('MagicIAedit rejects more than twenty media paths', () {
     final request = AiTaskRequest(
       jobId: 'magic-2',
       task: AiTaskKind.magicIAedit,
       inputPath: '/tmp/one.jpg',
-      inputPaths: List<String>.generate(13, (index) => '/tmp/$index.jpg'),
+      inputPaths: List<String>.generate(21, (index) => '/tmp/$index.jpg'),
     );
     expect(request.validate, throwsA(isA<ArgumentError>()));
   });
