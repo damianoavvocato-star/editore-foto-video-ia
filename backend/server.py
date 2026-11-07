@@ -7,7 +7,7 @@ from __future__ import annotations
 import os, uuid, shutil, subprocess, threading, time, logging, hmac, ipaddress
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
@@ -123,18 +123,23 @@ def register_account(body: AuthCredentials):
 
 
 @app.post('/v1/auth/login')
-def login_account(body: AuthCredentials):
+def login_account(body: AuthCredentials, request: Request):
     store = _account_store()
     _bootstrap_owner(store)
+    client_ip = request.client.host if request.client else 'unknown'
+    if not store.login_allowed(client_ip, body.username):
+        raise HTTPException(429, 'Troppi tentativi. Riprova più tardi.')
     try:
         account, token, expires = store.login(body.username, body.password)
     except AccountError as exc:
+        store.record_login_failure(client_ip, body.username)
         raise HTTPException(401, 'Credenziali non valide.') from exc
+    store.clear_login_failures(client_ip, body.username)
     return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
 
 
 @app.get('/v1/auth/me')
-def current_account(request):
+def current_account(request: Request):
     store = _account_store()
     account = store.resolve_session(_bearer_token(request))
     if account is None:
@@ -143,7 +148,7 @@ def current_account(request):
 
 
 @app.delete('/v1/auth/logout')
-def logout_account(request):
+def logout_account(request: Request):
     store = _account_store()
     token = _bearer_token(request)
     if not store.revoke_session(token):
