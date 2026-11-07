@@ -139,6 +139,118 @@ void main() {
     );
   });
 
+  test('remote AI cancellation during upload prevents job creation', () async {
+    final source = File('${tempDirectory.path}/scene.jpg');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final uploadReceived = Completer<void>();
+    final releaseUpload = Completer<void>();
+    var aiJobCreated = false;
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      request.response.headers.contentType = ContentType.json;
+      if (request.uri.path == '/v1/assets') {
+        uploadReceived.complete();
+        await releaseUpload.future;
+        request.response.write(jsonEncode({'assetId': 'asset-cancel'}));
+      } else if (request.uri.path == '/v1/ai/jobs') {
+        aiJobCreated = true;
+        request.response.write(jsonEncode({'jobId': 'server-job'}));
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      if (!releaseUpload.isCompleted) releaseUpload.complete();
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteAiBackend(api, pollInterval: Duration.zero);
+    final states = <AiJobState>[];
+    final done = Completer<void>();
+    backend.run(AiTaskRequest(
+      jobId: 'client-job',
+      task: AiTaskKind.magicIAedit,
+      inputPath: source.path,
+      inputPaths: [source.path],
+    )).listen(
+      (progress) => states.add(progress.state),
+      onError: done.completeError,
+      onDone: done.complete,
+    );
+
+    await uploadReceived.future;
+    await backend.cancel('client-job');
+    releaseUpload.complete();
+    await done.future;
+
+    expect(states, [AiJobState.cancelled]);
+    expect(aiJobCreated, isFalse);
+  });
+
+  test('remote AI cancellation targets the server-generated job ID', () async {
+    final source = File('${tempDirectory.path}/scene.jpg');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final statusRequested = Completer<void>();
+    final deletionReceived = Completer<String>();
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      request.response.headers.contentType = ContentType.json;
+      if (request.uri.path == '/v1/assets') {
+        request.response.write(jsonEncode({'assetId': 'asset-remote'}));
+      } else if (request.uri.path == '/v1/ai/jobs') {
+        request.response.write(jsonEncode({'jobId': 'server-generated-job'}));
+      } else if (request.method == 'GET' &&
+          request.uri.path == '/v1/jobs/server-generated-job') {
+        if (!statusRequested.isCompleted) statusRequested.complete();
+        request.response.write(jsonEncode({
+          'state': 'queued',
+          'progress': 0,
+          'message': 'In coda',
+        }));
+      } else if (request.method == 'DELETE') {
+        deletionReceived.complete(request.uri.path);
+        request.response.write(jsonEncode({'ok': true}));
+      } else {
+        request.response.statusCode = HttpStatus.notFound;
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteAiBackend(api, pollInterval: const Duration(seconds: 1));
+    final states = <AiJobState>[];
+    final done = Completer<void>();
+    backend.run(AiTaskRequest(
+      jobId: 'client-side-job-id',
+      task: AiTaskKind.magicIAedit,
+      inputPath: source.path,
+      inputPaths: [source.path],
+    )).listen(
+      (progress) => states.add(progress.state),
+      onError: done.completeError,
+      onDone: done.complete,
+    );
+
+    await statusRequested.future;
+    await backend.cancel('client-side-job-id');
+    expect(await deletionReceived.future, '/v1/jobs/server-generated-job');
+    await done.future;
+    expect(states, contains(AiJobState.cancelled));
+  });
+
   test('MagicIAedit rejects images above 20 MB before upload', () async {
     final image = File('${tempDirectory.path}/large.jpg');
     final imageHandle = await image.open(mode: FileMode.write);
