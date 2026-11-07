@@ -182,6 +182,10 @@ def logout_account(request: Request):
 
 
 
+class OwnerSetRole(BaseModel):
+    role: str = Field(min_length=3, max_length=32)
+
+
 class OwnerCreateAccount(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     temporaryPassword: str = Field(min_length=12, max_length=1024)
@@ -212,6 +216,19 @@ def owner_create_account(body: OwnerCreateAccount, request: Request):
         status = 409 if 'già utilizzato' in str(exc) else 422
         if 'proprietario' in str(exc):
             status = 403
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+@app.post('/v1/owner/accounts/{user_id}/role')
+def owner_set_account_role(user_id: str, body: OwnerSetRole, request: Request):
+    owner = _require_owner(request)
+    try:
+        account = _account_store().set_account_role(
+            owner['userId'], user_id, body.role
+        )
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) or 'riservato' in str(exc) else 422
         raise HTTPException(status, str(exc)) from exc
     return {'user': account}
 
