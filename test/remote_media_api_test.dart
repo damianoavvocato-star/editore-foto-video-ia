@@ -5,6 +5,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/services/remote_media_api.dart';
 import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
+import 'package:editore_foto_video_ia/models/editor_project.dart';
+import 'package:editore_foto_video_ia/models/export_settings.dart';
+import 'package:editore_foto_video_ia/services/export_coordinator.dart';
 
 void main() {
   late Directory tempDirectory;
@@ -250,6 +253,113 @@ void main() {
     expect(await deletionReceived.future, '/v1/jobs/server-generated-job');
     await done.future;
     expect(states, contains(AiJobState.cancelled));
+  });
+
+  test('remote render cancellation during upload prevents job creation', () async {
+    final source = File('${tempDirectory.path}/render.mp4');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final uploadReceived = Completer<void>();
+    final releaseUpload = Completer<void>();
+    var renderJobCreated = false;
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      request.response.headers.contentType = ContentType.json;
+      if (request.uri.path == '/v1/assets') {
+        uploadReceived.complete();
+        await releaseUpload.future;
+        request.response.write(jsonEncode({'assetId': 'render-asset'}));
+      } else if (request.uri.path == '/v1/render/jobs') {
+        renderJobCreated = true;
+        request.response.write(jsonEncode({'jobId': 'render-server-job'}));
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      if (!releaseUpload.isCompleted) releaseUpload.complete();
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteRenderBackend(api, pollInterval: Duration.zero);
+    final request = ExportRequest(
+      project: EditorProject(
+        id: 'render-cancel',
+        name: 'Render cancel',
+        tracks: [
+          EditorTrack(
+            id: 'video-track',
+            name: 'Video',
+            kind: MediaKind.video,
+            clips: [
+              EditorClip(
+                id: 'video-clip',
+                source: source.path,
+                kind: MediaKind.video,
+                startMs: 0,
+                durationMs: 1000,
+              ),
+            ],
+          ),
+        ],
+      ),
+      settings: const ExportSettings(),
+      outputPath: '${tempDirectory.path}/output.mp4',
+    );
+    final phases = <ExportPhase>[];
+    final done = Completer<void>();
+    backend.render(request).listen(
+      (progress) => phases.add(progress.phase),
+      onError: done.completeError,
+      onDone: done.complete,
+    );
+
+    await uploadReceived.future;
+    await backend.cancel();
+    releaseUpload.complete();
+    await done.future;
+
+    expect(phases, contains(ExportPhase.cancelled));
+    expect(renderJobCreated, isFalse);
+  });
+
+  test('remote render rejects URL sources the backend cannot resolve', () async {
+    final api = RemoteMediaApi(baseUri: Uri.parse('https://example.invalid'));
+    final backend = RemoteRenderBackend(api);
+    final request = ExportRequest(
+      project: const EditorProject(
+        id: 'remote-source',
+        name: 'Remote source',
+        tracks: [
+          EditorTrack(
+            id: 'video-track',
+            name: 'Video',
+            kind: MediaKind.video,
+            clips: [
+              EditorClip(
+                id: 'video-clip',
+                source: 'https://cdn.example.test/video.mp4',
+                kind: MediaKind.video,
+                startMs: 0,
+                durationMs: 1000,
+              ),
+            ],
+          ),
+        ],
+      ),
+      settings: const ExportSettings(),
+      outputPath: '${tempDirectory.path}/output.mp4',
+    );
+
+    await expectLater(
+      backend.render(request).toList(),
+      throwsA(isA<ArgumentError>()),
+    );
+    api.close();
   });
 
   test('MagicIAedit rejects images above 20 MB before upload', () async {
