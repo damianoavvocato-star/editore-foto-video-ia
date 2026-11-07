@@ -2,7 +2,7 @@
 
 ## Stato
 
-Questa è la prima base tecnica per gli account individuali. Non equivale ancora a un sistema multiutente pronto per la produzione: le API media esistenti continuano a usare il token server condiviso e gli asset, job e output non sono ancora isolati per account. Non attivare la registrazione pubblica in produzione e non distribuire questa autenticazione come login completo dell'app prima della migrazione ownership end-to-end.
+Questa è una base tecnica per gli account individuali, non un sistema multiutente pronto per la produzione. Le API media ora richiedono sessioni individuali e verificano la proprietà di asset, job e output; restano da completare integrazione client, gestione progetti e hardening operativo. Non attivare la registrazione pubblica in produzione finché non sono completati i controlli e la revisione di sicurezza.
 
 ## Implementazione presente
 
@@ -28,19 +28,18 @@ Questa è la prima base tecnica per gli account individuali. Non equivale ancora
 - `GET /v1/auth/me`: restituisce l'identità associata al token sessione.
 - `DELETE /v1/auth/logout`: revoca la sessione corrente.
 
-Le API account validano il proprio token individuale. Le API media non lo accettano ancora: continuano a richiedere `MEDIA_API_TOKEN` oppure il bypass locale esplicitamente abilitato. Questa separazione è intenzionale per non dichiarare completata una migrazione non ancora effettuata.
+Le API account validano il token individuale. Tutte le API media (`/v1/assets`, `/v1/render/jobs`, `/v1/ai/jobs`, `/v1/jobs/{id}` e `/v1/outputs/{id}`) richiedono una sessione account e associano/verificano le risorse lato server. Il vecchio `MEDIA_API_TOKEN` condiviso non è accettato come identità utente: un token condiviso non può garantire isolamento. `MEDIA_ALLOW_INSECURE_LOCAL=true` consente ancora un bypass esclusivamente per connessioni loopback locali; deve restare disattivato in produzione.
 
 ## Lavoro bloccante prima dell'uso multiutente
 
-1. Richiedere sessione individuale per ogni endpoint media e amministrativo.
-2. Associare asset, progetti, job, output e file temporanei a un proprietario server-side.
-3. Applicare controlli ownership ad ogni lettura, modifica, cancellazione, rendering e download; mai fidarsi di user ID dal client.
-4. Migrare o isolare i dati esistenti senza esporli a utenti diversi.
-5. Aggiungere reset password verificato, 2FA proprietario, inviti collaboratori, RBAC granulare e audit log.
-6. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
-7. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
-8. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
+1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
+2. Migrare o isolare i dati preesistenti senza esporli a utenti diversi; le risorse storiche prive di proprietario non devono essere rese visibili automaticamente.
+3. Aggiungere reset password verificato, 2FA proprietario, inviti collaboratori, RBAC granulare e audit log.
+4. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
+5. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
+6. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
+7. Verificare concorrenza e persistenza dei job in un deployment multi-processo: lo stato job attualmente in memoria non è ancora un archivio distribuito.
 
 ## Verifiche
 
-I test automatici coprono hashing, login, sessione, revoca, disabilitazione account, bootstrap proprietario, registrazione opt-in e limitazione tentativi. Un esito CI positivo è necessario ma non sufficiente per l'attivazione in produzione.
+I test automatici coprono hashing, login, sessione, revoca, disabilitazione account, bootstrap proprietario e isolamento API tra due account (upload, rendering, stato job, cancellazione e download). Un esito CI positivo è necessario ma non sufficiente per l'attivazione in produzione.
