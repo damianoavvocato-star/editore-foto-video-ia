@@ -228,7 +228,7 @@ def owner_set_account_role(user_id: str, body: OwnerSetRole, request: Request):
             owner['userId'], user_id, body.role
         )
     except AccountError as exc:
-        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) or 'riservato' in str(exc) else 422
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
         raise HTTPException(status, str(exc)) from exc
     return {'user': account}
 
