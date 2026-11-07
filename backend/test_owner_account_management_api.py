@@ -198,3 +198,71 @@ def test_owner_reset_returns_temporary_password_once_and_requires_rotation(tmp_p
         headers=owner_headers,
     )
     assert owner_reset.status_code == 403
+
+
+
+def test_owner_can_manage_account_permission_overrides_via_authenticated_api(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("permission_owner", "owner password with enough length")
+    user = store.register("permission_target", "user password with enough length")
+    owner_headers = _headers(store, owner["userId"])
+    user_headers = _headers(store, user["userId"])
+    client = TestClient(server.app)
+
+    denied = client.put(
+        f"/v1/owner/accounts/{user['userId']}/permissions",
+        headers=user_headers,
+        json={"permission": "accounts.create", "effect": "allow"},
+    )
+    assert denied.status_code == 403
+
+    updated = client.put(
+        f"/v1/owner/accounts/{user['userId']}/permissions",
+        headers=owner_headers,
+        json={"permission": "accounts.create", "effect": "allow"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert "accounts.create" in updated.json()["effectivePermissions"]
+    assert updated.json()["overrides"][0]["effect"] == "allow"
+
+    viewed = client.get(
+        f"/v1/owner/accounts/{user['userId']}/permissions",
+        headers=owner_headers,
+    )
+    assert viewed.status_code == 200
+    assert "accounts.create" in viewed.json()["effectivePermissions"]
+
+    removed = client.delete(
+        f"/v1/owner/accounts/{user['userId']}/permissions/accounts.create",
+        headers=owner_headers,
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+    assert "accounts.create" not in removed.json()["effectivePermissions"]
+
+    invalid = client.put(
+        f"/v1/owner/accounts/{user['userId']}/permissions",
+        headers=owner_headers,
+        json={"permission": "unknown.permission", "effect": "allow"},
+    )
+    assert invalid.status_code == 422
+    audit = store.list_audit_events(20)
+    assert any(e["action"] == "account.permission_override" for e in audit)
+    assert any(e["action"] == "account.permission_override_removed" for e in audit)
+
+
+def test_owner_permission_api_does_not_disclose_unknown_account(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("permission_owner", "owner password with enough length")
+    client = TestClient(server.app)
+    response = client.get(
+        "/v1/owner/accounts/" + "f" * 32 + "/permissions",
+        headers=_headers(store, owner["userId"]),
+    )
+    assert response.status_code == 404

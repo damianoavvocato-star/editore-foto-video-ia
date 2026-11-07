@@ -277,6 +277,26 @@ class AccountStore:
             ).fetchone()
         return row["owner_user_id"] if row else None
 
+    def get_account(self, user_id: str) -> dict[str, Any] | None:
+        """Return one account's public fields without credential material."""
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            return None
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT user_id,username,role,created_at,disabled_at
+                   FROM accounts WHERE user_id=?""",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "userId": row["user_id"],
+            "username": row["username"],
+            "role": row["role"],
+            "createdAt": row["created_at"],
+            "disabled": row["disabled_at"] is not None,
+        }
+
     def list_accounts(self, limit: int = 100) -> list[dict[str, Any]]:
         """Return public account fields only; never expose password hashes or sessions."""
         if not isinstance(limit, int) or isinstance(limit, bool):
