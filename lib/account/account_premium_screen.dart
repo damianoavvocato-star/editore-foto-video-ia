@@ -30,6 +30,12 @@ class AccountPremiumScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final signedIn = userId != null && userId!.isNotEmpty;
     final premium = entitlement?.isPremium ?? false;
+    final planLabel = entitlement?.plan == 'family'
+        ? 'Premium famiglia'
+        : entitlement?.plan == 'premium'
+            ? 'Premium individuale'
+            : 'Piano gratuito';
+    final expiry = entitlement?.validUntil;
     return Scaffold(
       appBar: AppBar(title: const Text('Account e Premium')),
       body: ListView(
@@ -40,7 +46,9 @@ class AccountPremiumScreen extends StatelessWidget {
               leading: Icon(premium ? Icons.workspace_premium : Icons.person_outline),
               title: Text(signedIn ? 'Account collegato' : 'Usa il tuo account'),
               subtitle: Text(premium
-                  ? 'Premium attivo'
+                  ? expiry == null
+                      ? '$planLabel · accesso senza scadenza indicata'
+                      : '$planLabel · valido fino al ${MaterialLocalizations.of(context).formatMediumDate(expiry.toLocal())}'
                   : signedIn
                       ? 'Piano gratuito'
                       : 'Accedi per sincronizzare progetti e vantaggi'),

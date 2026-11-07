@@ -8,12 +8,14 @@ class UserEntitlement {
     this.tier = SubscriptionTier.free,
     this.validUntil,
     this.source,
+    this.plan,
   });
 
   final String userId;
   final SubscriptionTier tier;
   final DateTime? validUntil;
   final EntitlementSource? source;
+  final String? plan;
 
   bool get isPremium {
     if (tier != SubscriptionTier.premium) return false;
@@ -25,6 +27,7 @@ class UserEntitlement {
         'tier': tier.name,
         'validUntil': validUntil?.toUtc().toIso8601String(),
         'source': source?.name,
+        'plan': plan,
       };
 
   factory UserEntitlement.fromJson(Map<String, Object?> json) {
@@ -37,8 +40,16 @@ class UserEntitlement {
       source: json['source'] == null
           ? null
           : EntitlementSource.values.byName(json['source'] as String),
+      plan: json['plan'] == null ? null : _validatedPlan(json['plan']),
     );
   }
+}
+
+String _validatedPlan(Object? value) {
+  if (value is! String || !const {'premium', 'family'}.contains(value)) {
+    throw const FormatException('Piano Premium non valido.');
+  }
+  return value;
 }
 
 class ReferralClaim {
