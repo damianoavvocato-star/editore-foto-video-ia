@@ -125,7 +125,7 @@ class AccountStore:
         try:
             with self._connect() as db:
                 db.execute(
-                    "INSERT INTO accounts(user_id,username,password_salt,password_hash,role,created_at,must_change_password) VALUES(?,?,?,?,?,?,1)",
+                    "INSERT INTO accounts(user_id,username,password_salt,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
                     (user_id, username, salt, digest, role, now),
                 )
                 row = db.execute("SELECT * FROM accounts WHERE user_id=?", (user_id,)).fetchone()
