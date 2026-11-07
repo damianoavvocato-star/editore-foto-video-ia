@@ -73,6 +73,7 @@ def test_failed_final_render_removes_partial_output(tmp_path, monkeypatch):
 
 
 def test_render_rejects_non_uuid_asset_ids_before_creating_job():
+    request = SimpleNamespace(state=SimpleNamespace(account=None, local_dev=True))
     with pytest.raises(HTTPException) as error:
         server.create_render(
             server.RenderBody(
@@ -86,7 +87,8 @@ def test_render_rejects_non_uuid_asset_ids_before_creating_job():
                         }
                     ]
                 }
-            )
+            ),
+            request,
         )
 
     assert error.value.status_code == 422
