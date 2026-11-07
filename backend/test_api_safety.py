@@ -82,23 +82,22 @@ def test_cancelling_completed_job_does_not_change_terminal_state():
     assert server.jobs[job_id]['state'] == 'completed'
 
 
-def test_configured_token_rejects_missing_and_incorrect_credentials(monkeypatch):
+def test_legacy_shared_token_is_not_accepted_as_account_identity(monkeypatch):
     monkeypatch.setattr(server, 'TOKEN', 'test-secret-token')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
     client = TestClient(server.app)
     assert client.get('/v1/jobs/' + 'e' * 32).status_code == 401
     assert client.get(
-        '/v1/jobs/' + 'e' * 32, headers={'Authorization': 'Bearer wrong-token'}
+        '/v1/jobs/' + 'e' * 32, headers={'Authorization': 'Bearer test-secret-token'}
     ).status_code == 401
 
 
-def test_configured_token_accepts_correct_credentials(monkeypatch):
+def test_legacy_shared_token_cannot_access_user_jobs(monkeypatch):
     monkeypatch.setattr(server, 'TOKEN', 'test-secret-token')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
     client = TestClient(server.app)
-    response = client.get(
-        '/v1/jobs/' + 'f' * 32,
-        headers={'Authorization': 'Bearer test-secret-token'},
-    )
-    assert response.status_code == 404
+    response = client.get('/v1/jobs/' + 'f' * 32, headers={'Authorization': 'Bearer test-secret-token'})
+    assert response.status_code == 401
 
 
 def test_render_rejects_too_many_tracks():
@@ -126,8 +125,8 @@ def test_missing_server_token_fails_closed_outside_local_development(monkeypatch
     client = TestClient(server.app)
     assert client.get('/health').status_code == 200
     response = client.get('/v1/jobs/' + '1' * 32)
-    assert response.status_code == 503
-    assert response.json()['detail'] == 'Server authentication is not configured'
+    assert response.status_code == 401
+    assert response.json()['detail'] == 'Sessione account obbligatoria.'
 
 
 def test_insecure_mode_requires_explicit_local_opt_in(monkeypatch):
