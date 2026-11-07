@@ -17,6 +17,8 @@ ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
 ASSETS.mkdir(parents=True, exist_ok=True); OUTPUTS.mkdir(parents=True, exist_ok=True)
 TOKEN = os.getenv('MEDIA_API_TOKEN', '')
+# Insecure unauthenticated mode is opt-in and intended only for local development.
+ALLOW_INSECURE_LOCAL = os.getenv('MEDIA_ALLOW_INSECURE_LOCAL', '').strip().lower() == 'true'
 FFMPEG = os.getenv('FFMPEG_PATH', 'ffmpeg')
 app = FastAPI(title='Editore Foto Video IA Media API', version='0.2.0')
 
@@ -53,12 +55,21 @@ lock = threading.Lock()
 
 @app.middleware('http')
 async def auth(request, call_next):
-    if TOKEN and request.url.path != '/health':
+    if request.url.path == '/health':
+        return await call_next(request)
+    if not TOKEN:
+        if not ALLOW_INSECURE_LOCAL:
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                {'detail': 'Server authentication is not configured'},
+                status_code=503,
+            )
+    else:
         provided = request.headers.get('authorization', '')
         expected = f'Bearer {TOKEN}'
         if not hmac.compare_digest(provided.encode('utf-8'), expected.encode('utf-8')):
             from starlette.responses import JSONResponse
-            return JSONResponse({'detail':'Unauthorized'}, status_code=401)
+            return JSONResponse({'detail': 'Unauthorized'}, status_code=401)
     return await call_next(request)
 
 @app.get('/health')
