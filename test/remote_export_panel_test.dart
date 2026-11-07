@@ -39,9 +39,10 @@ void main() {
 
     expect(find.text('Esporta progetto'), findsOneWidget);
     expect(find.text('Impostazioni esportazione'), findsOneWidget);
-    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    final exportButton = find.text('Avvia esportazione');
+    await tester.ensureVisible(exportButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Avvia esportazione'));
+    await tester.tap(exportButton);
     await tester.pump();
 
     expect(
@@ -88,9 +89,10 @@ void main() {
       find.widgetWithText(TextField, 'Indirizzo del server media'),
       'https://api.example.com',
     );
-    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    final exportButton = find.text('Avvia esportazione');
+    await tester.ensureVisible(exportButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Avvia esportazione'));
+    await tester.tap(exportButton);
     await tester.pump();
 
     expect(
