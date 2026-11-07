@@ -287,7 +287,7 @@ class AccountStore:
             details = {}
         if not isinstance(details, dict) or len(details) > 20:
             raise AccountError("Dettagli audit non validi.")
-        forbidden = {"password", "token", "secret", "authorization", "credential", "api_key"}
+        forbidden = {"password", "token", "secret", "authorization", "credential", "apikey"}
         for key, value in details.items():
             normalized_key = re.sub(r"[^a-z0-9]", "", key.lower()) if isinstance(key, str) else ""
             if not normalized_key or any(secret_name in normalized_key for secret_name in forbidden):
