@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
 from backend.accounts import AccountError, AccountStore
@@ -90,8 +90,8 @@ async def auth(request, call_next):
 
 
 class AuthCredentials(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 def _account_store() -> AccountStore:
