@@ -10,6 +10,7 @@ import 'services/project_store.dart';
 import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
 import 'editor/magiciaedit_panel.dart';
+import 'editor/remote_export_panel.dart';
 
 void main() => runApp(const EditoreApp());
 
@@ -789,6 +790,23 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _openExportDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: SizedBox(
+          width: 560,
+          height: MediaQuery.sizeOf(dialogContext).height * 0.88,
+          child: RemoteExportPanel(
+            project: project,
+            onClose: () => Navigator.of(dialogContext).pop(),
+            onMessage: _message,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEditor(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -884,7 +902,7 @@ class _HomePageState extends State<HomePage> {
             _toolButton(Icons.title, t('text'), () => _message('Editor testo: in sviluppo.')),
             _toolButton(Icons.music_note, t('audio'), () => _message('Traccia audio: in sviluppo.')),
             FilledButton.icon(
-              onPressed: () => _message(t('exportNote')),
+              onPressed: _openExportDialog,
               icon: const Icon(Icons.file_upload_outlined),
               label: Text(t('export')),
             ),
