@@ -249,4 +249,55 @@ void main() {
     );
     expect(result.tracks.first.clips.first.startMs, 1000);
   });
+
+  test('transition type and duration are constrained to supported values', () {
+    final result = operations.setTransitionAfter(
+      project: sample(), trackId: 'v1', clipId: 'c1',
+      durationMs: 50000, type: 'unsupported',
+    );
+    final clip = result.tracks.first.clips.first;
+    expect(clip.transitionAfter, 'fade');
+    expect(clip.transitionAfterMs, 10000);
+  });
+
+  test('track mute and lock state can be changed independently', () {
+    final muted = operations.setTrackMuted(
+      project: sample(), trackId: 'v1', muted: true,
+    );
+    expect(muted.tracks.first.muted, isTrue);
+    expect(muted.tracks.first.clips, sample().tracks.first.clips);
+
+    final locked = operations.setTrackLocked(
+      project: muted, trackId: 'v1', locked: true,
+    );
+    expect(locked.tracks.first.locked, isTrue);
+    expect(locked.tracks.first.muted, isTrue);
+  });
+
+  test('delete without ripple leaves later clip positions unchanged', () {
+    final withNext = operations.addClip(
+      project: sample(),
+      trackId: 'v1',
+      clip: const EditorClip(
+        id: 'c2', source: '/next.mp4', kind: MediaKind.video,
+        startMs: 7000, durationMs: 2000,
+      ),
+    );
+    final result = operations.deleteClip(
+      project: withNext, trackId: 'v1', clipId: 'c1',
+    );
+    expect(result.tracks.first.clips.single.id, 'c2');
+    expect(result.tracks.first.clips.single.startMs, 7000);
+  });
+
+  test('locked track cannot delete clips', () {
+    final lockedTrack = sample().tracks.first.copyWith(locked: true);
+    final lockedProject = EditorProject(
+      id: 'p1', name: 'Test project', tracks: [lockedTrack],
+    );
+    final result = operations.deleteClip(
+      project: lockedProject, trackId: 'v1', clipId: 'c1',
+    );
+    expect(result.tracks.first.clips, hasLength(1));
+  });
 }
