@@ -63,3 +63,29 @@ def test_owner_bootstrap_is_first_owner_only_and_never_promotes_existing_user(tm
     assert store.bootstrap_owner("second_owner", "another owner password") is None
     assert store.resolve_session("not-a-real-token") is None
     assert user["role"] == "user"
+
+
+def test_media_resources_are_bound_to_one_account_and_cannot_be_reassigned(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    first = store.register("first_user", "first account password")
+    second = store.register("second_user", "second account password")
+    asset_id = "a" * 32
+
+    store.claim_media_resource("asset", asset_id, first["userId"])
+    assert store.owns_media_resource("asset", asset_id, first["userId"])
+    assert not store.owns_media_resource("asset", asset_id, second["userId"])
+    assert store.get_media_resource_owner("asset", asset_id) == first["userId"]
+
+    with pytest.raises(AccountError, match="già associata"):
+        store.claim_media_resource("asset", asset_id, second["userId"])
+
+
+def test_media_ownership_rejects_invalid_resource_and_disabled_owner(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    account = store.register("media_user", "media account password")
+    with pytest.raises(AccountError, match="Identificativo"):
+        store.claim_media_resource("asset", "../private", account["userId"])
+    with store._connect() as db:
+        db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (account["userId"],))
+    with pytest.raises(AccountError, match="Account non disponibile"):
+        store.claim_media_resource("job", "b" * 32, account["userId"])
