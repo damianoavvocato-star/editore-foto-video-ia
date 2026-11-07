@@ -4,7 +4,6 @@ import '../editor/editing_operations.dart';
 import '../models/editor_project.dart';
 
 /// Change-notifying editing session with bounded undo/redo history.
-/// Keeps edits in project metadata; media processing remains the renderer's job.
 class EditorSession extends ChangeNotifier {
   EditorSession(
     EditorProject initial, {
@@ -47,7 +46,6 @@ class EditorSession extends ChangeNotifier {
     return null;
   }
 
-  /// Replaces the loaded project, clearing selection and history by default.
   void replaceProject(EditorProject project, {bool clearHistory = true}) {
     if (_same(project, _project)) return;
     _project = project;
@@ -79,10 +77,7 @@ class EditorSession extends ChangeNotifier {
     final track = selectedTrack;
     if (clip == null || track == null || track.locked) return;
     _commit(_operations.moveClip(
-      project: _project,
-      trackId: track.id,
-      clipId: clip.id,
-      newStartMs: startMs,
+      project: _project, trackId: track.id, clipId: clip.id, newStartMs: startMs,
     ));
   }
 
@@ -91,11 +86,8 @@ class EditorSession extends ChangeNotifier {
     final track = selectedTrack;
     if (clip == null || track == null || track.locked) return;
     _commit(_operations.trimClip(
-      project: _project,
-      trackId: track.id,
-      clipId: clip.id,
-      durationMs: durationMs,
-      newStartMs: startMs,
+      project: _project, trackId: track.id, clipId: clip.id,
+      durationMs: durationMs, newStartMs: startMs,
     ));
   }
 
@@ -105,13 +97,64 @@ class EditorSession extends ChangeNotifier {
     if (clip == null || track == null || track.locked) return;
     final splitTime = _playheadMs;
     if (splitTime <= clip.startMs || splitTime >= clip.endMs) return;
-    final newId = '${clip.id}_split_${DateTime.now().microsecondsSinceEpoch}';
     _commit(_operations.splitClip(
-      project: _project,
-      trackId: track.id,
-      clipId: clip.id,
-      splitAtMs: splitTime,
-      newClipId: newId,
+      project: _project, trackId: track.id, clipId: clip.id,
+      splitAtMs: splitTime, newClipId: _uniqueClipId('split'),
+    ));
+  }
+
+  void duplicateSelected() {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    final id = _uniqueClipId('copy');
+    final next = _operations.duplicateClip(
+      project: _project, trackId: track.id, clipId: clip.id,
+      newClipId: id, offsetMs: clip.durationMs,
+    );
+    if (_same(next, _project)) return;
+    _selectedClipId = id;
+    _playheadMs = next.tracks
+        .expand((item) => item.clips)
+        .firstWhere((item) => item.id == id).startMs;
+    _commit(next);
+  }
+
+  void deleteSelected({bool ripple = false}) {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    final next = _operations.deleteClip(
+      project: _project, trackId: track.id, clipId: clip.id, ripple: ripple,
+    );
+    if (_same(next, _project)) return;
+    _selectedClipId = null;
+    _commit(next);
+  }
+
+  void setSelectedTransition({required String type, required int durationMs}) {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    _commit(_operations.setTransitionAfter(
+      project: _project, trackId: track.id, clipId: clip.id,
+      type: type, durationMs: durationMs,
+    ));
+  }
+
+  void toggleSelectedTrackMuted() {
+    final track = selectedTrack;
+    if (track == null) return;
+    _commit(_operations.setTrackMuted(
+      project: _project, trackId: track.id, muted: !track.muted,
+    ));
+  }
+
+  void toggleSelectedTrackLocked() {
+    final track = selectedTrack;
+    if (track == null) return;
+    _commit(_operations.setTrackLocked(
+      project: _project, trackId: track.id, locked: !track.locked,
     ));
   }
 
@@ -120,11 +163,23 @@ class EditorSession extends ChangeNotifier {
     final track = selectedTrack;
     if (clip == null || track == null || track.locked) return;
     _commit(_operations.setClipSpeed(
-      project: _project,
-      trackId: track.id,
-      clipId: clip.id,
-      speed: speed,
+      project: _project, trackId: track.id, clipId: clip.id, speed: speed,
     ));
+  }
+
+  String _uniqueClipId(String suffix) {
+    final existing = _project.tracks
+        .expand((track) => track.clips)
+        .map((clip) => clip.id)
+        .toSet();
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    var candidate = '${_selectedClipId ?? 'clip'}_${suffix}_$stamp';
+    var counter = 0;
+    while (existing.contains(candidate)) {
+      counter++;
+      candidate = '${_selectedClipId ?? 'clip'}_${suffix}_$stamp_$counter';
+    }
+    return candidate;
   }
 
   void _commit(EditorProject next) {
@@ -142,9 +197,7 @@ class EditorSession extends ChangeNotifier {
     if (_undo.isEmpty) return;
     _redo.add(_project);
     _project = _undo.removeLast();
-    if (_selectedClipId != null && selectedClip == null) {
-      _selectedClipId = null;
-    }
+    if (_selectedClipId != null && selectedClip == null) _selectedClipId = null;
     notifyListeners();
   }
 
@@ -152,6 +205,7 @@ class EditorSession extends ChangeNotifier {
     if (_redo.isEmpty) return;
     _undo.add(_project);
     _project = _redo.removeLast();
+    if (_selectedClipId != null && selectedClip == null) _selectedClipId = null;
     notifyListeners();
   }
 }
