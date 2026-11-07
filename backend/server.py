@@ -73,10 +73,13 @@ async def auth(request, call_next):
         is_loopback = ipaddress.ip_address(peer_host).is_loopback
     except ValueError:
         is_loopback = False
-    if ALLOW_INSECURE_LOCAL and is_loopback:
-        request.state.account = None
-        request.state.local_dev = True
-        return await call_next(request)
+    if ALLOW_INSECURE_LOCAL:
+        if is_loopback:
+            request.state.account = None
+            request.state.local_dev = True
+            return await call_next(request)
+        from starlette.responses import JSONResponse
+        return JSONResponse({'detail': 'Unauthenticated access is restricted to local connections'}, status_code=403)
     from starlette.responses import JSONResponse
     return JSONResponse({'detail': 'Sessione account obbligatoria.'}, status_code=401)
 
