@@ -167,6 +167,7 @@ def test_owner_reset_returns_temporary_password_once_and_requires_rotation(tmp_p
     store = AccountStore(database)
     owner = store.bootstrap_owner("owner_admin", "owner password with enough length")
     user = store.register("reset_target", "old password with enough length")
+    old_session, _ = store.issue_session(user["userId"])
     owner_headers = _headers(store, owner["userId"])
     client = TestClient(server.app)
 
@@ -177,6 +178,10 @@ def test_owner_reset_returns_temporary_password_once_and_requires_rotation(tmp_p
     assert reset.status_code == 200
     temporary = reset.json()["temporaryPassword"]
     assert len(temporary) >= 24
+    assert store.resolve_session(old_session) is None
+    audit = store.list_audit_events(limit=10)
+    reset_event = next(event for event in audit if event["action"] == "account.password_reset")
+    assert temporary not in str(reset_event)
     login = client.post("/v1/auth/login", json={
         "username": "reset_target", "password": temporary,
     })
