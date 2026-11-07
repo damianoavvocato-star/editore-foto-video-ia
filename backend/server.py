@@ -181,6 +181,20 @@ def logout_account(request: Request):
     return {'ok': True}
 
 
+def _require_owner(request: Request) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None or account.get('role') != 'owner':
+        raise HTTPException(403, 'Operazione riservata al proprietario.')
+    return account
+
+
+@app.get('/v1/owner/audit')
+def owner_audit_events(request: Request, limit: int = 50):
+    _require_owner(request)
+    # AccountStore clamps the requested page size to 1..100.
+    return {'events': _account_store().list_audit_events(limit)}
+
+
 @app.get('/health')
 def health():
     return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': provider_configured()}
