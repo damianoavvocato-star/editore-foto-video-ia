@@ -3,6 +3,24 @@ import 'package:flutter/widgets.dart';
 import 'package:editore_foto_video_ia/services/ai_processing_service.dart';
 import 'package:editore_foto_video_ia/services/smart_shield_manager.dart';
 
+class _ThrowOnceAiBackend implements AiProcessingBackend {
+  bool shouldThrow = true;
+
+  @override
+  Stream<AiJobProgress> run(AiTaskRequest request) {
+    if (shouldThrow) throw StateError('Native backend unavailable');
+    return Stream.value(AiJobProgress(
+      jobId: request.jobId,
+      task: request.task,
+      state: AiJobState.succeeded,
+      fraction: 1,
+    ));
+  }
+
+  @override
+  Future<void> cancel(String jobId) async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -43,6 +61,22 @@ void main() {
       inputPaths: List<String>.generate(21, (index) => '/tmp/$index.jpg'),
     );
     expect(request.validate, throwsA(isA<ArgumentError>()));
+  });
+
+  test('AI service releases job ID when backend throws before returning stream', () async {
+    final backend = _ThrowOnceAiBackend();
+    final service = AiProcessingService(backend);
+    const request = AiTaskRequest(
+      jobId: 'retry-after-startup-error',
+      task: AiTaskKind.imageEnhancement,
+      inputPath: '/tmp/photo.jpg',
+    );
+
+    expect(() => service.start(request), throwsStateError);
+    backend.shouldThrow = false;
+    final updates = await service.start(request).toList();
+
+    expect(updates.single.state, AiJobState.succeeded);
   });
 
   group('SmartShield adaptive performance policy', () {
