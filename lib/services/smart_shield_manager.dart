@@ -70,6 +70,18 @@ class SmartShieldManager with WidgetsBindingObserver, ChangeNotifier {
   }
 
   @override
+  void didHaveMemoryPressure() {
+    if (_disposed) return;
+    // Flutter reports real memory pressure from the platform. Switch to the
+    // conservative preview profile immediately and discard stale frame data;
+    // recovery requires a fresh window of healthy frame timings.
+    _frameSamples.clear();
+    if (_mode == SmartShieldMode.conservative) return;
+    _mode = SmartShieldMode.conservative;
+    notifyListeners();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_disposed) return;
     final next = state != AppLifecycleState.resumed;
