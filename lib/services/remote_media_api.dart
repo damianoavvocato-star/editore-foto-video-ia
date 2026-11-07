@@ -322,74 +322,145 @@ class RemoteRenderBackend implements MediaRenderBackend {
   final RemoteMediaApi api;
   final Duration pollInterval;
   String? _activeJobId;
+  bool _rendering = false;
+  bool _cancelRequested = false;
 
   @override
   Future<void> cancel() async {
+    if (!_rendering) return;
+    _cancelRequested = true;
     final id = _activeJobId;
-    if (id != null) await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(id)}');
-    _activeJobId = null;
+    if (id != null) {
+      await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(id)}');
+      _activeJobId = null;
+    }
   }
 
   @override
   Stream<ExportProgress> render(ExportRequest request) async* {
-    final projectJson = request.project.toJson();
-    final tracks = projectJson['tracks'] as List<dynamic>;
-    for (final trackValue in tracks) {
-      final track = trackValue as Map<String, dynamic>;
-      final clips = track['clips'] as List<dynamic>;
-      for (final clipValue in clips) {
-        final clip = clipValue as Map<String, dynamic>;
-        final source = clip['source']?.toString() ?? '';
-        if (source.startsWith('http://') || source.startsWith('https://')) continue;
-        clip['assetId'] = await api.uploadFile(source);
-        clip.remove('source');
-      }
-    }
-    final created = await api.request('POST', '/v1/render/jobs', body: {
-      'project': projectJson,
-      'settings': {
-        'container': request.settings.container.name,
-        'resolution': request.settings.resolution.name,
-        'codec': request.settings.codec.name,
-        'fps': request.settings.framesPerSecond,
-        'includeAudio': request.settings.includeAudio,
-        'bitrateMbps': request.settings.bitrateMbps,
-      },
-    });
-    final id = (created['jobId'] ?? '').toString();
-    if (id.isEmpty) throw const FormatException('Il server non ha restituito jobId.');
-    _activeJobId = id;
-    while (_activeJobId == id) {
-      final status = await api.request('GET', '/v1/jobs/${Uri.encodeComponent(id)}');
-      final state = (status['state'] ?? 'rendering').toString();
-      final fraction = ((status['progress'] as num?)?.toDouble() ?? 0).clamp(0.0, 1.0);
-      final phase = switch (state) {
-        'queued' => ExportPhase.queued,
-        'preparing' => ExportPhase.preparing,
-        'finalizing' => ExportPhase.finalizing,
-        'completed' || 'succeeded' => ExportPhase.completed,
-        'failed' => ExportPhase.failed,
-        'cancelled' => ExportPhase.cancelled,
-        _ => ExportPhase.rendering,
-      };
-      if (phase == ExportPhase.completed) {
-        final downloadUrl = status['downloadUrl']?.toString();
-        if (downloadUrl == null || downloadUrl.isEmpty) {
-          _activeJobId = null;
-          throw const FormatException('Render completato ma il server non ha restituito downloadUrl.');
+    _rendering = true;
+    _cancelRequested = false;
+    try {
+      yield const ExportProgress(
+        phase: ExportPhase.preparing,
+        fraction: 0,
+        message: 'Preparazione e caricamento dei media.',
+      );
+      final projectJson = request.project.toJson();
+      final tracks = projectJson['tracks'] as List<dynamic>;
+      for (final trackValue in tracks) {
+        final track = trackValue as Map<String, dynamic>;
+        final clips = track['clips'] as List<dynamic>;
+        for (final clipValue in clips) {
+          if (_cancelRequested) {
+            yield const ExportProgress(
+              phase: ExportPhase.cancelled,
+              message: 'Esportazione annullata durante il caricamento.',
+            );
+            return;
+          }
+          final clip = clipValue as Map<String, dynamic>;
+          final source = clip['source']?.toString().trim() ?? '';
+          if (source.isEmpty) {
+            throw const FormatException('Una clip non contiene un file sorgente.');
+          }
+          if (source.toLowerCase().startsWith('http://') ||
+              source.toLowerCase().startsWith('https://')) {
+            throw ArgumentError(
+              'Il rendering remoto richiede file locali; importa prima il media nel progetto.',
+            );
+          }
+          clip['assetId'] = await api.uploadFile(source);
+          clip.remove('source');
         }
-        await api.downloadFile(downloadUrl, request.outputPath);
       }
-      yield ExportProgress(phase: phase, fraction: fraction,
-        message: status['message']?.toString() ?? '',
-        outputPath: request.outputPath,
-        error: status['error']);
-      if (phase == ExportPhase.completed || phase == ExportPhase.failed || phase == ExportPhase.cancelled) {
-        _activeJobId = null;
+      if (_cancelRequested) {
+        yield const ExportProgress(
+          phase: ExportPhase.cancelled,
+          message: 'Esportazione annullata durante il caricamento.',
+        );
         return;
       }
-      await Future<void>.delayed(pollInterval);
+
+      final created = await api.request('POST', '/v1/render/jobs', body: {
+        'project': projectJson,
+        'settings': {
+          'container': request.settings.container.name,
+          'resolution': request.settings.resolution.name,
+          'codec': request.settings.codec.name,
+          'fps': request.settings.framesPerSecond,
+          'includeAudio': request.settings.includeAudio,
+          'bitrateMbps': request.settings.bitrateMbps,
+        },
+      });
+      final id = (created['jobId'] ?? '').toString();
+      if (id.isEmpty) throw const FormatException('Il server non ha restituito jobId.');
+      _activeJobId = id;
+
+      if (_cancelRequested) {
+        await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(id)}');
+        yield const ExportProgress(
+          phase: ExportPhase.cancelled,
+          message: 'Esportazione annullata.',
+        );
+        return;
+      }
+
+      while (_activeJobId == id && !_cancelRequested) {
+        final status = await api.request('GET', '/v1/jobs/${Uri.encodeComponent(id)}');
+        if (_cancelRequested) break;
+        final state = (status['state'] ?? 'rendering').toString();
+        final fraction = ((status['progress'] as num?)?.toDouble() ?? 0)
+            .clamp(0.0, 1.0);
+        final phase = switch (state) {
+          'queued' => ExportPhase.queued,
+          'preparing' => ExportPhase.preparing,
+          'finalizing' => ExportPhase.finalizing,
+          'completed' || 'succeeded' => ExportPhase.completed,
+          'failed' => ExportPhase.failed,
+          'cancelled' => ExportPhase.cancelled,
+          _ => ExportPhase.rendering,
+        };
+        if (phase == ExportPhase.completed) {
+          final downloadUrl = status['downloadUrl']?.toString();
+          if (downloadUrl == null || downloadUrl.isEmpty) {
+            throw const FormatException(
+              'Render completato ma il server non ha restituito downloadUrl.',
+            );
+          }
+          await api.downloadFile(downloadUrl, request.outputPath);
+          if (_cancelRequested) {
+            final output = File(request.outputPath);
+            if (await output.exists()) await output.delete();
+            yield const ExportProgress(
+              phase: ExportPhase.cancelled,
+              message: 'Esportazione annullata durante il download.',
+            );
+            return;
+          }
+        }
+        yield ExportProgress(
+          phase: phase,
+          fraction: fraction,
+          message: status['message']?.toString() ?? '',
+          outputPath: request.outputPath,
+          error: status['error'],
+        );
+        if (phase == ExportPhase.completed ||
+            phase == ExportPhase.failed ||
+            phase == ExportPhase.cancelled) {
+          return;
+        }
+        await Future<void>.delayed(pollInterval);
+      }
+      yield const ExportProgress(
+        phase: ExportPhase.cancelled,
+        message: 'Esportazione annullata.',
+      );
+    } finally {
+      _activeJobId = null;
+      _rendering = false;
+      _cancelRequested = false;
     }
-    yield const ExportProgress(phase: ExportPhase.cancelled, message: 'Esportazione annullata.');
   }
 }
