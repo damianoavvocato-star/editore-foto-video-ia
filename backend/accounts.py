@@ -332,7 +332,7 @@ class AccountStore:
                      json.dumps({"role": role}, separators=(",", ":")), now),
                 )
                 row = db.execute(
-                    "SELECT user_id,username,role,created_at FROM accounts WHERE user_id=?",
+                    "SELECT user_id,username,role,created_at,must_change_password FROM accounts WHERE user_id=?",
                     (user_id,),
                 ).fetchone()
         except sqlite3.IntegrityError as exc:
