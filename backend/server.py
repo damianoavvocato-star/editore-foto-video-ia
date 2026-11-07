@@ -63,6 +63,13 @@ async def auth(request, call_next):
         return await call_next(request)
     account = _account_store().resolve_session(_bearer_token(request))
     if account is not None:
+        if account.get('mustChangePassword'):
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                {'detail': 'È necessario cambiare la password prima di continuare.',
+                 'code': 'password_change_required'},
+                status_code=428,
+            )
         request.state.account = account
         request.state.local_dev = False
         return await call_next(request)
@@ -163,6 +170,28 @@ def login_account(body: AuthCredentials, request: Request):
     return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
 
 
+
+@app.post('/v1/auth/change-password')
+def change_account_password(body: AuthPasswordChange, request: Request):
+    store = _account_store()
+    account = store.resolve_session(_bearer_token(request))
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    try:
+        store.change_password(
+            account['userId'], body.currentPassword, body.newPassword
+        )
+        token, expires = store.issue_session(account['userId'])
+    except AccountError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        'user': store.resolve_session(token),
+        'accessToken': token,
+        'tokenType': 'Bearer',
+        'expiresAt': expires,
+    }
+
+
 @app.get('/v1/auth/me')
 def current_account(request: Request):
     store = _account_store()
@@ -180,6 +209,11 @@ def logout_account(request: Request):
         raise HTTPException(401, 'Sessione non valida o già revocata.')
     return {'ok': True}
 
+
+
+class AuthPasswordChange(BaseModel):
+    currentPassword: str | None = Field(default=None, max_length=1024)
+    newPassword: str = Field(min_length=12, max_length=1024)
 
 
 class OwnerSetRole(BaseModel):
@@ -218,6 +252,21 @@ def owner_create_account(body: OwnerCreateAccount, request: Request):
             status = 403
         raise HTTPException(status, str(exc)) from exc
     return {'user': account}
+
+
+
+@app.post('/v1/owner/accounts/{user_id}/reset-password')
+def owner_reset_account_password(user_id: str, request: Request):
+    owner = _require_owner(request)
+    try:
+        temporary = _account_store().reset_account_password(
+            owner['userId'], user_id
+        )
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) or 'riservata' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    # This is the only response containing the generated temporary credential.
+    return {'userId': user_id, 'temporaryPassword': temporary, 'mustChangePassword': True}
 
 
 @app.post('/v1/owner/accounts/{user_id}/role')
