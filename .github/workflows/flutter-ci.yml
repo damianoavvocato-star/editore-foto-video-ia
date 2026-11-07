@@ -78,9 +78,49 @@ jobs:
       - name: Run backend tests
         run: python -m pytest -q backend
 
+  android-preflight:
+    # Validate the generated Android/Gradle project without compiling an APK.
+    # APK generation remains reserved for the final phase-6 workflow dispatch.
+    runs-on: ubuntu-latest
+    needs: [flutter-test, backend-test]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-android-preflight-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
+
+      - name: Generate Android platform project
+        run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Set Android compile SDK to 36
+        run: |
+          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle.kts 2>/dev/null || true
+          sed -i "s/compileSdk flutter.compileSdkVersion/compileSdk 36/" android/app/build.gradle 2>/dev/null || true
+          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle 2>/dev/null || true
+          grep -n compileSdk android/app/build.gradle*
+
+      - name: Validate Gradle project configuration without building APK
+        working-directory: android
+        run: ./gradlew --no-daemon help
+
   android-apk:
     if: github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true
-    needs: [flutter-test, backend-test]
+    needs: [flutter-test, backend-test, android-preflight]
     # Android scaffold is generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
     runs-on: ubuntu-latest
