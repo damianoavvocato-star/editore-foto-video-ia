@@ -804,11 +804,18 @@ def account_get_entitlement(request: Request):
     account = _request_account(request)
     if account is None:
         raise HTTPException(401, 'Sessione account obbligatoria.')
-    active = _entitlement_store().has_premium(account['userId'])
+    details = _entitlement_store().entitlement_details(account['userId'])
+    valid_until = details['validUntil']
     return {
         'userId': account['userId'],
-        'tier': 'premium' if active else 'free',
-        'isPremium': active,
+        'tier': details['tier'],
+        'isPremium': details['isPremium'],
+        'plan': details['plan'],
+        'validUntil': (
+            time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(valid_until))
+            if valid_until is not None else None
+        ),
+        'source': details['source'],
     }
 
 

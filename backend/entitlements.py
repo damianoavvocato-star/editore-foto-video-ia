@@ -157,6 +157,51 @@ class EntitlementStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def entitlement_details(self, user_id: str, now: int | None = None) -> dict:
+        """Return the active grant metadata for the signed-in account."""
+        current = int(time.time()) if now is None else now
+        with self._connect() as db:
+            own = db.execute(
+                """SELECT plan,expires_at FROM premium_grants
+                   WHERE user_id=? AND revoked_at IS NULL
+                   AND starts_at<=? AND (expires_at IS NULL OR expires_at>?)
+                   ORDER BY starts_at DESC,grant_id LIMIT 1""",
+                (user_id, current, current),
+            ).fetchone()
+            if own is not None:
+                return {
+                    "tier": "premium",
+                    "isPremium": True,
+                    "plan": own["plan"],
+                    "validUntil": own["expires_at"],
+                    "source": "promotion",
+                }
+            family = db.execute(
+                """SELECT pg.expires_at FROM family_members fm
+                   JOIN family_groups fg ON fg.family_id=fm.family_id
+                   JOIN premium_grants pg ON pg.user_id=fg.owner_user_id
+                   WHERE fm.user_id=? AND fm.removed_at IS NULL
+                   AND pg.plan='family' AND pg.revoked_at IS NULL
+                   AND pg.starts_at<=? AND (pg.expires_at IS NULL OR pg.expires_at>?)
+                   ORDER BY pg.starts_at DESC,pg.grant_id LIMIT 1""",
+                (user_id, current, current),
+            ).fetchone()
+        if family is not None:
+            return {
+                "tier": "premium",
+                "isPremium": True,
+                "plan": "family",
+                "validUntil": family["expires_at"],
+                "source": "promotion",
+            }
+        return {
+            "tier": "free",
+            "isPremium": False,
+            "plan": None,
+            "validUntil": None,
+            "source": None,
+        }
+
     def has_premium(self, user_id: str, now: int | None = None) -> bool:
         current = int(time.time()) if now is None else now
         with self._connect() as db:

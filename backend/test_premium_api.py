@@ -23,12 +23,23 @@ def test_account_can_read_only_its_own_premium_entitlement(tmp_path, monkeypatch
     assert anonymous.status_code == 401
     free = client.get("/v1/account/entitlement", headers=_headers(store, user["userId"]))
     assert free.status_code == 200
-    assert free.json() == {"userId": user["userId"], "tier": "free", "isPremium": False}
+    assert free.json() == {
+        "userId": user["userId"], "tier": "free", "isPremium": False,
+        "plan": None, "validUntil": None, "source": None,
+    }
 
-    server._entitlement_store().grant("owner", owner["userId"], user["userId"], "premium")
+    import time
+    expires_at = int(time.time()) + 3600
+    server._entitlement_store().grant(
+        "owner", owner["userId"], user["userId"], "premium",
+        expires_at=expires_at,
+    )
     active = client.get("/v1/account/entitlement", headers=_headers(store, user["userId"]))
     assert active.status_code == 200
     assert active.json()["isPremium"] is True
+    assert active.json()["plan"] == "premium"
+    assert active.json()["source"] == "promotion"
+    assert active.json()["validUntil"].endswith("Z")
 
 
 def test_owner_can_grant_list_and_revoke_premium_with_audit(tmp_path, monkeypatch):
