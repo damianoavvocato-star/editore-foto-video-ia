@@ -289,7 +289,8 @@ class AccountStore:
             raise AccountError("Dettagli audit non validi.")
         forbidden = {"password", "token", "secret", "authorization", "credential", "api_key"}
         for key, value in details.items():
-            if not isinstance(key, str) or key.lower() in forbidden:
+            normalized_key = re.sub(r"[^a-z0-9]", "", key.lower()) if isinstance(key, str) else ""
+            if not normalized_key or any(secret_name in normalized_key for secret_name in forbidden):
                 raise AccountError("I dettagli audit non possono contenere credenziali o segreti.")
             if not isinstance(value, (str, int, float, bool, type(None))):
                 raise AccountError("I dettagli audit devono essere valori semplici.")
