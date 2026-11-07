@@ -171,6 +171,45 @@ class EntitlementStore:
             )
         return {"invitationId": invitation_id, "token": token, "expiresAt": expires_at}
 
+    def list_family_invitations(self, family_id: str, actor_user_id: str) -> list[dict]:
+        """List invitation metadata for the immutable family owner; never expose tokens."""
+        with self._connect() as db:
+            owner = db.execute(
+                "SELECT 1 FROM family_groups WHERE family_id=? AND owner_user_id=?",
+                (family_id, actor_user_id),
+            ).fetchone()
+            if owner is None:
+                raise EntitlementError("Solo il titolare può gestire gli inviti.")
+            rows = db.execute(
+                """SELECT invitation_id,created_by,created_at,expires_at,
+                          accepted_by,accepted_at,revoked_at
+                   FROM family_invitations WHERE family_id=?
+                   ORDER BY created_at DESC,invitation_id LIMIT 100""",
+                (family_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def revoke_family_invitation(
+        self, family_id: str, actor_user_id: str, invitation_id: str
+    ) -> bool:
+        """Revoke an unused invitation; accepted invitations are immutable."""
+        if not invitation_id or len(invitation_id) > 64:
+            raise EntitlementError("Invito non valido.")
+        with self._connect() as db:
+            owner = db.execute(
+                "SELECT 1 FROM family_groups WHERE family_id=? AND owner_user_id=?",
+                (family_id, actor_user_id),
+            ).fetchone()
+            if owner is None:
+                raise EntitlementError("Solo il titolare può revocare gli inviti.")
+            result = db.execute(
+                """UPDATE family_invitations SET revoked_at=?
+                   WHERE invitation_id=? AND family_id=?
+                   AND accepted_at IS NULL AND revoked_at IS NULL""",
+                (int(time.time()), invitation_id, family_id),
+            )
+            return result.rowcount == 1
+
     def accept_family_invitation(self, token: str, invitee_user_id: str) -> str:
         """Atomically consume an invitation and assign exactly one family seat."""
         if not isinstance(token, str) or not token or len(token) > 256:

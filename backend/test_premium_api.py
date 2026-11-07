@@ -201,3 +201,42 @@ def test_family_owner_can_list_and_remove_members_but_member_cannot(tmp_path, mo
 
     actions = [event["action"] for event in accounts.list_audit_events(20)]
     assert "family.member_removed" in actions
+
+
+def test_family_owner_can_list_and_revoke_pending_invitation_without_token_leak(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    accounts = AccountStore(database)
+    owner = accounts.bootstrap_owner("family_invite_owner", "owner password with enough length")
+    member = accounts.register("family_invite_member", "member password with enough length")
+    entitlements = server._entitlement_store()
+    entitlements.grant("owner", owner["userId"], owner["userId"], "family")
+    family_id = entitlements.create_family_for_grant_owner(owner["userId"])
+    invite = entitlements.create_family_invitation(family_id, owner["userId"])
+    client = TestClient(server.app)
+    owner_headers = _headers(accounts, owner["userId"])
+    member_headers = _headers(accounts, member["userId"])
+
+    denied = client.get("/v1/account/family/invitations", headers=member_headers)
+    assert denied.status_code == 403
+    listed = client.get("/v1/account/family/invitations", headers=owner_headers)
+    assert listed.status_code == 200
+    assert len(listed.json()["invitations"]) == 1
+    metadata = listed.json()["invitations"][0]
+    assert metadata["invitation_id"] == invite["invitationId"]
+    assert "token" not in metadata and "token_hash" not in metadata
+
+    revoked = client.delete(
+        f"/v1/account/family/invitations/{invite['invitationId']}",
+        headers=owner_headers,
+    )
+    assert revoked.status_code == 200
+    replay = client.post(
+        "/v1/account/family/invitations/accept",
+        headers=member_headers,
+        json={"token": invite["token"]},
+    )
+    assert replay.status_code == 422
+    actions = [event["action"] for event in accounts.list_audit_events(20)]
+    assert "family.invitation_revoked" in actions

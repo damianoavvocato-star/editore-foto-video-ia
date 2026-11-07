@@ -839,6 +839,45 @@ def account_accept_family_invitation(body: FamilyInvitationAccept, request: Requ
     return {'familyId': family_id, 'accepted': True}
 
 
+@app.get('/v1/account/family/invitations')
+def account_list_family_invitations(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire gli inviti.')
+    try:
+        return {'invitations': _entitlement_store().list_family_invitations(
+            details['familyId'], account['userId']
+        )}
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.delete('/v1/account/family/invitations/{invitation_id}')
+def account_revoke_family_invitation(invitation_id: str, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire gli inviti.')
+    try:
+        revoked = _entitlement_store().revoke_family_invitation(
+            details['familyId'], account['userId'], invitation_id
+        )
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    if not revoked:
+        raise HTTPException(404, 'Invito non trovato o già utilizzato.')
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_revoked', None,
+        {'familyId': details['familyId'], 'invitationId': invitation_id},
+    )
+    return {'invitationId': invitation_id, 'revoked': True}
+
+
 @app.get('/v1/account/family')
 def account_get_family(request: Request):
     account = _request_account(request)
