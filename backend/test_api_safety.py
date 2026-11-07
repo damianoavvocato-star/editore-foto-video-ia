@@ -118,3 +118,20 @@ def test_render_rejects_malformed_track():
     client = TestClient(server.app)
     response = client.post('/v1/render/jobs', json={'project': {'tracks': ['not-a-track']}})
     assert response.status_code == 422
+
+
+def test_missing_server_token_fails_closed_outside_local_development(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
+    client = TestClient(server.app)
+    assert client.get('/health').status_code == 200
+    response = client.get('/v1/jobs/' + '1' * 32)
+    assert response.status_code == 503
+    assert response.json()['detail'] == 'Server authentication is not configured'
+
+
+def test_insecure_mode_requires_explicit_local_opt_in(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', True)
+    response = TestClient(server.app).get('/v1/jobs/' + '2' * 32)
+    assert response.status_code == 404
