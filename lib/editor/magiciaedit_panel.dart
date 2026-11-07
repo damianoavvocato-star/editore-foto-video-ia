@@ -127,7 +127,6 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       _progress = 0;
       _progressMessage = 'Preparazione dei media…';
       _jobId = jobId;
-      _api = api;
       _workflow = workflow;
     });
 
