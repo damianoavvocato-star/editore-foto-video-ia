@@ -20,7 +20,7 @@ class MagicIAeditPanel extends StatefulWidget {
   });
 
   final EditorProject project;
-  final ValueChanged<EditorProject> onProjectChanged;
+  final Future<bool> Function(EditorProject) onProjectChanged;
   final ValueChanged<String> onMessage;
 
   @override
@@ -185,13 +185,18 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
     }
   }
 
-  void _applyPlan() {
+  Future<void> _applyPlan() async {
     final plan = _plan;
     if (plan == null) return;
     try {
-      widget.onProjectChanged(plan.applyTo(widget.project));
+      final saved = await widget.onProjectChanged(plan.applyTo(widget.project));
+      if (!mounted) return;
+      if (!saved) {
+        setState(() => _error = 'Il montaggio è stato preparato, ma il salvataggio non è riuscito. Riprova prima di uscire.');
+        return;
+      }
       setState(() => _plan = null);
-      widget.onMessage('Piano MagicIAedit applicato alla timeline. Il progetto è stato salvato.');
+      widget.onMessage('Piano MagicIAedit applicato alla timeline e salvato.');
     } catch (error) {
       setState(() => _error = 'Piano non applicabile: $error');
     }
