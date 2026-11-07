@@ -126,7 +126,9 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     final track = _session.selectedTrack;
     final locked = track?.locked ?? true;
     final transition = selected?.transitionAfter ?? 'fade';
-    return Column(
+    return Directionality(
+      textDirection: widget.languageCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TimelinePanel(
@@ -270,6 +272,6 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           ),
         ),
       ],
-    );
+    ));
   }
 }
