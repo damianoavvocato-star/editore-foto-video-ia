@@ -181,11 +181,61 @@ def logout_account(request: Request):
     return {'ok': True}
 
 
+
+class OwnerCreateAccount(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    temporaryPassword: str = Field(min_length=12, max_length=1024)
+    role: str = Field(min_length=3, max_length=32)
+
+
 def _require_owner(request: Request) -> dict[str, Any]:
     account = _request_account(request)
     if account is None or account.get('role') != 'owner':
         raise HTTPException(403, 'Operazione riservata al proprietario.')
     return account
+
+
+@app.get('/v1/owner/accounts')
+def owner_list_accounts(request: Request, limit: int = 100):
+    _require_owner(request)
+    return {'accounts': _account_store().list_accounts(limit)}
+
+
+@app.post('/v1/owner/accounts')
+def owner_create_account(body: OwnerCreateAccount, request: Request):
+    owner = _require_owner(request)
+    try:
+        account = _account_store().create_managed_account(
+            owner['userId'], body.username, body.temporaryPassword, body.role
+        )
+    except AccountError as exc:
+        status = 409 if 'già utilizzato' in str(exc) else 422
+        if 'proprietario' in str(exc):
+            status = 403
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account, 'mustChangePassword': True}
+
+
+@app.post('/v1/owner/accounts/{user_id}/disable')
+def owner_disable_account(user_id: str, request: Request):
+    owner = _require_owner(request)
+    try:
+        account = _account_store().set_account_disabled(owner['userId'], user_id, True)
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+@app.post('/v1/owner/accounts/{user_id}/enable')
+def owner_enable_account(user_id: str, request: Request):
+    owner = _require_owner(request)
+    try:
+        account = _account_store().set_account_disabled(owner['userId'], user_id, False)
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
 
 
 @app.get('/v1/owner/audit')
