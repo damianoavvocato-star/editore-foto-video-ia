@@ -71,6 +71,33 @@ void main() {
     await server.close(force: true);
   });
 
+  test('API errors do not expose raw server response bodies', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('private server traceback and secrets');
+      await request.response.close();
+    });
+
+    await expectLater(
+      api.request('GET', '/failure'),
+      throwsA(
+        isA<HttpException>().having(
+          (error) => error.message,
+          'message',
+          isNot(contains('private server traceback')),
+        ),
+      ),
+    );
+    await subscription.cancel();
+    api.close();
+    await server.close(force: true);
+  });
+
   test('API base URL rejects embedded credentials', () {
     expect(
       () => RemoteMediaApi(
