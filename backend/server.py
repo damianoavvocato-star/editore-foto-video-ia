@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, traceback, hmac, ipaddress
+import os, uuid, shutil, subprocess, threading, time, logging, hmac, ipaddress
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
@@ -329,8 +329,17 @@ def _render_job(job_id: str, project: dict, settings: dict):
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
         else:
             with lock: jobs[job_id].update(state='completed',progress=1.0,message='Rendering completato',downloadUrl=f'/v1/outputs/{job_id}')
-    except Exception as exc:
-        with lock: jobs[job_id].update(state='failed',progress=1.0,message='Rendering non riuscito',error=traceback.format_exc())
+    except Exception:
+        # Keep detailed diagnostics in server logs, never expose tracebacks or
+        # filesystem paths through the client-facing job status endpoint.
+        logging.exception('Media render job %s failed', job_id)
+        with lock:
+            jobs[job_id].update(
+                state='failed',
+                progress=1.0,
+                message='Rendering non riuscito',
+                error='Errore interno durante il rendering. Consultare i log del server.',
+            )
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
