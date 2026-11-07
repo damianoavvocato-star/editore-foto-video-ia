@@ -9,6 +9,7 @@ import 'models/editor_project.dart';
 import 'services/project_store.dart';
 import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
+import 'editor/magiciaedit_panel.dart';
 
 void main() => runApp(const EditoreApp());
 
@@ -748,7 +749,13 @@ class _HomePageState extends State<HomePage> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
-            final editor = _buildEditor(context);
+            final editor = selectedTab == 2
+                ? MagicIAeditPanel(
+                    project: project,
+                    onProjectChanged: _handleProjectChanged,
+                    onMessage: _message,
+                  )
+                : _buildEditor(context);
             final sidebar = _buildSidebar(context);
             return Padding(
               padding: const EdgeInsets.all(16),
