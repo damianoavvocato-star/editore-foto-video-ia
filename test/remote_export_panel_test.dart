@@ -94,7 +94,11 @@ void main() {
       'https://api.example.com',
     );
     final exportButton = find.text('Avvia esportazione');
-    await tester.ensureVisible(exportButton);
+    await tester.scrollUntilVisible(
+      exportButton,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(exportButton);
     await tester.pump();
