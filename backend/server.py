@@ -21,19 +21,27 @@ FFMPEG = os.getenv('FFMPEG_PATH', 'ffmpeg')
 app = FastAPI(title='Editore Foto Video IA Media API', version='0.2.0')
 
 def _render_dimensions(project: dict[str, Any], resolution: str) -> tuple[int, int]:
-    """Choose a standard long-side resolution while preserving project orientation."""
-    long_side, short_side = {
-        'p720': (1280, 720),
-        'p1080': (1920, 1080),
-        'p1440': (2560, 1440),
-        'p2160': (3840, 2160),
-    }.get(resolution, (1920, 1080))
+    """Scale the project's aspect ratio so its longer side matches the preset."""
+    long_side = {
+        'p720': 1280,
+        'p1080': 1920,
+        'p1440': 2560,
+        'p2160': 3840,
+    }.get(resolution, 1920)
     try:
         source_width = max(1, min(7680, int(project.get('width', 1080))))
         source_height = max(1, min(7680, int(project.get('height', 1920))))
     except (TypeError, ValueError):
         source_width, source_height = 1080, 1920
-    return (long_side, short_side) if source_width >= source_height else (short_side, long_side)
+    if source_width >= source_height:
+        width = long_side
+        height = max(2, round(long_side * source_height / source_width))
+    else:
+        height = long_side
+        width = max(2, round(long_side * source_width / source_height))
+    # H.264-compatible dimensions are even; keep the computed aspect ratio
+    # within one pixel when an odd source ratio is selected.
+    return width + width % 2, height + height % 2
 
 
 def _valid_id(value: str) -> bool:
