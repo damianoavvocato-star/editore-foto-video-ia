@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -198,8 +199,13 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
 
   @override
   void dispose() {
-    // The workflow owns an active request until it reaches its cancellation
-    // path. The API is closed by _generate in its finally block.
+    // Leaving the AI screen must not leave a cloud job running unattended.
+    final workflow = _workflow;
+    final jobId = _jobId;
+    if (workflow != null && jobId != null) {
+      unawaited(workflow.cancel(jobId).catchError((Object _) {}));
+    }
+    // The API is closed by _generate in its finally block.
     _endpointController.dispose();
     _tokenController.dispose();
     super.dispose();
