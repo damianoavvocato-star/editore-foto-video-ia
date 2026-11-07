@@ -177,7 +177,7 @@ class EditorSession extends ChangeNotifier {
     var counter = 0;
     while (existing.contains(candidate)) {
       counter++;
-      candidate = '${_selectedClipId ?? 'clip'}_${suffix}_$stamp_$counter';
+      candidate = '${_selectedClipId ?? 'clip'}_${suffix}_${stamp}_$counter';
     }
     return candidate;
   }
