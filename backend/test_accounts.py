@@ -122,3 +122,22 @@ def test_audit_events_reject_secret_fields_and_unbounded_details(tmp_path):
             actor["userId"], "account.updated",
             details={"comment": "x" * 5000},
         )
+
+
+def test_self_registered_account_does_not_require_temporary_password_rotation(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    account = store.register("self_signup", "self signup password long enough")
+    assert account["mustChangePassword"] is False
+    user, token, _ = store.login("self_signup", "self signup password long enough")
+    assert user["mustChangePassword"] is False
+    assert store.resolve_session(token)["mustChangePassword"] is False
+
+
+def test_bootstrapped_owner_is_not_forced_to_rotate_password(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("initial_owner", "initial owner password long")
+    assert owner["mustChangePassword"] is False
+    logged_in, token, _ = store.login("initial_owner", "initial owner password long")
+    assert logged_in["role"] == "owner"
+    assert logged_in["mustChangePassword"] is False
+    assert store.resolve_session(token)["mustChangePassword"] is False
