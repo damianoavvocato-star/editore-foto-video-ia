@@ -711,7 +711,6 @@ def create_ai_job(body: dict[str, Any], request: Request):
         target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
     ).start()
     return {'jobId': job_id}
-)
 
 
 def _permission_policy() -> PermissionPolicy:
