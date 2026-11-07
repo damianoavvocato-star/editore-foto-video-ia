@@ -148,11 +148,17 @@ class RemoteAiBackend implements AiProcessingBackend {
   final RemoteMediaApi api;
   final Duration pollInterval;
   final Set<String> _cancelled = {};
+  final Map<String, String> _remoteJobs = {};
 
   @override
   Future<void> cancel(String jobId) async {
     _cancelled.add(jobId);
-    await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(jobId)}');
+    final remoteId = _remoteJobs[jobId];
+    // The upload/create phase may not have produced a server job yet.
+    // run() observes the cancellation flag before creating one.
+    if (remoteId != null) {
+      await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(remoteId)}');
+    }
   }
 
   static const int maxImageBytes = 20 * 1024 * 1024;
@@ -193,68 +199,122 @@ class RemoteAiBackend implements AiProcessingBackend {
 
   @override
   Stream<AiJobProgress> run(AiTaskRequest request) async* {
-    if (request.task == AiTaskKind.magicIAedit) {
-      await validateMagicIAeditMediaPaths(request.mediaPaths);
-    }
-    final assetIds = <String>[];
-    for (final path in request.mediaPaths) {
-      assetIds.add(await api.uploadFile(path));
-    }
-    final created = await api.request('POST', '/v1/ai/jobs', body: {
-      'jobId': request.jobId,
-      'task': request.task.name,
-      'assetIds': assetIds,
-      'options': request.options,
-    });
-    final id = (created['jobId'] ?? request.jobId).toString();
-    while (!_cancelled.contains(request.jobId)) {
-      final status = await api.request('GET', '/v1/jobs/${Uri.encodeComponent(id)}');
-      final state = (status['state'] ?? 'running').toString();
-      final progress = ((status['progress'] as num?)?.toDouble() ?? 0).clamp(0.0, 1.0);
-      final mapped = switch (state) {
-        'queued' => AiJobState.queued,
-        'succeeded' || 'completed' => AiJobState.succeeded,
-        'failed' => AiJobState.failed,
-        'cancelled' => AiJobState.cancelled,
-        _ => AiJobState.running,
-      };
-      String? resultPath;
-      if (mapped == AiJobState.succeeded) {
-        final downloadUrl = status['downloadUrl']?.toString();
-        if (downloadUrl != null && downloadUrl.isNotEmpty) {
-          resultPath = '${request.inputPath}.ai-result';
-          await api.downloadFile(downloadUrl, resultPath);
-        } else {
-          resultPath = status['resultPath']?.toString();
-        }
+    String? remoteId;
+    try {
+      if (request.task == AiTaskKind.magicIAedit) {
+        await validateMagicIAeditMediaPaths(request.mediaPaths);
       }
-      final rawResult = status['result'];
-      Map<String, dynamic>? result;
-      if (rawResult is Map) {
-        result = Map<String, dynamic>.from(rawResult);
-        if (request.task == AiTaskKind.magicIAedit) {
-          // Keep local file paths on-device so a reviewed plan can be applied
-          // to the timeline without exposing those paths to the cloud service.
-          result['sourcePaths'] = Map<String, String>.fromIterables(
-            assetIds,
-            request.mediaPaths,
+      final assetIds = <String>[];
+      for (final path in request.mediaPaths) {
+        if (_cancelled.contains(request.jobId)) {
+          yield AiJobProgress(
+            jobId: request.jobId,
+            task: request.task,
+            state: AiJobState.cancelled,
+            message: 'Caricamento annullato.',
           );
+          return;
         }
+        assetIds.add(await api.uploadFile(path));
+      }
+      if (_cancelled.contains(request.jobId)) {
+        yield AiJobProgress(
+          jobId: request.jobId,
+          task: request.task,
+          state: AiJobState.cancelled,
+          message: 'Caricamento annullato.',
+        );
+        return;
+      }
+
+      final created = await api.request('POST', '/v1/ai/jobs', body: {
+        'jobId': request.jobId,
+        'task': request.task.name,
+        'assetIds': assetIds,
+        'options': request.options,
+      });
+      remoteId = (created['jobId'] ?? request.jobId).toString();
+      if (remoteId!.isEmpty) {
+        throw const FormatException('Il server non ha restituito jobId.');
+      }
+      _remoteJobs[request.jobId] = remoteId!;
+
+      if (_cancelled.contains(request.jobId)) {
+        await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(remoteId!)}');
+        yield AiJobProgress(
+          jobId: request.jobId,
+          task: request.task,
+          state: AiJobState.cancelled,
+          message: 'Elaborazione annullata.',
+        );
+        return;
+      }
+
+      while (!_cancelled.contains(request.jobId)) {
+        final status = await api.request(
+          'GET',
+          '/v1/jobs/${Uri.encodeComponent(remoteId!)}',
+        );
+        final state = (status['state'] ?? 'running').toString();
+        final progress = ((status['progress'] as num?)?.toDouble() ?? 0)
+            .clamp(0.0, 1.0);
+        final mapped = switch (state) {
+          'queued' => AiJobState.queued,
+          'succeeded' || 'completed' => AiJobState.succeeded,
+          'failed' => AiJobState.failed,
+          'cancelled' => AiJobState.cancelled,
+          _ => AiJobState.running,
+        };
+        String? resultPath;
+        if (mapped == AiJobState.succeeded) {
+          final downloadUrl = status['downloadUrl']?.toString();
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            resultPath = '${request.inputPath}.ai-result';
+            await api.downloadFile(downloadUrl, resultPath);
+          } else {
+            resultPath = status['resultPath']?.toString();
+          }
+        }
+        final rawResult = status['result'];
+        Map<String, dynamic>? result;
+        if (rawResult is Map) {
+          result = Map<String, dynamic>.from(rawResult);
+          if (request.task == AiTaskKind.magicIAedit) {
+            // Keep local file paths on-device so a reviewed plan can be applied
+            // to the timeline without exposing those paths to the cloud service.
+            result['sourcePaths'] = Map<String, String>.fromIterables(
+              assetIds,
+              request.mediaPaths,
+            );
+          }
+        }
+        yield AiJobProgress(
+          jobId: request.jobId,
+          task: request.task,
+          state: mapped,
+          fraction: progress,
+          message: status['message']?.toString() ?? '',
+          resultPath: resultPath,
+          error: status['error'],
+          result: result,
+        );
+        if (mapped == AiJobState.succeeded ||
+            mapped == AiJobState.failed ||
+            mapped == AiJobState.cancelled) {
+          return;
+        }
+        await Future<void>.delayed(pollInterval);
       }
       yield AiJobProgress(
         jobId: request.jobId,
         task: request.task,
-        state: mapped,
-        fraction: progress,
-        message: status['message']?.toString() ?? '',
-        resultPath: resultPath,
-        error: status['error'],
-        result: result,
+        state: AiJobState.cancelled,
+        message: 'Elaborazione annullata.',
       );
-      if (mapped == AiJobState.succeeded || mapped == AiJobState.failed || mapped == AiJobState.cancelled) return;
-      await Future<void>.delayed(pollInterval);
+    } finally {
+      _remoteJobs.remove(request.jobId);
+      _cancelled.remove(request.jobId);
     }
-    yield AiJobProgress(jobId: request.jobId, task: request.task, state: AiJobState.cancelled);
   }
 }
 
