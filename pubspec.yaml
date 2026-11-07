@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   file_picker: ^10.3.10
   video_player: ^2.9.2
   just_audio: ^0.10.5
