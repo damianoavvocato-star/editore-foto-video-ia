@@ -3,6 +3,9 @@ import subprocess
 import threading
 import uuid
 
+import pytest
+from fastapi import HTTPException
+
 from backend import server
 
 
@@ -66,3 +69,24 @@ def test_failed_final_render_removes_partial_output(tmp_path, monkeypatch):
     finally:
         server.jobs.pop(job_id, None)
         server.cancel_events.pop(job_id, None)
+
+
+def test_render_rejects_non_uuid_asset_ids_before_creating_job():
+    with pytest.raises(HTTPException) as error:
+        server.create_render(
+            server.RenderBody(
+                project={
+                    "tracks": [
+                        {
+                            "kind": "video",
+                            "clips": [
+                                {"kind": "video", "assetId": "not-a-generated-asset-id"}
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+
+    assert error.value.status_code == 422
+    assert error.value.detail == "Identificativo media non valido"
