@@ -91,6 +91,11 @@ async def auth(request, call_next):
     return JSONResponse({'detail': 'Sessione account obbligatoria.'}, status_code=401)
 
 
+class AuthPasswordChange(BaseModel):
+    currentPassword: str | None = Field(default=None, max_length=1024)
+    newPassword: str = Field(min_length=12, max_length=1024)
+
+
 class AuthCredentials(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=1024)
@@ -209,11 +214,6 @@ def logout_account(request: Request):
         raise HTTPException(401, 'Sessione non valida o già revocata.')
     return {'ok': True}
 
-
-
-class AuthPasswordChange(BaseModel):
-    currentPassword: str | None = Field(default=None, max_length=1024)
-    newPassword: str = Field(min_length=12, max_length=1024)
 
 
 class OwnerSetRole(BaseModel):
