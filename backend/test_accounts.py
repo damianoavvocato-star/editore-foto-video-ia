@@ -89,3 +89,36 @@ def test_media_ownership_rejects_invalid_resource_and_disabled_owner(tmp_path):
         db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (account["userId"],))
     with pytest.raises(AccountError, match="Account non disponibile"):
         store.claim_media_resource("job", "b" * 32, account["userId"])
+
+ 
+def test_audit_events_are_persisted_and_returned_newest_first(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    actor = store.register("audit_owner", "owner account password")
+    target = store.register("audit_user", "user account password")
+    first = store.record_audit_event(
+        actor["userId"], "account.created", target["userId"],
+        {"role": "user", "source": "owner_panel"},
+    )
+    second = store.record_audit_event(
+        actor["userId"], "account.disabled", target["userId"],
+        {"reason": "owner_action"},
+    )
+    events = store.list_audit_events(10)
+    assert [event["eventId"] for event in events[:2]] == [second, first]
+    assert events[0]["action"] == "account.disabled"
+    assert events[1]["details"]["role"] == "user"
+
+
+def test_audit_events_reject_secret_fields_and_unbounded_details(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    actor = store.register("audit_owner", "owner account password")
+    with pytest.raises(AccountError, match="credenziali"):
+        store.record_audit_event(
+            actor["userId"], "account.password_reset",
+            details={"token": "must-not-be-stored"},
+        )
+    with pytest.raises(AccountError, match="troppo grandi"):
+        store.record_audit_event(
+            actor["userId"], "account.updated",
+            details={"comment": "x" * 5000},
+        )
