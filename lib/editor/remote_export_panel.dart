@@ -120,6 +120,9 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
             _message = 'Esportazione annullata.';
           }
         });
+        if (event.phase == ExportPhase.completed && _completed) {
+          widget.onMessage('Esportazione completata: file verificato e salvato sul dispositivo.');
+        }
       }
     } catch (error) {
       if (mounted) setState(() => _error = 'Esportazione non riuscita: $error');
