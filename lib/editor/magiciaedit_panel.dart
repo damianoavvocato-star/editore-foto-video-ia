@@ -198,7 +198,7 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       setState(() => _plan = null);
       widget.onMessage('Piano MagicIAedit applicato alla timeline e salvato.');
     } catch (error) {
-      setState(() => _error = 'Piano non applicabile: $error');
+      if (mounted) setState(() => _error = 'Piano non applicabile: $error');
     }
   }
 
