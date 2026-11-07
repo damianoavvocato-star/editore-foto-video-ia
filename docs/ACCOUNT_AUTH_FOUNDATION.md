@@ -40,6 +40,23 @@ Le operazioni di creazione, reset password, cambio ruolo, sospensione e riattiva
 
 Le API account validano il token individuale. Tutte le API media (`/v1/assets`, `/v1/render/jobs`, `/v1/ai/jobs`, `/v1/jobs/{id}` e `/v1/outputs/{id}`) richiedono una sessione account e associano/verificano le risorse lato server. Il vecchio `MEDIA_API_TOKEN` condiviso non è accettato come identità utente: un token condiviso non può garantire isolamento. `MEDIA_ALLOW_INSECURE_LOCAL=true` consente ancora un bypass esclusivamente per connessioni loopback locali; deve restare disattivato in produzione.
 
+## Nuove fondamenta tecniche (non ancora esposte come API di produzione)
+
+Il gruppo di lavoro aggiunge dieci componenti verificabili, ma non dichiara ancora attivi i flussi utente finali:
+
+1. Catalogo centralizzato di permessi amministrativi e di supporto.
+2. Matrice predefinita dei ruoli con principio del minimo privilegio.
+3. Risoluzione permessi con comportamento deny-by-default per ruoli o azioni sconosciuti.
+4. Override allow/deny persistenti per singolo account.
+5. Modifica e rimozione degli override riservate al ruolo proprietario nel servizio di policy.
+6. Generazione di segreti TOTP conformi a RFC 6238.
+7. Verifica TOTP con confronto a tempo costante e finestra temporale limitata.
+8. Registro separato dei diritti Premium con piani, scadenza, revoca e motivazione.
+9. Fondazione dei gruppi famiglia con titolare esplicito e immutabile.
+10. Assegnazione posti famiglia con controllo del titolare, duplicati e limite massimo.
+
+I moduli `backend/authorization.py`, `backend/totp.py` e `backend/entitlements.py` sono servizi di dominio testati, non ancora collegati ai middleware e agli endpoint HTTP. Il segreto TOTP non viene ancora persistito: prima dell'attivazione occorrono cifratura con chiave esterna al database, enrollment autenticato, conferma del codice, challenge al login, recovery codes monouso, rate limit e audit. La UI Flutter proprietario non è ancora collegata a queste API. I diritti Premium non sono un'integrazione con pagamenti e non azzerano i costi infrastrutturali; inviti via email, fatturazione, ricevute, rinnovi e gestione delle dispute sono ancora da implementare.
+
 ## Lavoro bloccante prima dell'uso multiutente
 
 1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
