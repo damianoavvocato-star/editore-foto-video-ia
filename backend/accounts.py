@@ -92,6 +92,9 @@ class AccountStore:
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_created_idx ON account_audit_events(created_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_actor_idx ON account_audit_events(actor_user_id, created_at DESC)")
+            account_columns = {row["name"] for row in db.execute("PRAGMA table_info(accounts)").fetchall()}
+            if "must_change_password" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
 
     @staticmethod
     def _password(password: str, salt: bytes) -> bytes:
@@ -105,6 +108,7 @@ class AccountStore:
             "username": row["username"],
             "role": row["role"],
             "createdAt": row["created_at"],
+            "mustChangePassword": bool(row["must_change_password"]),
         }
 
     def _create(self, username: str, password: str, role: str) -> dict[str, Any]:
@@ -121,7 +125,7 @@ class AccountStore:
         try:
             with self._connect() as db:
                 db.execute(
-                    "INSERT INTO accounts(user_id,username,password_salt,password_hash,role,created_at) VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO accounts(user_id,username,password_salt,password_hash,role,created_at,must_change_password) VALUES(?,?,?,?,?,?,1)",
                     (user_id, username, salt, digest, role, now),
                 )
                 row = db.execute("SELECT * FROM accounts WHERE user_id=?", (user_id,)).fetchone()
@@ -334,6 +338,76 @@ class AccountStore:
         except sqlite3.IntegrityError as exc:
             raise AccountError("Nome utente già utilizzato.") from exc
         return self._public(row)
+
+
+    def reset_account_password(self, actor_user_id: str, target_user_id: str) -> str:
+        """Issue a high-entropy one-time temporary password, returned only once."""
+        temporary = secrets.token_urlsafe(24)
+        salt = secrets.token_bytes(16)
+        digest = self._password(temporary, salt)
+        now = int(time.time())
+        with self._connect() as db:
+            actor = db.execute(
+                "SELECT role,disabled_at FROM accounts WHERE user_id=?", (actor_user_id,)
+            ).fetchone()
+            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
+                raise AccountError("Operazione riservata al proprietario.")
+            target = db.execute(
+                "SELECT role FROM accounts WHERE user_id=?", (target_user_id,)
+            ).fetchone()
+            if target is None:
+                raise AccountError("Account non trovato.")
+            if target["role"] == "owner":
+                raise AccountError("Il reset dell'account proprietario richiede la procedura dedicata.")
+            db.execute(
+                "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=1 WHERE user_id=?",
+                (salt, digest, target_user_id),
+            )
+            db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, target_user_id),
+            )
+            db.execute(
+                """INSERT INTO account_audit_events
+                   (actor_user_id,action,target_user_id,details_json,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (actor_user_id, "account.password_reset", target_user_id, "{}", now),
+            )
+        return temporary
+
+    def change_password(
+        self, user_id: str, current_password: str | None, new_password: str
+    ) -> None:
+        if not isinstance(new_password, str) or len(new_password) < 12 or len(new_password) > 1024:
+            raise AccountError("La nuova password deve contenere almeno 12 caratteri.")
+        salt = secrets.token_bytes(16)
+        digest = self._password(new_password, salt)
+        now = int(time.time())
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT password_salt,password_hash,must_change_password,disabled_at FROM accounts WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+            if row is None or row["disabled_at"] is not None:
+                raise AccountError("Account non disponibile.")
+            if not row["must_change_password"]:
+                actual = self._password(current_password or "", row["password_salt"])
+                if not hmac.compare_digest(actual, row["password_hash"]):
+                    raise AccountError("Password attuale non valida.")
+            db.execute(
+                "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=0 WHERE user_id=?",
+                (salt, digest, user_id),
+            )
+            db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+            db.execute(
+                """INSERT INTO account_audit_events
+                   (actor_user_id,action,target_user_id,details_json,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (user_id, "account.password_changed", user_id, "{}", now),
+            )
 
     def set_account_role(
         self, actor_user_id: str, target_user_id: str, role: str
