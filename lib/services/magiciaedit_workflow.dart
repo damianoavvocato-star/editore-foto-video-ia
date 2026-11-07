@@ -32,32 +32,40 @@ class MagicIAeditWorkflow {
       options: options,
     );
 
-    await for (final progress in _service.start(request)) {
-      onProgress?.call(progress);
-      switch (progress.state) {
-        case AiJobState.succeeded:
-          final result = progress.result;
-          if (result == null) {
-            throw const MagicIAeditException(
-              'MagicIAedit ha terminato senza restituire un piano.',
-            );
-          }
-          try {
-            return MagicIAeditPlan.fromResult(result);
-          } on FormatException catch (error) {
-            throw MagicIAeditException(error.message.toString());
-          }
-        case AiJobState.failed:
-          final message = progress.message.trim().isNotEmpty
-              ? progress.message
-              : progress.error?.toString() ?? 'Elaborazione MagicIAedit non riuscita.';
-          throw MagicIAeditException(message);
-        case AiJobState.cancelled:
-          throw const MagicIAeditException('Elaborazione MagicIAedit annullata.');
-        case AiJobState.queued:
-        case AiJobState.running:
-          break;
+    try {
+      await for (final progress in _service.start(request)) {
+        onProgress?.call(progress);
+        switch (progress.state) {
+          case AiJobState.succeeded:
+            final result = progress.result;
+            if (result == null) {
+              throw const MagicIAeditException(
+                'MagicIAedit ha terminato senza restituire un piano.',
+              );
+            }
+            try {
+              return MagicIAeditPlan.fromResult(result);
+            } on FormatException catch (error) {
+              throw MagicIAeditException(error.message.toString());
+            }
+          case AiJobState.failed:
+            final message = progress.message.trim().isNotEmpty
+                ? progress.message
+                : progress.error?.toString() ?? 'Elaborazione MagicIAedit non riuscita.';
+            throw MagicIAeditException(message);
+          case AiJobState.cancelled:
+            throw const MagicIAeditException('Elaborazione MagicIAedit annullata.');
+          case AiJobState.queued:
+          case AiJobState.running:
+            break;
+        }
       }
+    } on MagicIAeditException {
+      rethrow;
+    } catch (_) {
+      throw const MagicIAeditException(
+        'Errore di comunicazione durante l’elaborazione MagicIAedit.',
+      );
     }
     throw const MagicIAeditException(
       'Il servizio MagicIAedit si è chiuso senza un risultato finale.',
