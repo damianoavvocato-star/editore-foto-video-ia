@@ -51,7 +51,7 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
       return null;
     }
     final localHttp = uri.scheme == 'http' &&
-        {'localhost', '127.0.0.1', '10.0.2.2'}.contains(uri.host);
+        {'localhost', '127.0.0.1', '10.0.2.2', '::1'}.contains(uri.host);
     if (uri.scheme != 'https' && !localHttp) return null;
     return uri.replace(path: '');
   }
@@ -68,6 +68,13 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
     if (endpoint == null) {
       setState(() => _error =
           'Inserisci un indirizzo API HTTPS valido. HTTP è consentito solo per localhost o 10.0.2.2.');
+      return;
+    }
+    final localDevelopmentEndpoint = endpoint.scheme == 'http' &&
+        {'localhost', '127.0.0.1', '10.0.2.2', '::1'}.contains(endpoint.host);
+    if (!localDevelopmentEndpoint && _tokenController.text.trim().isEmpty) {
+      setState(() => _error =
+          'Per i server remoti HTTPS è obbligatorio il token condiviso configurato sul server.');
       return;
     }
     try {
@@ -213,7 +220,8 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
             enabled: !_busy,
             obscureText: !_showToken,
             decoration: InputDecoration(
-              labelText: 'Token di accesso del server (facoltativo)',
+              labelText: 'Token condiviso del server (obbligatorio per HTTPS remoto)',
+              helperText: 'È una credenziale condivisa del server, non un account personale.',
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _showToken = !_showToken),
