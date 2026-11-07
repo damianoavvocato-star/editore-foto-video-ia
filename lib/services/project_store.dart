@@ -149,10 +149,22 @@ class ProjectSaveQueue {
 
   Future<void> save(EditorProject project, Directory directory) {
     final key = '${directory.absolute.path}/${project.id}';
+    return _enqueue(key, () => _store.save(project, directory));
+  }
+
+  /// Serializes deletion after any pending save for the same project.
+  /// This prevents an in-flight autosave from recreating a project just
+  /// after the user has confirmed its deletion.
+  Future<void> delete(String projectId, Directory directory) {
+    final key = '${directory.absolute.path}/$projectId';
+    return _enqueue(key, () => _store.delete(projectId, directory));
+  }
+
+  Future<void> _enqueue(String key, Future<void> Function() operation) {
     final previous = _pending[key] ?? Future<void>.value();
     final next = previous.then(
-      (_) => _store.save(project, directory),
-      onError: (Object _, StackTrace __) => _store.save(project, directory),
+      (_) => operation(),
+      onError: (Object _, StackTrace __) => operation(),
     );
     _pending[key] = next;
     return next.whenComplete(() {
