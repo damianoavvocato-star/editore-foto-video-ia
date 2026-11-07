@@ -320,8 +320,8 @@ class AccountStore:
                     raise AccountError("Operazione riservata al proprietario.")
                 db.execute(
                     """INSERT INTO accounts
-                       (user_id,username,password_salt,password_hash,role,created_at)
-                       VALUES(?,?,?,?,?,?)""",
+                       (user_id,username,password_salt,password_hash,role,created_at,must_change_password)
+                       VALUES(?,?,?,?,?,?,1)""",
                     (user_id, username, salt, digest, role, now),
                 )
                 db.execute(
