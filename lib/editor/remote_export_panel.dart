@@ -72,6 +72,7 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
     }
     try {
       final directory = await getApplicationDocumentsDirectory();
+      if (!mounted) return;
       final extension = _settings.container.name;
       final stamp = DateTime.now().toUtc().millisecondsSinceEpoch;
       final output = '${directory.path}/${_safeFileName(widget.project.name)}_$stamp.$extension';
