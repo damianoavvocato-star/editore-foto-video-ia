@@ -3,4 +3,3 @@ uvicorn[standard]>=0.27,<1
 python-multipart>=0.0.9
 Pillow>=10.0,<13
 httpx
-httpx2
