@@ -51,6 +51,54 @@ void main() {
     expect(messages, isEmpty);
   });
 
+
+  testWidgets('remote HTTPS export requires the configured server bearer token', (tester) async {
+    const project = EditorProject(
+      id: 'secure-export-project',
+      name: 'Prova',
+      tracks: [
+        EditorTrack(
+          id: 'video-track',
+          name: 'Video',
+          kind: MediaKind.video,
+          clips: [
+            EditorClip(
+              id: 'video-clip',
+              source: '/tmp/video.mp4',
+              kind: MediaKind.video,
+              startMs: 0,
+              durationMs: 3000,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: RemoteExportPanel(
+          project: project,
+          onClose: () {},
+          onMessage: (_) {},
+        ),
+      ),
+    ));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Indirizzo del server media'),
+      'https://api.example.com',
+    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Avvia esportazione'));
+    await tester.pump();
+
+    expect(
+      find.textContaining('è obbligatorio il token condiviso'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('remote export is disabled for an empty project', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
