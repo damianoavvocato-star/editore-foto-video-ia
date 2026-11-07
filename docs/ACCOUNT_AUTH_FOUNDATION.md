@@ -13,6 +13,7 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - Ruoli iniziali ammessi: `owner`, `admin`, `support`, `collaborator`, `user`; le API di gestione privilegi non sono ancora implementate.
 - Bootstrap del primo proprietario tramite variabili d'ambiente, senza promuovere account esistenti.
 - Limite di 10 tentativi errati in 15 minuti per IP e nome utente; risposte di login generiche.
+- Registro audit account SQLite: eventi minimi con attore, azione, obiettivo, timestamp e dettagli limitati; i campi che sembrano contenere password, token, secret, authorization o API key vengono rifiutati.
 - Registrazione disattivata per impostazione predefinita.
 
 ## Configurazione
@@ -34,7 +35,7 @@ Le API account validano il token individuale. Tutte le API media (`/v1/assets`, 
 
 1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
 2. Migrare o isolare i dati preesistenti senza esporli a utenti diversi; le risorse storiche prive di proprietario non devono essere rese visibili automaticamente.
-3. Aggiungere reset password verificato, 2FA proprietario, inviti collaboratori, RBAC granulare e audit log.
+3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. L'API di lettura audit non è ancora esposta.
 4. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
 5. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
 6. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
