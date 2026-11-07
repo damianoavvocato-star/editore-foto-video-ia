@@ -30,7 +30,6 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   final _endpointController = TextEditingController();
   final _tokenController = TextEditingController();
   final _selectedPaths = <String>{};
-  RemoteMediaApi? _api;
   MagicIAeditWorkflow? _workflow;
   MagicIAeditPlan? _plan;
   String? _jobId;
@@ -166,7 +165,6 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _api = null;
           _workflow = null;
           _jobId = null;
         });
