@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -81,6 +82,16 @@ class AccountStore:
                 key_hash TEXT PRIMARY KEY, attempts INTEGER NOT NULL,
                 window_started INTEGER NOT NULL, blocked_until INTEGER NOT NULL
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS account_audit_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor_user_id TEXT REFERENCES accounts(user_id) ON DELETE SET NULL,
+                action TEXT NOT NULL,
+                target_user_id TEXT REFERENCES accounts(user_id) ON DELETE SET NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at INTEGER NOT NULL
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS account_audit_created_idx ON account_audit_events(created_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS account_audit_actor_idx ON account_audit_events(actor_user_id, created_at DESC)")
 
     @staticmethod
     def _password(password: str, salt: bytes) -> bytes:
@@ -261,3 +272,55 @@ class AccountStore:
                 (resource_type, resource_id),
             ).fetchone()
         return row["owner_user_id"] if row else None
+
+    def record_audit_event(
+        self,
+        actor_user_id: str | None,
+        action: str,
+        target_user_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> int:
+        """Persist a minimal account-security event; never accept secrets in details."""
+        if not isinstance(action, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,63}", action):
+            raise AccountError("Azione audit non valida.")
+        if details is None:
+            details = {}
+        if not isinstance(details, dict) or len(details) > 20:
+            raise AccountError("Dettagli audit non validi.")
+        forbidden = {"password", "token", "secret", "authorization", "credential", "api_key"}
+        for key, value in details.items():
+            if not isinstance(key, str) or key.lower() in forbidden:
+                raise AccountError("I dettagli audit non possono contenere credenziali o segreti.")
+            if not isinstance(value, (str, int, float, bool, type(None))):
+                raise AccountError("I dettagli audit devono essere valori semplici.")
+        serialized = json.dumps(details, ensure_ascii=False, separators=(",", ":"))
+        if len(serialized.encode("utf-8")) > 4096:
+            raise AccountError("Dettagli audit troppo grandi.")
+        with self._connect() as db:
+            cursor = db.execute(
+                """INSERT INTO account_audit_events
+                   (actor_user_id,action,target_user_id,details_json,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (actor_user_id, action, target_user_id, serialized, int(time.time())),
+            )
+            return int(cursor.lastrowid)
+
+    def list_audit_events(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return newest audit events; callers must enforce owner authorization."""
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            limit = 50
+        limit = max(1, min(100, limit))
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT event_id,actor_user_id,action,target_user_id,details_json,created_at
+                   FROM account_audit_events ORDER BY event_id DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [{
+            "eventId": row["event_id"],
+            "actorUserId": row["actor_user_id"],
+            "action": row["action"],
+            "targetUserId": row["target_user_id"],
+            "details": json.loads(row["details_json"]),
+            "createdAt": row["created_at"],
+        } for row in rows]
