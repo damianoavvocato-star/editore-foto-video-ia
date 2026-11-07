@@ -19,14 +19,19 @@ class RemoteMediaApi {
   /// Plain HTTP remains available for local development and Android emulator
   /// host access.
   static Uri _validateBaseUri(Uri uri) {
-    if (!uri.hasScheme || !{'http', 'https'}.contains(uri.scheme)) {
-      throw ArgumentError.value(uri, 'baseUri', 'È richiesto un URL HTTP(S).');
+    if (!uri.hasScheme ||
+        !{'http', 'https'}.contains(uri.scheme) ||
+        uri.host.isEmpty) {
+      throw ArgumentError.value(uri, 'baseUri', 'È richiesto un URL HTTP(S) con host valido.');
     }
-    if (uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
+    if (uri.userInfo.isNotEmpty ||
+        uri.fragment.isNotEmpty ||
+        uri.query.isNotEmpty ||
+        (uri.path.isNotEmpty && uri.path != '/')) {
       throw ArgumentError.value(
         uri,
         'baseUri',
-        'L’indirizzo API non può contenere credenziali o frammenti.',
+        'L’indirizzo API deve essere un’origine senza credenziali, percorso, query o frammenti.',
       );
     }
     final localHttp = uri.scheme == 'http' &&
