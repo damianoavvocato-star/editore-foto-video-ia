@@ -133,5 +133,15 @@ def test_missing_server_token_fails_closed_outside_local_development(monkeypatch
 def test_insecure_mode_requires_explicit_local_opt_in(monkeypatch):
     monkeypatch.setattr(server, 'TOKEN', '')
     monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', True)
-    response = TestClient(server.app).get('/v1/jobs/' + '2' * 32)
+    local_client = TestClient(server.app, client=('127.0.0.1', 12345))
+    response = local_client.get('/v1/jobs/' + '2' * 32)
     assert response.status_code == 404
+
+
+def test_insecure_mode_rejects_non_loopback_clients(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', True)
+    remote_client = TestClient(server.app, client=('203.0.113.10', 12345))
+    response = remote_client.get('/v1/jobs/' + '2' * 32)
+    assert response.status_code == 403
+    assert response.json()['detail'] == 'Unauthenticated access is restricted to local connections'
