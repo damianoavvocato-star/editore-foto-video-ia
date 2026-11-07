@@ -839,6 +839,24 @@ def account_accept_family_invitation(body: FamilyInvitationAccept, request: Requ
     return {'familyId': family_id, 'accepted': True}
 
 
+@app.post('/v1/account/family/leave')
+def account_leave_family(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        family_id = _entitlement_store().leave_family(account['userId'])
+    except EntitlementError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if family_id is None:
+        return {'left': False, 'familyId': None}
+    _account_store().record_audit_event(
+        account['userId'], 'family.member_left', None,
+        {'familyId': family_id},
+    )
+    return {'left': True, 'familyId': family_id}
+
+
 @app.get('/v1/account/family/invitations')
 def account_list_family_invitations(request: Request):
     account = _request_account(request)

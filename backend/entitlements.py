@@ -283,6 +283,31 @@ class EntitlementStore:
             "members": [dict(row) for row in members],
         }
 
+    def leave_family(self, user_id: str) -> str | None:
+        """Allow a member to leave; the immutable owner must transfer ownership first."""
+        if not user_id or len(user_id) > 128:
+            raise EntitlementError("Account non valido.")
+        with self._connect() as db:
+            membership = db.execute(
+                """SELECT fm.family_id,fg.owner_user_id
+                   FROM family_members fm JOIN family_groups fg
+                   ON fg.family_id=fm.family_id
+                   WHERE fm.user_id=? AND fm.removed_at IS NULL LIMIT 1""",
+                (user_id,),
+            ).fetchone()
+            if membership is None:
+                return None
+            if membership["owner_user_id"] == user_id:
+                raise EntitlementError(
+                    "Il titolare deve trasferire la proprietà prima di uscire."
+                )
+            db.execute(
+                """UPDATE family_members SET removed_at=?
+                   WHERE family_id=? AND user_id=? AND removed_at IS NULL""",
+                (int(time.time()), membership["family_id"], user_id),
+            )
+            return membership["family_id"]
+
     def add_family_member(
         self, family_id: str, actor_user_id: str, user_id: str
     ) -> None:

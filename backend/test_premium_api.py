@@ -240,3 +240,31 @@ def test_family_owner_can_list_and_revoke_pending_invitation_without_token_leak(
     assert replay.status_code == 422
     actions = [event["action"] for event in accounts.list_audit_events(20)]
     assert "family.invitation_revoked" in actions
+
+
+def test_family_member_can_leave_but_owner_cannot_leave_without_transfer(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    accounts = AccountStore(database)
+    owner = accounts.bootstrap_owner("family_leave_owner", "owner password with enough length")
+    member = accounts.register("family_leave_member", "member password with enough length")
+    entitlements = server._entitlement_store()
+    entitlements.grant("owner", owner["userId"], owner["userId"], "family")
+    family_id = entitlements.create_family_for_grant_owner(owner["userId"])
+    entitlements.add_family_member(family_id, owner["userId"], member["userId"])
+    client = TestClient(server.app)
+    owner_headers = _headers(accounts, owner["userId"])
+    member_headers = _headers(accounts, member["userId"])
+
+    owner_leave = client.post("/v1/account/family/leave", headers=owner_headers)
+    assert owner_leave.status_code == 409
+    assert entitlements.family_details(owner["userId"])["familyId"] == family_id
+
+    member_leave = client.post("/v1/account/family/leave", headers=member_headers)
+    assert member_leave.status_code == 200
+    assert member_leave.json()["left"] is True
+    assert not entitlements.has_premium(member["userId"])
+    assert entitlements.family_details(member["userId"]) is None
+    actions = [event["action"] for event in accounts.list_audit_events(20)]
+    assert "family.member_left" in actions
