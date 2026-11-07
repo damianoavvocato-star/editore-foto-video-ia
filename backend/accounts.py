@@ -273,6 +273,115 @@ class AccountStore:
             ).fetchone()
         return row["owner_user_id"] if row else None
 
+    def list_accounts(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Return public account fields only; never expose password hashes or sessions."""
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            limit = 100
+        limit = max(1, min(200, limit))
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT user_id,username,role,created_at,disabled_at
+                   FROM accounts ORDER BY created_at DESC,user_id LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [{
+            "userId": row["user_id"],
+            "username": row["username"],
+            "role": row["role"],
+            "createdAt": row["created_at"],
+            "disabled": row["disabled_at"] is not None,
+        } for row in rows]
+
+    def create_managed_account(
+        self, actor_user_id: str, username: str, password: str, role: str
+    ) -> dict[str, Any]:
+        """Allow the owner to create non-owner accounts; never create another owner."""
+        if role not in {"admin", "support", "collaborator", "user"}:
+            raise AccountError("Il proprietario può creare solo account non-owner.")
+        if not isinstance(username, str) or not _USERNAME.fullmatch(username):
+            raise AccountError("Nome utente non valido: usa 3-32 caratteri alfanumerici, punto, trattino o underscore.")
+        if not isinstance(password, str) or len(password) < 12 or len(password) > 1024:
+            raise AccountError("La password deve contenere almeno 12 caratteri.")
+        salt = secrets.token_bytes(16)
+        digest = self._password(password, salt)
+        user_id = uuid.uuid4().hex
+        now = int(time.time())
+        try:
+            with self._connect() as db:
+                actor = db.execute(
+                    "SELECT role,disabled_at FROM accounts WHERE user_id=?",
+                    (actor_user_id,),
+                ).fetchone()
+                if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
+                    raise AccountError("Operazione riservata al proprietario.")
+                db.execute(
+                    """INSERT INTO accounts
+                       (user_id,username,password_salt,password_hash,role,created_at)
+                       VALUES(?,?,?,?,?,?)""",
+                    (user_id, username, salt, digest, role, now),
+                )
+                db.execute(
+                    """INSERT INTO account_audit_events
+                       (actor_user_id,action,target_user_id,details_json,created_at)
+                       VALUES(?,?,?,?,?)""",
+                    (actor_user_id, "account.created", user_id,
+                     json.dumps({"role": role}, separators=(",", ":")), now),
+                )
+                row = db.execute(
+                    "SELECT user_id,username,role,created_at FROM accounts WHERE user_id=?",
+                    (user_id,),
+                ).fetchone()
+        except sqlite3.IntegrityError as exc:
+            raise AccountError("Nome utente già utilizzato.") from exc
+        return self._public(row)
+
+    def set_account_disabled(
+        self, actor_user_id: str, target_user_id: str, disabled: bool
+    ) -> dict[str, Any]:
+        """Owner-only account suspension/reactivation; owner account is immutable."""
+        if not isinstance(disabled, bool):
+            raise AccountError("Stato account non valido.")
+        now = int(time.time())
+        with self._connect() as db:
+            actor = db.execute(
+                "SELECT role,disabled_at FROM accounts WHERE user_id=?",
+                (actor_user_id,),
+            ).fetchone()
+            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
+                raise AccountError("Operazione riservata al proprietario.")
+            target = db.execute(
+                "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
+                (target_user_id,),
+            ).fetchone()
+            if target is None:
+                raise AccountError("Account non trovato.")
+            if target["role"] == "owner":
+                raise AccountError("L'account proprietario non può essere sospeso o modificato.")
+            disabled_at = now if disabled else None
+            db.execute(
+                "UPDATE accounts SET disabled_at=? WHERE user_id=?",
+                (disabled_at, target_user_id),
+            )
+            if disabled:
+                db.execute(
+                    "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                    (now, target_user_id),
+                )
+            action = "account.disabled" if disabled else "account.enabled"
+            db.execute(
+                """INSERT INTO account_audit_events
+                   (actor_user_id,action,target_user_id,details_json,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (actor_user_id, action, target_user_id, "{}", now),
+            )
+            return {
+                "userId": target["user_id"],
+                "username": target["username"],
+                "role": target["role"],
+                "createdAt": target["created_at"],
+                "disabled": disabled,
+            }
+
     def record_audit_event(
         self,
         actor_user_id: str | None,
