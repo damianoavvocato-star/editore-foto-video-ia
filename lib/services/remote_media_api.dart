@@ -29,6 +29,7 @@ class RemoteMediaApi {
   final HttpClient _client;
   final String? bearerToken;
   static const Duration requestTimeout = Duration(minutes: 3);
+  static const int maxJsonResponseBytes = 8 * 1024 * 1024;
 
   bool _hasSameOrigin(Uri uri) =>
       uri.scheme.toLowerCase() == baseUri.scheme.toLowerCase() &&
@@ -65,6 +66,17 @@ class RemoteMediaApi {
     }
   }
 
+  Future<String> _readResponseText(HttpClientResponse response) async {
+    final bytes = <int>[];
+    await for (final chunk in response.timeout(requestTimeout)) {
+      if (bytes.length + chunk.length > maxJsonResponseBytes) {
+        throw const FormatException('Risposta del server troppo grande.');
+      }
+      bytes.addAll(chunk);
+    }
+    return utf8.decode(bytes);
+  }
+
   Future<Map<String, dynamic>> request(String method, String path,
       {Map<String, Object?>? body}) async {
     final uri = _resolveApiUri(path);
@@ -74,9 +86,9 @@ class RemoteMediaApi {
     _authorize(req);
     if (body != null) req.write(jsonEncode(body));
     final response = await req.close().timeout(requestTimeout);
-    final text = await response.transform(utf8.decoder).join().timeout(requestTimeout);
+    final text = await _readResponseText(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('Media API HTTP ${response.statusCode}: $text', uri: uri);
+      throw HttpException('Media API HTTP ${response.statusCode}', uri: uri);
     }
     if (text.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(text);
@@ -106,9 +118,9 @@ class RemoteMediaApi {
     }
     await req.addStream(multipartBody());
     final response = await req.close().timeout(requestTimeout);
-    final body = await response.transform(utf8.decoder).join().timeout(requestTimeout);
+    final body = await _readResponseText(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('Upload fallito HTTP ${response.statusCode}: $body', uri: uri);
+      throw HttpException('Upload fallito HTTP ${response.statusCode}', uri: uri);
     }
     final decoded = jsonDecode(body);
     if (decoded is! Map || decoded['assetId'] == null || decoded['assetId'].toString().isEmpty) {
@@ -125,8 +137,8 @@ class RemoteMediaApi {
     _authorize(req);
     final response = await req.close().timeout(requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail = await response.transform(utf8.decoder).join();
-      throw HttpException('Download fallito HTTP ${response.statusCode}: $detail', uri: uri);
+      await response.drain<void>();
+      throw HttpException('Download fallito HTTP ${response.statusCode}', uri: uri);
     }
     final output = File(outputPath);
     await output.parent.create(recursive: true);
