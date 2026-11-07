@@ -29,8 +29,12 @@ class AccountStore:
     def __init__(self, database: str | Path | None = None):
         configured = database or os.getenv("MEDIA_AUTH_DB", "./media_data/accounts.sqlite3")
         self.database = str(Path(configured).expanduser().resolve())
-        Path(self.database).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.database).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._init_db()
+        try:
+            os.chmod(self.database, 0o600)
+        except OSError:
+            pass
 
     def _connect(self):
         connection = sqlite3.connect(self.database, timeout=10)
@@ -62,6 +66,11 @@ class AccountStore:
                 )
             """)
             db.execute("CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_owner_only ON accounts(role) WHERE role='owner'")
+            db.execute("""CREATE TABLE IF NOT EXISTS auth_rate_limits (
+                key_hash TEXT PRIMARY KEY, attempts INTEGER NOT NULL,
+                window_started INTEGER NOT NULL, blocked_until INTEGER NOT NULL
+            )""")
 
     @staticmethod
     def _password(password: str, salt: bytes) -> bytes:
@@ -98,6 +107,44 @@ class AccountStore:
         except sqlite3.IntegrityError as exc:
             raise AccountError("Nome utente già utilizzato.") from exc
         return self._public(row)
+
+    @staticmethod
+    def _rate_key(kind: str, value: str) -> str:
+        return hashlib.sha256((kind + ":" + value.strip().lower()).encode("utf-8")).hexdigest()
+
+    def login_allowed(self, ip_address: str, username: str) -> bool:
+        now = int(time.time())
+        keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT blocked_until FROM auth_rate_limits WHERE key_hash IN (?,?)", keys
+            ).fetchall()
+        return not any(row["blocked_until"] > now for row in rows)
+
+    def record_login_failure(self, ip_address: str, username: str) -> None:
+        now = int(time.time())
+        keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
+        with self._connect() as db:
+            for key in keys:
+                row = db.execute(
+                    "SELECT attempts,window_started FROM auth_rate_limits WHERE key_hash=?", (key,)
+                ).fetchone()
+                if row is None or now - row["window_started"] >= 900:
+                    attempts, started = 1, now
+                else:
+                    attempts, started = row["attempts"] + 1, row["window_started"]
+                blocked = now + 900 if attempts >= 10 else 0
+                db.execute("""
+                    INSERT INTO auth_rate_limits(key_hash,attempts,window_started,blocked_until)
+                    VALUES(?,?,?,?) ON CONFLICT(key_hash) DO UPDATE SET
+                    attempts=excluded.attempts,window_started=excluded.window_started,
+                    blocked_until=excluded.blocked_until
+                """, (key, attempts, started, blocked))
+
+    def clear_login_failures(self, ip_address: str, username: str) -> None:
+        keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
+        with self._connect() as db:
+            db.executemany("DELETE FROM auth_rate_limits WHERE key_hash=?", [(key,) for key in keys])
 
     def register(self, username: str, password: str) -> dict[str, Any]:
         return self._create(username, password, "user")
