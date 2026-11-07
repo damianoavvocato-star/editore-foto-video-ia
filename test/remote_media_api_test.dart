@@ -354,6 +354,77 @@ void main() {
     expect(renderJobCreated, isFalse);
   });
 
+  test('remote render uploads media, polls completion and downloads output', () async {
+    final source = File('${tempDirectory.path}/render-source.mp4');
+    await source.writeAsBytes([9, 8, 7, 6]);
+    final output = '${tempDirectory.path}/rendered.mp4';
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      await request.drain();
+      if (request.uri.path == '/v1/assets') {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'assetId': 'render-source-asset'}));
+      } else if (request.uri.path == '/v1/render/jobs') {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'jobId': 'render-server-job'}));
+      } else if (request.uri.path == '/v1/jobs/render-server-job') {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({
+          'state': 'completed',
+          'progress': 1,
+          'downloadUrl': '/v1/outputs/render-server-job',
+          'message': 'Rendering completato',
+        }));
+      } else if (request.uri.path == '/v1/outputs/render-server-job') {
+        request.response.headers.contentType = ContentType.binary;
+        request.response.add([1, 2, 3, 4, 5]);
+      } else {
+        request.response.statusCode = HttpStatus.notFound;
+      }
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteRenderBackend(api, pollInterval: Duration.zero);
+    final request = ExportRequest(
+      project: EditorProject(
+        id: 'render-success',
+        name: 'Render success',
+        tracks: [
+          EditorTrack(
+            id: 'video-track',
+            name: 'Video',
+            kind: MediaKind.video,
+            clips: [
+              EditorClip(
+                id: 'video-clip',
+                source: source.path,
+                kind: MediaKind.video,
+                startMs: 0,
+                durationMs: 1000,
+              ),
+            ],
+          ),
+        ],
+      ),
+      settings: const ExportSettings(),
+      outputPath: output,
+    );
+
+    final progress = await backend.render(request).toList();
+
+    expect(progress.last.phase, ExportPhase.completed);
+    expect(progress.last.outputPath, output);
+    expect(await File(output).readAsBytes(), [1, 2, 3, 4, 5]);
+  });
+
   test('remote render rejects URL sources the backend cannot resolve', () async {
     final api = RemoteMediaApi(baseUri: Uri.parse('https://example.invalid'));
     final backend = RemoteRenderBackend(api);
