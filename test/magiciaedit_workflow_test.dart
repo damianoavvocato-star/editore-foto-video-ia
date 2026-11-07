@@ -44,6 +44,16 @@ class _HoldingAiBackend implements AiProcessingBackend {
   }
 }
 
+class _ErrorAiBackend implements AiProcessingBackend {
+  @override
+  Stream<AiJobProgress> run(AiTaskRequest request) async* {
+    throw StateError('Internal transport details');
+  }
+
+  @override
+  Future<void> cancel(String jobId) async {}
+}
+
 void main() {
   test('workflow returns a validated plan and reports progress', () async {
     final backend = _FakeAiBackend([
@@ -92,6 +102,26 @@ void main() {
     expect(backend.lastRequest?.task, AiTaskKind.magicIAedit);
     expect(backend.lastRequest?.mediaPaths, ['/media/clip.mp4']);
     expect(progress, hasLength(2));
+  });
+
+  test('workflow normalizes unexpected backend stream errors', () async {
+    final workflow = MagicIAeditWorkflow(
+      AiProcessingService(_ErrorAiBackend()),
+    );
+
+    await expectLater(
+      workflow.generate(
+        jobId: 'magic-stream-error',
+        mediaPaths: ['/media/clip.mp4'],
+      ),
+      throwsA(
+        isA<MagicIAeditException>().having(
+          (error) => error.message,
+          'message',
+          contains('Errore di comunicazione'),
+        ),
+      ),
+    );
   });
 
   test('workflow reports a backend failure safely', () async {
