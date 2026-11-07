@@ -5,6 +5,8 @@ only; they do not waive infrastructure, storage, or AI-provider costs.
 """
 from __future__ import annotations
 
+import hashlib
+import secrets
 import sqlite3
 import time
 import uuid
@@ -34,6 +36,13 @@ class EntitlementStore:
                 PRIMARY KEY(family_id,user_id)
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS family_member_idx ON family_members(user_id, removed_at)")
+            db.execute("""CREATE TABLE IF NOT EXISTS family_invitations (
+                invitation_id TEXT PRIMARY KEY, family_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL,
+                created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+                accepted_by TEXT, accepted_at INTEGER, revoked_at INTEGER
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS family_invite_expiry_idx ON family_invitations(family_id, expires_at, accepted_at, revoked_at)")
             db.execute("""CREATE TABLE IF NOT EXISTS family_groups (
                 family_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL UNIQUE,
                 seat_limit INTEGER NOT NULL CHECK(seat_limit BETWEEN 2 AND 10),
@@ -92,6 +101,121 @@ class EntitlementStore:
                 (family_id, owner_user_id, int(time.time())),
             )
         return family_id
+
+    def create_family_for_grant_owner(self, owner_user_id: str, seat_limit: int = 5) -> str:
+        """Create or return the family owned by an account with an active family grant."""
+        now = int(time.time())
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT family_id FROM family_groups WHERE owner_user_id=?",
+                (owner_user_id,),
+            ).fetchone()
+            if existing is not None:
+                return existing["family_id"]
+            grant = db.execute(
+                """SELECT 1 FROM premium_grants WHERE user_id=? AND plan='family'
+                   AND revoked_at IS NULL AND starts_at<=?
+                   AND (expires_at IS NULL OR expires_at>?) LIMIT 1""",
+                (owner_user_id, now, now),
+            ).fetchone()
+            if grant is None:
+                raise EntitlementError("È necessario un piano famiglia attivo.")
+            member = db.execute(
+                "SELECT 1 FROM family_members WHERE user_id=? AND removed_at IS NULL LIMIT 1",
+                (owner_user_id,),
+            ).fetchone()
+            if member is not None:
+                raise EntitlementError("Un membro di un'altra famiglia non può crearne una.")
+            family_id = uuid.uuid4().hex
+            db.execute(
+                "INSERT INTO family_groups(family_id,owner_user_id,seat_limit,created_at) VALUES(?,?,?,?)",
+                (family_id, owner_user_id, seat_limit, now),
+            )
+            db.execute(
+                "INSERT INTO family_members(family_id,user_id,added_at) VALUES(?,?,?)",
+                (family_id, owner_user_id, now),
+            )
+            return family_id
+
+    def create_family_invitation(self, family_id: str, actor_user_id: str) -> dict:
+        """Create a one-time, seven-day bearer invitation; return its token once."""
+        token = secrets.token_urlsafe(32)
+        now = int(time.time())
+        expires_at = now + 7 * 24 * 60 * 60
+        with self._connect() as db:
+            family = db.execute(
+                """SELECT seat_limit FROM family_groups
+                   WHERE family_id=? AND owner_user_id=?""",
+                (family_id, actor_user_id),
+            ).fetchone()
+            if family is None:
+                raise EntitlementError("Solo il titolare può invitare membri.")
+            count = db.execute(
+                "SELECT COUNT(*) AS n FROM family_members WHERE family_id=? AND removed_at IS NULL",
+                (family_id,),
+            ).fetchone()["n"]
+            pending = db.execute(
+                """SELECT COUNT(*) AS n FROM family_invitations
+                   WHERE family_id=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?""",
+                (family_id, now),
+            ).fetchone()["n"]
+            if count + pending >= family["seat_limit"]:
+                raise EntitlementError("Posti famiglia esauriti o già riservati da inviti.")
+            invitation_id = uuid.uuid4().hex
+            db.execute(
+                """INSERT INTO family_invitations
+                   (invitation_id,family_id,token_hash,created_by,created_at,expires_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (invitation_id, family_id, hashlib.sha256(token.encode()).hexdigest(),
+                 actor_user_id, now, expires_at),
+            )
+        return {"invitationId": invitation_id, "token": token, "expiresAt": expires_at}
+
+    def accept_family_invitation(self, token: str, invitee_user_id: str) -> str:
+        """Atomically consume an invitation and assign exactly one family seat."""
+        if not isinstance(token, str) or not token or len(token) > 256:
+            raise EntitlementError("Invito non valido o scaduto.")
+        if not invitee_user_id or len(invitee_user_id) > 128:
+            raise EntitlementError("Account non valido.")
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            invitation = db.execute(
+                """SELECT invitation_id,family_id,expires_at FROM family_invitations
+                   WHERE token_hash=? AND accepted_at IS NULL AND revoked_at IS NULL""",
+                (token_hash,),
+            ).fetchone()
+            if invitation is None or invitation["expires_at"] <= now:
+                raise EntitlementError("Invito non valido o scaduto.")
+            family_id = invitation["family_id"]
+            family = db.execute(
+                "SELECT seat_limit FROM family_groups WHERE family_id=?",
+                (family_id,),
+            ).fetchone()
+            if family is None:
+                raise EntitlementError("Famiglia non disponibile.")
+            if db.execute(
+                "SELECT 1 FROM family_members WHERE user_id=? AND removed_at IS NULL LIMIT 1",
+                (invitee_user_id,),
+            ).fetchone():
+                raise EntitlementError("L'account appartiene già a una famiglia.")
+            count = db.execute(
+                "SELECT COUNT(*) AS n FROM family_members WHERE family_id=? AND removed_at IS NULL",
+                (family_id,),
+            ).fetchone()["n"]
+            if count >= family["seat_limit"]:
+                raise EntitlementError("Numero massimo di posti famiglia raggiunto.")
+            db.execute(
+                "INSERT INTO family_members(family_id,user_id,added_at) VALUES(?,?,?)",
+                (family_id, invitee_user_id, now),
+            )
+            db.execute(
+                """UPDATE family_invitations SET accepted_by=?,accepted_at=?
+                   WHERE invitation_id=? AND accepted_at IS NULL AND revoked_at IS NULL""",
+                (invitee_user_id, now, invitation["invitation_id"]),
+            )
+            return family_id
 
     def add_family_member(
         self, family_id: str, actor_user_id: str, user_id: str

@@ -118,3 +118,44 @@ def test_premium_grant_rejects_unknown_user_and_invalid_expiry(tmp_path, monkeyp
         json={"plan": "premium", "expiresAt": 1},
     )
     assert expired.status_code == 422
+
+
+
+def test_family_invitation_is_one_time_and_requires_authenticated_accounts(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    accounts = AccountStore(database)
+    owner = accounts.bootstrap_owner("family_owner", "owner password with enough length")
+    member = accounts.register("family_member", "member password with enough length")
+    stranger = accounts.register("family_stranger", "stranger password with enough length")
+    entitlements = server._entitlement_store()
+    entitlements.grant("owner", owner["userId"], owner["userId"], "family")
+    client = TestClient(server.app)
+
+    unauthenticated = client.post("/v1/account/family/invitations")
+    assert unauthenticated.status_code == 401
+    invitation = client.post(
+        "/v1/account/family/invitations",
+        headers=_headers(accounts, owner["userId"]),
+    )
+    assert invitation.status_code == 200, invitation.text
+    payload = invitation.json()
+    assert payload["token"]
+
+    accepted = client.post(
+        "/v1/account/family/invitations/accept",
+        headers=_headers(accounts, member["userId"]),
+        json={"token": payload["token"]},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["accepted"] is True
+    assert entitlements.has_premium(member["userId"])
+
+    replay = client.post(
+        "/v1/account/family/invitations/accept",
+        headers=_headers(accounts, stranger["userId"]),
+        json={"token": payload["token"]},
+    )
+    assert replay.status_code == 422
+    assert not entitlements.has_premium(stranger["userId"])

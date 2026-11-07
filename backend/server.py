@@ -799,6 +799,46 @@ def _entitlement_store() -> EntitlementStore:
     return EntitlementStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
 
+class FamilyInvitationAccept(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+@app.post('/v1/account/family/invitations')
+def account_create_family_invitation(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _entitlement_store()
+    try:
+        family_id = store.create_family_for_grant_owner(account['userId'])
+        invitation = store.create_family_invitation(family_id, account['userId'])
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_created', None,
+        {'invitationId': invitation['invitationId'], 'expiresAt': invitation['expiresAt']},
+    )
+    return invitation
+
+
+@app.post('/v1/account/family/invitations/accept')
+def account_accept_family_invitation(body: FamilyInvitationAccept, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        family_id = _entitlement_store().accept_family_invitation(
+            body.token, account['userId']
+        )
+    except EntitlementError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_accepted', None,
+        {'familyId': family_id},
+    )
+    return {'familyId': family_id, 'accepted': True}
+
+
 @app.get('/v1/account/entitlement')
 def account_get_entitlement(request: Request):
     account = _request_account(request)
