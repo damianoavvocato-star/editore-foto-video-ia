@@ -11,7 +11,8 @@ from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
-from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured\nfrom backend.accounts import AccountError, AccountStore
+from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
+from backend.accounts import AccountError, AccountStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -55,7 +56,9 @@ lock = threading.Lock()
 
 @app.middleware('http')
 async def auth(request, call_next):
-    if request.url.path == '/health':
+    # Auth endpoints validate their own opaque per-user session tokens.
+    # Media routes remain behind the legacy shared-token gate until ownership migration is complete.
+    if request.url.path == '/health' or request.url.path.startswith('/v1/auth/'):
         return await call_next(request)
     if not TOKEN:
         if not ALLOW_INSECURE_LOCAL:
