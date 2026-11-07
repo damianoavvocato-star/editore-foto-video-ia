@@ -88,24 +88,29 @@ class AiProcessingService {
       throw StateError('Esiste già un job con ID ${request.jobId}.');
     }
 
-    late Stream<AiJobProgress> stream;
-    stream = backend.run(request).transform(
-      StreamTransformer<AiJobProgress, AiJobProgress>.fromHandlers(
-        handleData: (event, sink) {
-          sink.add(event);
-          if (event.isTerminal) _activeJobs.remove(request.jobId);
-        },
-        handleError: (error, stack, sink) {
-          _activeJobs.remove(request.jobId);
-          sink.addError(error, stack);
-        },
-        handleDone: (sink) {
-          _activeJobs.remove(request.jobId);
-          sink.close();
-        },
-      ),
-    );
-    return stream;
+    try {
+      return backend.run(request).transform(
+        StreamTransformer<AiJobProgress, AiJobProgress>.fromHandlers(
+          handleData: (event, sink) {
+            sink.add(event);
+            if (event.isTerminal) _activeJobs.remove(request.jobId);
+          },
+          handleError: (error, stack, sink) {
+            _activeJobs.remove(request.jobId);
+            sink.addError(error, stack);
+          },
+          handleDone: (sink) {
+            _activeJobs.remove(request.jobId);
+            sink.close();
+          },
+        ),
+      );
+    } catch (_) {
+      // A backend may throw before it can even return a stream (for example,
+      // when its native channel is unavailable). Do not leave a phantom job.
+      _activeJobs.remove(request.jobId);
+      rethrow;
+    }
   }
 
   Future<void> cancel(String jobId) async {
