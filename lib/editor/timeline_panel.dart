@@ -11,12 +11,14 @@ class TimelinePanel extends StatelessWidget {
     required this.playheadMs,
     required this.onClipSelected,
     required this.onPlayheadChanged,
+    this.title = 'Timeline',
   });
 
   final List<EditorTrack> tracks;
   final int playheadMs;
   final ValueChanged<EditorClip> onClipSelected;
   final ValueChanged<int> onPlayheadChanged;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +35,7 @@ class TimelinePanel extends StatelessWidget {
               children: [
                 const Icon(Icons.view_timeline),
                 const SizedBox(width: 8),
-                Text('Timeline', style: Theme.of(context).textTheme.titleMedium),
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
                 Text('${(playheadMs / 1000).toStringAsFixed(1)} s'),
               ],
