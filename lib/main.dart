@@ -404,7 +404,7 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final directory = await getApplicationSupportDirectory();
-      await const ProjectStore().delete(
+      await _projectSaveQueue.delete(
         saved.id,
         Directory('${directory.path}/editore_progetti'),
       );
