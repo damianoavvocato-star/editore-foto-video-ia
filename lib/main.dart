@@ -885,6 +885,7 @@ class _HomePageState extends State<HomePage> {
               key: ValueKey(project.id),
               project: project,
               onProjectChanged: _handleProjectChanged,
+              languageCode: widget.language.name,
             ),
           )
         else
