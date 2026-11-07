@@ -30,6 +30,7 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - `DELETE /v1/auth/logout`: revoca la sessione corrente.\n- `GET /v1/owner/audit?limit=50`: consultazione paginata degli eventi audit, esclusivamente per l'account con ruolo `owner`.
 - `GET /v1/owner/accounts?limit=100`: elenco dei soli campi pubblici degli account, owner-only.
 - `POST /v1/owner/accounts`: creazione owner-only di account `admin`, `support`, `collaborator` o `user`; non consente di creare un secondo proprietario.
+- `POST /v1/owner/accounts/{user_id}/role`: modifica del ruolo owner-only (`admin`, `support`, `collaborator`, `user`); non può modificare il proprietario e revoca tutte le sessioni esistenti per applicare i nuovi privilegi al login successivo.
 - `POST /v1/owner/accounts/{user_id}/disable` e `/enable`: sospensione/riattivazione owner-only; la sospensione revoca immediatamente tutte le sessioni dell'account.
 
 Le operazioni di creazione, sospensione e riattivazione registrano eventi nel registro audit. La password iniziale fornita in fase di creazione non viene mai restituita dall'API né salvata in chiaro; il flusso obbligatorio di cambio password al primo accesso non è ancora implementato e resta un requisito prima del rilascio.
@@ -40,7 +41,7 @@ Le API account validano il token individuale. Tutte le API media (`/v1/assets`, 
 
 1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
 2. Migrare o isolare i dati preesistenti senza esporli a utenti diversi; le risorse storiche prive di proprietario non devono essere rese visibili automaticamente.
-3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. Le API `GET /v1/owner/audit` e le operazioni base di creazione/elenco/sospensione account sono esposte solo al ruolo `owner`; non sono ancora collegate a una UI Flutter. Restano da implementare modifica ruoli/permessi granulari, reset sicuro e cambio password obbligatorio.
+3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. Le API `GET /v1/owner/audit` e le operazioni base di creazione/elenco/sospensione account sono esposte solo al ruolo `owner`; non sono ancora collegate a una UI Flutter. Restano da implementare permessi granulari per singola azione, reset sicuro e cambio password obbligatorio.
 4. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
 5. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
 6. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
