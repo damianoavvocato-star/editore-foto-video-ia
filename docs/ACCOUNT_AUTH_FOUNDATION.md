@@ -10,7 +10,7 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - Password memorizzate con hash scrypt e salt casuale; la password originale non viene restituita né recuperata.
 - Sessioni bearer opache e casuali: nel database viene memorizzato solo SHA-256 del token.
 - Scadenza sessione dopo 30 giorni e revoca lato server al logout.
-- Ruoli iniziali ammessi: `owner`, `admin`, `support`, `collaborator`, `user`; le API di gestione privilegi non sono ancora implementate.
+- Ruoli ammessi: `owner`, `admin`, `support`, `collaborator`, `user`. Le operazioni di creazione, elenco, cambio ruolo, sospensione e riattivazione sono disponibili solo al proprietario; i permessi granulari per singola azione non sono ancora implementati.
 - Bootstrap del primo proprietario tramite variabili d'ambiente, senza promuovere account esistenti.
 - Limite di 10 tentativi errati in 15 minuti per IP e nome utente; risposte di login generiche.
 - Registro audit account SQLite: eventi minimi con attore, azione, obiettivo, timestamp e dettagli limitati; i campi che sembrano contenere password, token, secret, authorization o API key vengono rifiutati.
@@ -36,7 +36,7 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - `POST /v1/owner/accounts/{user_id}/role`: modifica del ruolo owner-only (`admin`, `support`, `collaborator`, `user`); non può modificare il proprietario e revoca tutte le sessioni esistenti per applicare i nuovi privilegi al login successivo.
 - `POST /v1/owner/accounts/{user_id}/disable` e `/enable`: sospensione/riattivazione owner-only; la sospensione revoca immediatamente tutte le sessioni dell'account.
 
-Le operazioni di creazione, sospensione e riattivazione registrano eventi nel registro audit. La password iniziale fornita in fase di creazione non viene mai restituita dall'API né salvata in chiaro; il flusso obbligatorio di cambio password al primo accesso non è ancora implementato e resta un requisito prima del rilascio.
+Le operazioni di creazione, reset password, cambio ruolo, sospensione e riattivazione registrano eventi nel registro audit. La password temporanea iniziale fornita in fase di creazione non viene salvata in chiaro; è memorizzata solo come hash scrypt. L'account deve cambiarla al primo accesso. Il reset genera una credenziale temporanea ad alta entropia, restituita una sola volta, revoca le sessioni precedenti e impone la rotazione. Le sessioni sono revocate anche dopo il cambio password.
 
 Le API account validano il token individuale. Tutte le API media (`/v1/assets`, `/v1/render/jobs`, `/v1/ai/jobs`, `/v1/jobs/{id}` e `/v1/outputs/{id}`) richiedono una sessione account e associano/verificano le risorse lato server. Il vecchio `MEDIA_API_TOKEN` condiviso non è accettato come identità utente: un token condiviso non può garantire isolamento. `MEDIA_ALLOW_INSECURE_LOCAL=true` consente ancora un bypass esclusivamente per connessioni loopback locali; deve restare disattivato in produzione.
 
