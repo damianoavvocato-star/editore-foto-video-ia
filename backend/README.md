@@ -7,6 +7,9 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -r backend/requirements.txt
 MEDIA_API_TOKEN='inserire-un-segreto-lungo' uvicorn backend.server:app --host 127.0.0.1 --port 8080
+
+# Solo per prove locali isolate, senza token (mai esporre in rete):
+MEDIA_ALLOW_INSECURE_LOCAL=true uvicorn backend.server:app --host 127.0.0.1 --port 8080
 ```
 
 Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` e `FFPROBE_PATH` permettono di indicare i binari; `MEDIA_DATA_DIR` indica la directory persistente per asset, lavori e output. `/health` è pubblico e segnala `aiProvider: true` solo quando sono configurate tutte le variabili cloud richieste.
@@ -25,7 +28,7 @@ MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Confi
 - `GET /v1/outputs/{job_id}`: download consentito solo dopo stato `completed`.
 - `POST /v1/ai/jobs`: crea un job MagicIAedit con da 1 a 20 `assetIds`; il risultato strutturato è restituito nel campo `result` di `GET /v1/jobs/{job_id}`. Supporta immagini e video (campionamento di fotogrammi).
 
-Se `MEDIA_API_TOKEN` è impostato, tutte le route tranne `/health` richiedono `Authorization: Bearer <token>`; il confronto del token usa una funzione constant-time per ridurre differenze temporali osservabili. Gli ID job sono validati come UUID esadecimali; output parziali o job non completati non vengono scaricati.
+Per impostazione predefinita, se `MEDIA_API_TOKEN` non è configurato, tutte le route tranne `/health` rifiutano le richieste con HTTP 503 (fail closed). Quando il token è configurato, tutte le route tranne `/health` richiedono `Authorization: Bearer <token>`; il confronto del token usa una funzione constant-time. L'accesso senza token è consentito soltanto con `MEDIA_ALLOW_INSECURE_LOCAL=true`, esclusivamente per prove locali su loopback: non attivare questa opzione su server esposti a Internet. Gli ID job sono validati come UUID esadecimali; output parziali o job non completati non vengono scaricati.
 
 ## Rendering attualmente supportato
 
