@@ -213,7 +213,7 @@ def owner_create_account(body: OwnerCreateAccount, request: Request):
         if 'proprietario' in str(exc):
             status = 403
         raise HTTPException(status, str(exc)) from exc
-    return {'user': account, 'mustChangePassword': True}
+    return {'user': account}
 
 
 @app.post('/v1/owner/accounts/{user_id}/disable')
