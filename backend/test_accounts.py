@@ -115,7 +115,7 @@ def test_audit_events_reject_secret_fields_and_unbounded_details(tmp_path):
     with pytest.raises(AccountError, match="credenziali"):
         store.record_audit_event(
             actor["userId"], "account.password_reset",
-            details={"token": "must-not-be-stored"},
+            details={"temporary_password": "must-not-be-stored"},
         )
     with pytest.raises(AccountError, match="troppo grandi"):
         store.record_audit_event(
