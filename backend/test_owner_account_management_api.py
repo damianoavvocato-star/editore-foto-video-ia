@@ -120,3 +120,76 @@ def test_owner_role_change_revokes_existing_sessions_and_cannot_change_owner(tmp
         headers=owner_headers, json={"role": "owner"},
     )
     assert invalid.status_code == 422
+
+
+def test_managed_account_must_change_temporary_password_before_media_access(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("owner_admin", "owner password with enough length")
+    client = TestClient(server.app)
+    owner_headers = _headers(store, owner["userId"])
+
+    created = client.post("/v1/owner/accounts", headers=owner_headers, json={
+        "username": "first_login_user",
+        "temporaryPassword": "temporary password 123",
+        "role": "user",
+    })
+    assert created.status_code == 200
+    login = client.post("/v1/auth/login", json={
+        "username": "first_login_user",
+        "password": "temporary password 123",
+    })
+    assert login.status_code == 200
+    assert login.json()["user"]["mustChangePassword"] is True
+    user_headers = {"Authorization": "Bearer " + login.json()["accessToken"]}
+
+    blocked = client.get("/v1/owner/accounts", headers=user_headers)
+    assert blocked.status_code == 428
+    changed = client.post("/v1/auth/change-password", headers=user_headers, json={
+        "newPassword": "a new secure password 456",
+    })
+    assert changed.status_code == 200
+    assert changed.json()["user"]["mustChangePassword"] is False
+    assert changed.json()["accessToken"]
+    forbidden = client.get(
+        "/v1/owner/accounts",
+        headers={"Authorization": "Bearer " + changed.json()["accessToken"]},
+    )
+    assert forbidden.status_code == 403
+
+
+def test_owner_reset_returns_temporary_password_once_and_requires_rotation(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("owner_admin", "owner password with enough length")
+    user = store.register("reset_target", "old password with enough length")
+    owner_headers = _headers(store, owner["userId"])
+    client = TestClient(server.app)
+
+    reset = client.post(
+        f"/v1/owner/accounts/{user['userId']}/reset-password",
+        headers=owner_headers,
+    )
+    assert reset.status_code == 200
+    temporary = reset.json()["temporaryPassword"]
+    assert len(temporary) >= 24
+    login = client.post("/v1/auth/login", json={
+        "username": "reset_target", "password": temporary,
+    })
+    assert login.status_code == 200
+    assert login.json()["user"]["mustChangePassword"] is True
+    user_headers = {"Authorization": "Bearer " + login.json()["accessToken"]}
+    changed = client.post("/v1/auth/change-password", headers=user_headers, json={
+        "newPassword": "replacement password 789",
+    })
+    assert changed.status_code == 200
+
+    owner_reset = client.post(
+        f"/v1/owner/accounts/{owner['userId']}/reset-password",
+        headers=owner_headers,
+    )
+    assert owner_reset.status_code == 403
