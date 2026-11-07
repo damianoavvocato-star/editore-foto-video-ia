@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -44,6 +45,15 @@ class _EditoreAppState extends State<EditoreApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Editore Foto e Video IA',
+      locale: Locale(language.name),
+      supportedLocales: const [
+        Locale('it'),
+        Locale('en'),
+        Locale('fr'),
+        Locale('es'),
+        Locale('ar'),
+      ],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7657F6)),
