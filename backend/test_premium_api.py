@@ -159,3 +159,45 @@ def test_family_invitation_is_one_time_and_requires_authenticated_accounts(tmp_p
     )
     assert replay.status_code == 422
     assert not entitlements.has_premium(stranger["userId"])
+
+
+def test_family_owner_can_list_and_remove_members_but_member_cannot(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    accounts = AccountStore(database)
+    owner = accounts.bootstrap_owner("family_owner", "owner password with enough length")
+    member = accounts.register("family_member", "member password with enough length")
+    entitlements = server._entitlement_store()
+    entitlements.grant("owner", owner["userId"], owner["userId"], "family")
+    family_id = entitlements.create_family_for_grant_owner(owner["userId"])
+    entitlements.add_family_member(family_id, owner["userId"], member["userId"])
+    client = TestClient(server.app)
+    owner_headers = _headers(accounts, owner["userId"])
+    member_headers = _headers(accounts, member["userId"])
+
+    roster = client.get("/v1/account/family", headers=owner_headers)
+    assert roster.status_code == 200
+    assert roster.json()["familyId"] == family_id
+    assert roster.json()["isOwner"] is True
+    assert {item["user_id"] for item in roster.json()["members"]} == {
+        owner["userId"], member["userId"]
+    }
+
+    denied = client.delete(
+        f"/v1/account/family/members/{owner['userId']}",
+        headers=member_headers,
+    )
+    assert denied.status_code == 403
+
+    removed = client.delete(
+        f"/v1/account/family/members/{member['userId']}",
+        headers=owner_headers,
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+    assert not entitlements.has_premium(member["userId"])
+    assert client.get("/v1/account/family", headers=member_headers).json()["familyId"] is None
+
+    actions = [event["action"] for event in accounts.list_audit_events(20)]
+    assert "family.member_removed" in actions

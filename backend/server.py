@@ -839,6 +839,42 @@ def account_accept_family_invitation(body: FamilyInvitationAccept, request: Requ
     return {'familyId': family_id, 'accepted': True}
 
 
+@app.get('/v1/account/family')
+def account_get_family(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    return _entitlement_store().family_details(account['userId']) or {
+        'familyId': None, 'ownerUserId': None, 'seatLimit': 0,
+        'isOwner': False, 'members': [],
+    }
+
+
+@app.delete('/v1/account/family/members/{member_user_id}')
+def account_remove_family_member(member_user_id: str, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire i membri.')
+    if member_user_id == account['userId']:
+        raise HTTPException(422, 'Il titolare non può rimuovere sé stesso.')
+    try:
+        removed = _entitlement_store().remove_family_member(
+            details['familyId'], account['userId'], member_user_id
+        )
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    if not removed:
+        raise HTTPException(404, 'Membro non trovato nella famiglia.')
+    _account_store().record_audit_event(
+        account['userId'], 'family.member_removed', member_user_id,
+        {'familyId': details['familyId']},
+    )
+    return {'familyId': details['familyId'], 'userId': member_user_id, 'removed': True}
+
+
 @app.get('/v1/account/entitlement')
 def account_get_entitlement(request: Request):
     account = _request_account(request)

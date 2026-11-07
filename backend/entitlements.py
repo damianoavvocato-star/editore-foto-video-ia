@@ -217,6 +217,33 @@ class EntitlementStore:
             )
             return family_id
 
+    def family_details(self, user_id: str) -> dict | None:
+        """Return the signed-in user's family roster without exposing invite tokens."""
+        with self._connect() as db:
+            membership = db.execute(
+                """SELECT fg.family_id,fg.owner_user_id,fg.seat_limit
+                   FROM family_members fm
+                   JOIN family_groups fg ON fg.family_id=fm.family_id
+                   WHERE fm.user_id=? AND fm.removed_at IS NULL
+                   LIMIT 1""",
+                (user_id,),
+            ).fetchone()
+            if membership is None:
+                return None
+            members = db.execute(
+                """SELECT user_id,added_at FROM family_members
+                   WHERE family_id=? AND removed_at IS NULL
+                   ORDER BY added_at,user_id""",
+                (membership["family_id"],),
+            ).fetchall()
+        return {
+            "familyId": membership["family_id"],
+            "ownerUserId": membership["owner_user_id"],
+            "seatLimit": membership["seat_limit"],
+            "isOwner": membership["owner_user_id"] == user_id,
+            "members": [dict(row) for row in members],
+        }
+
     def add_family_member(
         self, family_id: str, actor_user_id: str, user_id: str
     ) -> None:
