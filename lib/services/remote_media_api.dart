@@ -199,7 +199,6 @@ class RemoteAiBackend implements AiProcessingBackend {
 
   @override
   Stream<AiJobProgress> run(AiTaskRequest request) async* {
-    String? remoteId;
     try {
       if (request.task == AiTaskKind.magicIAedit) {
         await validateMagicIAeditMediaPaths(request.mediaPaths);
@@ -233,14 +232,14 @@ class RemoteAiBackend implements AiProcessingBackend {
         'assetIds': assetIds,
         'options': request.options,
       });
-      remoteId = (created['jobId'] ?? request.jobId).toString();
-      if (remoteId!.isEmpty) {
+      final remoteJobId = (created['jobId'] ?? request.jobId).toString();
+      if (remoteJobId.isEmpty) {
         throw const FormatException('Il server non ha restituito jobId.');
       }
-      _remoteJobs[request.jobId] = remoteId!;
+      _remoteJobs[request.jobId] = remoteJobId;
 
       if (_cancelled.contains(request.jobId)) {
-        await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(remoteId!)}');
+        await api.request('DELETE', '/v1/jobs/${Uri.encodeComponent(remoteJobId)}');
         yield AiJobProgress(
           jobId: request.jobId,
           task: request.task,
@@ -253,7 +252,7 @@ class RemoteAiBackend implements AiProcessingBackend {
       while (!_cancelled.contains(request.jobId)) {
         final status = await api.request(
           'GET',
-          '/v1/jobs/${Uri.encodeComponent(remoteId!)}',
+          '/v1/jobs/${Uri.encodeComponent(remoteJobId)}',
         );
         final state = (status['state'] ?? 'running').toString();
         final progress = ((status['progress'] as num?)?.toDouble() ?? 0)
