@@ -28,6 +28,11 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - `POST /v1/auth/login`: verifica credenziali e rilascia token sessione.
 - `GET /v1/auth/me`: restituisce l'identità associata al token sessione.
 - `DELETE /v1/auth/logout`: revoca la sessione corrente.\n- `GET /v1/owner/audit?limit=50`: consultazione paginata degli eventi audit, esclusivamente per l'account con ruolo `owner`.
+- `GET /v1/owner/accounts?limit=100`: elenco dei soli campi pubblici degli account, owner-only.
+- `POST /v1/owner/accounts`: creazione owner-only di account `admin`, `support`, `collaborator` o `user`; non consente di creare un secondo proprietario.
+- `POST /v1/owner/accounts/{user_id}/disable` e `/enable`: sospensione/riattivazione owner-only; la sospensione revoca immediatamente tutte le sessioni dell'account.
+
+Le operazioni di creazione, sospensione e riattivazione registrano eventi nel registro audit. La password iniziale fornita in fase di creazione non viene mai restituita dall'API né salvata in chiaro; il flusso obbligatorio di cambio password al primo accesso non è ancora implementato e resta un requisito prima del rilascio.
 
 Le API account validano il token individuale. Tutte le API media (`/v1/assets`, `/v1/render/jobs`, `/v1/ai/jobs`, `/v1/jobs/{id}` e `/v1/outputs/{id}`) richiedono una sessione account e associano/verificano le risorse lato server. Il vecchio `MEDIA_API_TOKEN` condiviso non è accettato come identità utente: un token condiviso non può garantire isolamento. `MEDIA_ALLOW_INSECURE_LOCAL=true` consente ancora un bypass esclusivamente per connessioni loopback locali; deve restare disattivato in produzione.
 
@@ -35,7 +40,7 @@ Le API account validano il token individuale. Tutte le API media (`/v1/assets`, 
 
 1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
 2. Migrare o isolare i dati preesistenti senza esporli a utenti diversi; le risorse storiche prive di proprietario non devono essere rese visibili automaticamente.
-3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. L'API `GET /v1/owner/audit` è esposta solo al ruolo `owner`; non è ancora collegata a una UI Flutter e le operazioni di amministrazione account non sono ancora implementate.
+3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. Le API `GET /v1/owner/audit` e le operazioni base di creazione/elenco/sospensione account sono esposte solo al ruolo `owner`; non sono ancora collegate a una UI Flutter. Restano da implementare modifica ruoli/permessi granulari, reset sicuro e cambio password obbligatorio.
 4. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
 5. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
 6. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
