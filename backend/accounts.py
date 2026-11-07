@@ -335,6 +335,49 @@ class AccountStore:
             raise AccountError("Nome utente già utilizzato.") from exc
         return self._public(row)
 
+    def set_account_role(
+        self, actor_user_id: str, target_user_id: str, role: str
+    ) -> dict[str, Any]:
+        """Owner-only role changes; protect owner and revoke stale privilege sessions."""
+        if role not in {"admin", "support", "collaborator", "user"}:
+            raise AccountError("Ruolo non valido o riservato.")
+        now = int(time.time())
+        with self._connect() as db:
+            actor = db.execute(
+                "SELECT role,disabled_at FROM accounts WHERE user_id=?",
+                (actor_user_id,),
+            ).fetchone()
+            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
+                raise AccountError("Operazione riservata al proprietario.")
+            target = db.execute(
+                "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
+                (target_user_id,),
+            ).fetchone()
+            if target is None:
+                raise AccountError("Account non trovato.")
+            if target["role"] == "owner":
+                raise AccountError("Il ruolo proprietario non può essere modificato.")
+            db.execute("UPDATE accounts SET role=? WHERE user_id=?", (role, target_user_id))
+            # Existing sessions carry a stale role snapshot; require a fresh login.
+            db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, target_user_id),
+            )
+            db.execute(
+                """INSERT INTO account_audit_events
+                   (actor_user_id,action,target_user_id,details_json,created_at)
+                   VALUES(?,?,?,?,?)""",
+                (actor_user_id, "account.role_changed", target_user_id,
+                 json.dumps({"role": role}, separators=(",", ":")), now),
+            )
+            return {
+                "userId": target["user_id"],
+                "username": target["username"],
+                "role": role,
+                "createdAt": target["created_at"],
+                "disabled": target["disabled_at"] is not None,
+            }
+
     def set_account_disabled(
         self, actor_user_id: str, target_user_id: str, disabled: bool
     ) -> dict[str, Any]:
