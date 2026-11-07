@@ -106,7 +106,7 @@ def test_owner_role_change_revokes_existing_sessions_and_cannot_change_owner(tmp
         f"/v1/owner/accounts/{user['userId']}/role",
         headers=owner_headers, json={"role": "support"},
     )
-    assert changed.status_code == 200
+    assert changed.status_code == 200, changed.text
     assert changed.json()["user"]["role"] == "support"
     assert store.resolve_session(user_token) is None
 
@@ -150,7 +150,7 @@ def test_managed_account_must_change_temporary_password_before_media_access(tmp_
     changed = client.post("/v1/auth/change-password", headers=user_headers, json={
         "newPassword": "a new secure password 456",
     })
-    assert changed.status_code == 200
+    assert changed.status_code == 200, changed.text
     assert changed.json()["user"]["mustChangePassword"] is False
     assert changed.json()["accessToken"]
     forbidden = client.get(
@@ -186,7 +186,7 @@ def test_owner_reset_returns_temporary_password_once_and_requires_rotation(tmp_p
     changed = client.post("/v1/auth/change-password", headers=user_headers, json={
         "newPassword": "replacement password 789",
     })
-    assert changed.status_code == 200
+    assert changed.status_code == 200, changed.text
 
     owner_reset = client.post(
         f"/v1/owner/accounts/{owner['userId']}/reset-password",
