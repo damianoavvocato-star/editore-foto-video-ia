@@ -1,9 +1,29 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/models/editor_project.dart';
 import 'package:editore_foto_video_ia/services/project_store.dart';
 import 'package:editore_foto_video_ia/models/export_settings.dart';
+
+class _BlockingProjectStore extends ProjectStore {
+  final saveStarted = Completer<void>();
+  final releaseSave = Completer<void>();
+  final operations = <String>[];
+
+  @override
+  Future<void> save(EditorProject project, Directory directory) async {
+    operations.add('save-start');
+    saveStarted.complete();
+    await releaseSave.future;
+    operations.add('save-end');
+  }
+
+  @override
+  Future<void> delete(String projectId, Directory directory) async {
+    operations.add('delete');
+  }
+}
 
 void main() {
   test('project store saves and reloads project metadata and clips', () async {
@@ -97,6 +117,23 @@ void main() {
     final restored = await const ProjectStore().load(initial.id, directory);
     expect(restored.name, 'Version 3');
     expect(await File('${directory.path}/queued-project.editproj.bak').exists(), isTrue);
+  });
+
+  test('project queue waits for pending autosave before deleting', () async {
+    final directory = await Directory.systemTemp.createTemp('editor_project_delete_queue');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = _BlockingProjectStore();
+    final queue = ProjectSaveQueue(store: store);
+    const project = EditorProject(id: 'queued-delete', name: 'Queued delete');
+
+    final save = queue.save(project, directory);
+    await store.saveStarted.future;
+    final deletion = queue.delete(project.id, directory);
+
+    expect(store.operations, ['save-start']);
+    store.releaseSave.complete();
+    await Future.wait([save, deletion]);
+    expect(store.operations, ['save-start', 'save-end', 'delete']);
   });
 
   test('delete removes project and sidecar files', () async {
