@@ -58,7 +58,8 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
 
   String _safeFileName(String name) {
     final safe = name.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
-    return safe.isEmpty ? 'editore_video' : safe.substring(0, safe.length.clamp(1, 64));
+    if (safe.isEmpty) return 'editore_video';
+    return safe.length > 64 ? safe.substring(0, 64) : safe;
   }
 
   Future<void> _startExport() async {
