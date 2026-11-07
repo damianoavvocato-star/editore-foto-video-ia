@@ -32,6 +32,21 @@ void main() {
       api.close();
     });
 
+    test('rejects API base URLs containing paths or query parameters', () {
+      expect(
+        () => RemoteMediaApi(
+          baseUri: Uri.parse('https://api.example.com/v1?tenant=demo'),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => RemoteMediaApi(
+          baseUri: Uri.parse('https://api.example.com/v1'),
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('rejects URL-embedded credentials and fragments', () {
       expect(
         () => RemoteMediaApi(
