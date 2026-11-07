@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, traceback, hmac
+import os, uuid, shutil, subprocess, threading, time, traceback, hmac, ipaddress
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
@@ -63,6 +63,19 @@ async def auth(request, call_next):
             return JSONResponse(
                 {'detail': 'Server authentication is not configured'},
                 status_code=503,
+            )
+        # The development bypass is restricted by the actual TCP peer address;
+        # a configuration flag alone must never expose unauthenticated routes.
+        peer_host = request.client.host if request.client is not None else ''
+        try:
+            is_loopback = ipaddress.ip_address(peer_host).is_loopback
+        except ValueError:
+            is_loopback = False
+        if not is_loopback:
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                {'detail': 'Unauthenticated access is restricted to local connections'},
+                status_code=403,
             )
     else:
         provided = request.headers.get('authorization', '')
