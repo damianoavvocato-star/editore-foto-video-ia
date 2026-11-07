@@ -24,12 +24,12 @@ def test_non_owner_cannot_grant_or_revoke(tmp_path):
 
 def test_family_members_inherit_active_family_grant_and_seat_limit(tmp_path):
     store = EntitlementStore(tmp_path / "entitlements.sqlite3")
-    family = store.create_family("family_owner")
+    family = store.create_family("family_owner", seat_limit=2)
     store.grant("owner", "platform_owner", "family_owner", "family")
-    store.add_family_member(family, "family_owner", "member1", seat_limit=2)
+    store.add_family_member(family, "family_owner", "member1")
     assert store.has_premium("member1")
     with pytest.raises(EntitlementError, match="posti"):
-        store.add_family_member(family, "family_owner", "member2", seat_limit=2)
+        store.add_family_member(family, "family_owner", "member2")
 
 
 def test_non_family_member_cannot_add_seats(tmp_path):

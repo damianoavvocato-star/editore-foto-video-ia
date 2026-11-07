@@ -36,6 +36,7 @@ class EntitlementStore:
             db.execute("CREATE INDEX IF NOT EXISTS family_member_idx ON family_members(user_id, removed_at)")
             db.execute("""CREATE TABLE IF NOT EXISTS family_groups (
                 family_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL UNIQUE,
+                seat_limit INTEGER NOT NULL CHECK(seat_limit BETWEEN 2 AND 10),
                 created_at INTEGER NOT NULL
             )""")
 
@@ -77,14 +78,14 @@ class EntitlementStore:
             )
             return result.rowcount == 1
 
-    def create_family(self, owner_user_id: str, family_id: str | None = None) -> str:
+    def create_family(self, owner_user_id: str, family_id: str | None = None, seat_limit: int = 5) -> str:
         family_id = family_id or uuid.uuid4().hex
-        if not family_id or len(family_id) > 64:
-            raise EntitlementError("Identificativo famiglia non valido.")
+        if not family_id or len(family_id) > 64 or not isinstance(seat_limit, int) or not 2 <= seat_limit <= 10:
+            raise EntitlementError("Identificativo famiglia o limite posti non valido.")
         with self._connect() as db:
             db.execute(
-                "INSERT INTO family_groups(family_id,owner_user_id,created_at) VALUES(?,?,?)",
-                (family_id, owner_user_id, int(time.time())),
+                "INSERT INTO family_groups(family_id,owner_user_id,seat_limit,created_at) VALUES(?,?,?,?)",
+                (family_id, owner_user_id, seat_limit, int(time.time())),
             )
             db.execute(
                 "INSERT INTO family_members(family_id,user_id,added_at) VALUES(?,?,?)",
@@ -93,14 +94,14 @@ class EntitlementStore:
         return family_id
 
     def add_family_member(
-        self, family_id: str, actor_user_id: str, user_id: str, seat_limit: int = 5
+        self, family_id: str, actor_user_id: str, user_id: str
     ) -> None:
-        if not 2 <= seat_limit <= 10 or not user_id or len(user_id) > 128:
-            raise EntitlementError("Limite posti o account non valido.")
+        if not user_id or len(user_id) > 128:
+            raise EntitlementError("Account non valido.")
         now = int(time.time())
         with self._connect() as db:
             owner = db.execute(
-                "SELECT 1 FROM family_groups WHERE family_id=? AND owner_user_id=?",
+                "SELECT seat_limit FROM family_groups WHERE family_id=? AND owner_user_id=?",
                 (family_id, actor_user_id),
             ).fetchone()
             if owner is None:
@@ -109,7 +110,7 @@ class EntitlementStore:
                 "SELECT COUNT(*) AS n FROM family_members WHERE family_id=? AND removed_at IS NULL",
                 (family_id,),
             ).fetchone()["n"]
-            if count >= seat_limit:
+            if count >= owner["seat_limit"]:
                 raise EntitlementError("Numero massimo di posti famiglia raggiunto.")
             try:
                 db.execute(
