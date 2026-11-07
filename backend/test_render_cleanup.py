@@ -63,7 +63,6 @@ def test_failed_final_render_removes_partial_output(tmp_path, monkeypatch):
                 ],
             },
             {"resolution": "p720", "fps": 24, "container": "mp4"},
-            SimpleNamespace(state=SimpleNamespace(account=None, local_dev=True)),
         )
 
         assert server.jobs[job_id]["state"] == "failed"
