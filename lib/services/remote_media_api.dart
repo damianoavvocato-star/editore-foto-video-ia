@@ -11,18 +11,34 @@ import 'export_coordinator.dart';
 /// The server is responsible for actual ML inference and media encoding.
 class RemoteMediaApi {
   RemoteMediaApi({required Uri baseUri, HttpClient? client, this.bearerToken})
-      : baseUri = baseUri,
-        _client = client ?? HttpClient() {
-    if (!baseUri.hasScheme || !{'http', 'https'}.contains(baseUri.scheme)) {
-      throw ArgumentError.value(baseUri, 'baseUri', 'È richiesto un URL HTTP(S).');
+      : baseUri = _validateBaseUri(baseUri),
+        _client = client ?? HttpClient();
+
+  /// Reject clear-text remote endpoints at the transport boundary, not only
+  /// in the UI. Bearer credentials and uploaded media must use HTTPS.
+  /// Plain HTTP remains available for local development and Android emulator
+  /// host access.
+  static Uri _validateBaseUri(Uri uri) {
+    if (!uri.hasScheme || !{'http', 'https'}.contains(uri.scheme)) {
+      throw ArgumentError.value(uri, 'baseUri', 'È richiesto un URL HTTP(S).');
     }
-    if (baseUri.userInfo.isNotEmpty || baseUri.fragment.isNotEmpty) {
+    if (uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
       throw ArgumentError.value(
-        baseUri,
+        uri,
         'baseUri',
         'L’indirizzo API non può contenere credenziali o frammenti.',
       );
     }
+    final localHttp = uri.scheme == 'http' &&
+        {'localhost', '127.0.0.1', '10.0.2.2', '::1'}.contains(uri.host);
+    if (uri.scheme == 'http' && !localHttp) {
+      throw ArgumentError.value(
+        uri,
+        'baseUri',
+        'HTTP non cifrato è consentito solo per endpoint locali; usa HTTPS per server remoti.',
+      );
+    }
+    return uri;
   }
 
   final Uri baseUri;
