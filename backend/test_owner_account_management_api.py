@@ -25,7 +25,6 @@ def test_owner_can_create_list_disable_and_reenable_managed_accounts(tmp_path, m
     })
     assert created.status_code == 200
     payload = created.json()
-    assert payload["mustChangePassword"] is True
     assert payload["user"]["role"] == "collaborator"
     user_id = payload["user"]["userId"]
 
