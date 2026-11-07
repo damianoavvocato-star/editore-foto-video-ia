@@ -11,7 +11,7 @@ from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
-from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
+from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured\nfrom backend.accounts import AccountError, AccountStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -84,6 +84,72 @@ async def auth(request, call_next):
             from starlette.responses import JSONResponse
             return JSONResponse({'detail': 'Unauthorized'}, status_code=401)
     return await call_next(request)
+
+
+class AuthCredentials(BaseModel):
+    username: str
+    password: str
+
+
+def _account_store() -> AccountStore:
+    return AccountStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _bearer_token(request) -> str | None:
+    value = request.headers.get('authorization', '')
+    scheme, _, token = value.partition(' ')
+    return token.strip() if scheme.lower() == 'bearer' and token.strip() else None
+
+
+def _bootstrap_owner(store: AccountStore) -> None:
+    username = os.getenv('MEDIA_OWNER_USERNAME', '').strip()
+    password = os.getenv('MEDIA_OWNER_PASSWORD', '')
+    if username and password:
+        store.bootstrap_owner(username, password)
+
+
+@app.post('/v1/auth/register')
+def register_account(body: AuthCredentials):
+    if os.getenv('MEDIA_ALLOW_REGISTRATION', '').strip().lower() != 'true':
+        raise HTTPException(403, 'Registrazione non disponibile.')
+    store = _account_store()
+    _bootstrap_owner(store)
+    try:
+        account = store.register(body.username, body.password)
+        token, expires = store.issue_session(account['userId'])
+    except AccountError as exc:
+        raise HTTPException(409 if 'già utilizzato' in str(exc) else 422, str(exc)) from exc
+    return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
+
+
+@app.post('/v1/auth/login')
+def login_account(body: AuthCredentials):
+    store = _account_store()
+    _bootstrap_owner(store)
+    try:
+        account, token, expires = store.login(body.username, body.password)
+    except AccountError as exc:
+        raise HTTPException(401, 'Credenziali non valide.') from exc
+    return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
+
+
+@app.get('/v1/auth/me')
+def current_account(request):
+    store = _account_store()
+    account = store.resolve_session(_bearer_token(request))
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    return {'user': account}
+
+
+@app.delete('/v1/auth/logout')
+def logout_account(request):
+    store = _account_store()
+    token = _bearer_token(request)
+    if not store.revoke_session(token):
+        raise HTTPException(401, 'Sessione non valida o già revocata.')
+    return {'ok': True}
+
 
 @app.get('/health')
 def health():
