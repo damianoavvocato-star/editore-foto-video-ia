@@ -35,3 +35,14 @@ def test_non_owner_cannot_change_permissions(tmp_path):
         policy.set_override("admin", "u1", "accounts.create", "allow")
     with pytest.raises(PermissionError):
         policy.remove_override("support", "u1", "accounts.read")
+
+
+def test_owner_can_review_permission_overrides_and_effective_set(tmp_path):
+    policy = PermissionPolicy(tmp_path / "permissions.sqlite3")
+    policy.set_override("owner", "support1", "billing.read", "deny")
+    policy.set_override("owner", "support1", "accounts.read", "allow")
+    assert policy.list_overrides("owner", "support1")[0]["permission"] == "accounts.read"
+    assert "accounts.read" in policy.effective_permissions("support1", "support")
+    assert "billing.read" not in policy.effective_permissions("support1", "support")
+    with pytest.raises(PermissionError):
+        policy.list_overrides("admin", "support1")

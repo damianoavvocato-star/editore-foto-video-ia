@@ -120,6 +120,43 @@ class EntitlementStore:
             except sqlite3.IntegrityError as exc:
                 raise EntitlementError("Account già presente nella famiglia.") from exc
 
+    def remove_family_member(self, family_id: str, actor_user_id: str, user_id: str) -> bool:
+        """Remove a family seat; only the immutable family owner may do so."""
+        if not user_id or len(user_id) > 128:
+            raise EntitlementError("Account non valido.")
+        with self._connect() as db:
+            owner = db.execute(
+                "SELECT 1 FROM family_groups WHERE family_id=? AND owner_user_id=?",
+                (family_id, actor_user_id),
+            ).fetchone()
+            if owner is None:
+                raise EntitlementError("Solo il titolare della famiglia può rimuovere membri.")
+            if user_id == actor_user_id:
+                raise EntitlementError("Il titolare non può rimuovere sé stesso.")
+            result = db.execute(
+                """UPDATE family_members SET removed_at=?
+                   WHERE family_id=? AND user_id=? AND removed_at IS NULL""",
+                (int(time.time()), family_id, user_id),
+            )
+            return result.rowcount == 1
+
+    def list_grants(self, actor_role: str, user_id: str, limit: int = 50) -> list[dict]:
+        """Return grant metadata without secrets; owner-only."""
+        if actor_role != "owner":
+            raise EntitlementError("Operazione riservata al proprietario.")
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            limit = 50
+        limit = max(1, min(100, limit))
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT grant_id,user_id,plan,starts_at,expires_at,revoked_at,
+                          actor_user_id,reason
+                   FROM premium_grants WHERE user_id=?
+                   ORDER BY starts_at DESC,grant_id LIMIT ?""",
+                (user_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def has_premium(self, user_id: str, now: int | None = None) -> bool:
         current = int(time.time()) if now is None else now
         with self._connect() as db:

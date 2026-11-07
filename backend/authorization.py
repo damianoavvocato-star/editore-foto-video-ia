@@ -82,6 +82,23 @@ class PermissionPolicy:
                 (user_id, permission, effect, int(time.time())),
             )
 
+    def list_overrides(self, actor_role: str, user_id: str) -> list[dict]:
+        if actor_role != "owner":
+            raise PermissionError("Operazione riservata al proprietario.")
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT permission,effect,updated_at FROM permission_overrides
+                   WHERE user_id=? ORDER BY permission""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def effective_permissions(self, user_id: str, role: str) -> list[str]:
+        if role not in ROLE_DEFAULTS:
+            return []
+        return sorted(permission for permission in PERMISSIONS
+                      if self.has_permission(user_id, role, permission))
+
     def remove_override(
         self, actor_role: str, user_id: str, permission: str
     ) -> bool:

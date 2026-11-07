@@ -37,3 +37,28 @@ def test_non_family_member_cannot_add_seats(tmp_path):
     family = store.create_family("family_owner")
     with pytest.raises(EntitlementError):
         store.add_family_member(family, "intruder", "member1")
+
+
+def test_family_owner_can_remove_member_but_not_self(tmp_path):
+    store = EntitlementStore(tmp_path / "entitlements.sqlite3")
+    family = store.create_family("owner")
+    store.grant("owner", "platform", "owner", "family")
+    store.add_family_member(family, "owner", "member")
+    assert store.has_premium("member")
+    assert store.remove_family_member(family, "owner", "member")
+    assert not store.has_premium("member")
+    with pytest.raises(EntitlementError, match="sé stesso"):
+        store.remove_family_member(family, "owner", "owner")
+    with pytest.raises(EntitlementError):
+        store.remove_family_member(family, "intruder", "member")
+
+
+def test_grant_history_is_owner_only_and_contains_metadata_only(tmp_path):
+    store = EntitlementStore(tmp_path / "entitlements.sqlite3")
+    grant = store.grant("owner", "platform", "member", "premium", reason="support")
+    history = store.list_grants("owner", "member")
+    assert history[0]["grant_id"] == grant
+    assert history[0]["reason"] == "support"
+    assert "password" not in str(history).lower()
+    with pytest.raises(EntitlementError):
+        store.list_grants("admin", "member")
