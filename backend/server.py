@@ -141,6 +141,7 @@ def create_render(body: RenderBody):
 
 def _render_job(job_id: str, project: dict, settings: dict):
     work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True)
+    output: Path | None = None
     try:
         if cancel_events.get(job_id, threading.Event()).is_set():
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
@@ -330,6 +331,9 @@ def _render_job(job_id: str, project: dict, settings: dict):
         else:
             with lock: jobs[job_id].update(state='completed',progress=1.0,message='Rendering completato',downloadUrl=f'/v1/outputs/{job_id}')
     except Exception:
+        # Remove a partially written output when FFmpeg or post-processing fails.
+        if output is not None:
+            output.unlink(missing_ok=True)
         # Keep detailed diagnostics in server logs, never expose tracebacks or
         # filesystem paths through the client-facing job status endpoint.
         logging.exception('Media render job %s failed', job_id)
