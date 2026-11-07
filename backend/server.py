@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, logging, hmac, ipaddress
+import os, uuid, shutil, subprocess, threading, time, logging, ipaddress
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
@@ -56,37 +56,29 @@ lock = threading.Lock()
 
 @app.middleware('http')
 async def auth(request, call_next):
-    # Auth endpoints validate their own opaque per-user session tokens.
-    # Media routes remain behind the legacy shared-token gate until ownership migration is complete.
+    # Auth endpoints validate their own credentials; every media endpoint uses
+    # an individual, revocable account session. The legacy shared token is not
+    # accepted for user data because it cannot provide per-user isolation.
     if request.url.path == '/health' or request.url.path.startswith('/v1/auth/'):
         return await call_next(request)
-    if not TOKEN:
-        if not ALLOW_INSECURE_LOCAL:
-            from starlette.responses import JSONResponse
-            return JSONResponse(
-                {'detail': 'Server authentication is not configured'},
-                status_code=503,
-            )
-        # The development bypass is restricted by the actual TCP peer address;
-        # a configuration flag alone must never expose unauthenticated routes.
-        peer_host = request.client.host if request.client is not None else ''
-        try:
-            is_loopback = ipaddress.ip_address(peer_host).is_loopback
-        except ValueError:
-            is_loopback = False
-        if not is_loopback:
-            from starlette.responses import JSONResponse
-            return JSONResponse(
-                {'detail': 'Unauthenticated access is restricted to local connections'},
-                status_code=403,
-            )
-    else:
-        provided = request.headers.get('authorization', '')
-        expected = f'Bearer {TOKEN}'
-        if not hmac.compare_digest(provided.encode('utf-8'), expected.encode('utf-8')):
-            from starlette.responses import JSONResponse
-            return JSONResponse({'detail': 'Unauthorized'}, status_code=401)
-    return await call_next(request)
+    account = _account_store().resolve_session(_bearer_token(request))
+    if account is not None:
+        request.state.account = account
+        request.state.local_dev = False
+        return await call_next(request)
+    # Explicit local-only escape hatch for isolated development and tests.
+    # It is never available to non-loopback peers and must be disabled in production.
+    peer_host = request.client.host if request.client is not None else ''
+    try:
+        is_loopback = ipaddress.ip_address(peer_host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if ALLOW_INSECURE_LOCAL and is_loopback:
+        request.state.account = None
+        request.state.local_dev = True
+        return await call_next(request)
+    from starlette.responses import JSONResponse
+    return JSONResponse({'detail': 'Sessione account obbligatoria.'}, status_code=401)
 
 
 class AuthCredentials(BaseModel):
@@ -109,6 +101,33 @@ def _bootstrap_owner(store: AccountStore) -> None:
     password = os.getenv('MEDIA_OWNER_PASSWORD', '')
     if username and password:
         store.bootstrap_owner(username, password)
+
+
+def _request_account(request: Request) -> dict[str, Any] | None:
+    """Return the middleware-verified account; None is local-dev only."""
+    account = getattr(request.state, 'account', None)
+    if account is None and not getattr(request.state, 'local_dev', False):
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    return account
+
+
+def _require_resource_owner(request: Request, resource_type: str, resource_id: str) -> None:
+    account = _request_account(request)
+    if account is None:  # explicit loopback-only development mode
+        return
+    if not _account_store().owns_media_resource(resource_type, resource_id, account['userId']):
+        # 404 avoids disclosing whether another user's identifier exists.
+        raise HTTPException(404, 'Risorsa non trovata.')
+
+
+def _claim_resource(request: Request, resource_type: str, resource_id: str) -> None:
+    account = _request_account(request)
+    if account is None:
+        return
+    try:
+        _account_store().claim_media_resource(resource_type, resource_id, account['userId'])
+    except AccountError as exc:
+        raise HTTPException(409, 'Impossibile associare la risorsa all’account.') from exc
 
 
 @app.post('/v1/auth/register')
@@ -164,7 +183,8 @@ def health():
     return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': provider_configured()}
 
 @app.post('/v1/assets')
-async def upload_asset(file: UploadFile = File(...)):
+async def upload_asset(request: Request, file: UploadFile = File(...)):
+    _request_account(request)
     # Never trust a client filename; retain only a small allow-list of media extensions.
     suffix = Path(file.filename or '').suffix.lower()
     allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v', '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac'}
@@ -187,6 +207,11 @@ async def upload_asset(file: UploadFile = File(...)):
         raise
     finally:
         await file.close()
+    try:
+        _claim_resource(request, 'asset', asset_id)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
     return {'assetId': asset_id, 'size': size}
 
 class RenderBody(BaseModel):
@@ -194,12 +219,14 @@ class RenderBody(BaseModel):
     settings: dict[str, Any] = {}
 
 @app.post('/v1/render/jobs')
-def create_render(body: RenderBody):
+def create_render(body: RenderBody, request: Request):
+    account = _request_account(request)
     # Bound project complexity before starting background FFmpeg work.
     tracks = body.project.get('tracks', [])
     if not isinstance(tracks, list) or len(tracks) > 64:
         raise HTTPException(422, 'Numero di tracce non valido (massimo 64)')
     total_clips = 0
+    referenced_assets: set[str] = set()
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get('clips', []), list):
             raise HTTPException(422, 'Struttura della traccia non valida')
@@ -215,10 +242,15 @@ def create_render(body: RenderBody):
                 asset_id = clip.get('assetId')
                 if not isinstance(asset_id, str) or not _valid_id(asset_id):
                     raise HTTPException(422, 'Identificativo media non valido')
+                referenced_assets.add(asset_id)
         total_clips += len(track.get('clips', []))
     if total_clips > 500:
         raise HTTPException(422, 'Troppe clip nel progetto (massimo 500)')
+    if account is not None:
+        for asset_id in referenced_assets:
+            _require_resource_owner(request, 'asset', asset_id)
     job_id = uuid.uuid4().hex
+    _claim_resource(request, 'job', job_id)
     with lock:
         jobs[job_id] = {'state':'queued','progress':0.0,'message':'In coda'}
         cancel_events[job_id] = threading.Event()
@@ -434,15 +466,17 @@ def _render_job(job_id: str, project: dict, settings: dict):
         shutil.rmtree(work, ignore_errors=True)
 
 @app.get('/v1/jobs/{job_id}')
-def get_job(job_id: str):
+def get_job(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock: data=jobs.get(job_id)
     if not data: raise HTTPException(404,'Job non trovato')
     return data
 
 @app.delete('/v1/jobs/{job_id}')
-def cancel_job(job_id: str):
+def cancel_job(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock:
         if job_id not in jobs: raise HTTPException(404,'Job non trovato')
         if jobs[job_id]['state'] in {'queued','rendering'}:
@@ -451,8 +485,9 @@ def cancel_job(job_id: str):
     return {'ok':True}
 
 @app.get('/v1/outputs/{job_id}')
-def download_output(job_id: str):
+def download_output(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock:
         job = jobs.get(job_id)
         if not job: raise HTTPException(404, 'Job non trovato')
@@ -490,7 +525,8 @@ def _magic_job(job_id: str, asset_paths: dict[str, Path], options: dict[str, Any
 
 
 @app.post('/v1/ai/jobs')
-def create_ai_job(body: dict[str, Any]):
+def create_ai_job(body: dict[str, Any], request: Request):
+    account = _request_account(request)
     if not provider_configured():
         raise HTTPException(
             503,
@@ -509,6 +545,9 @@ def create_ai_job(body: dict[str, Any]):
     if len(set(asset_ids)) != len(asset_ids):
         raise HTTPException(422, 'La selezione contiene media duplicati.')
 
+    if account is not None:
+        for asset_id in asset_ids:
+            _require_resource_owner(request, 'asset', asset_id)
     asset_paths: dict[str, Path] = {}
     allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v'}
     for asset_id in asset_ids:
@@ -525,6 +564,7 @@ def create_ai_job(body: dict[str, Any]):
     if not isinstance(options, dict):
         raise HTTPException(422, 'Opzioni MagicIAedit non valide.')
     job_id = uuid.uuid4().hex
+    _claim_resource(request, 'job', job_id)
     with lock:
         jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
         cancel_events[job_id] = threading.Event()
