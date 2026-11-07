@@ -145,3 +145,27 @@ def test_insecure_mode_rejects_non_loopback_clients(monkeypatch):
     response = remote_client.get('/v1/jobs/' + '2' * 32)
     assert response.status_code == 403
     assert response.json()['detail'] == 'Unauthenticated access is restricted to local connections'
+
+
+
+def test_render_failure_does_not_expose_server_traceback(tmp_path, monkeypatch):
+    job_id = '9' * 32
+    monkeypatch.setattr(server, 'ROOT', tmp_path)
+    monkeypatch.setattr(server.shutil, 'which', lambda _binary: None)
+    server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'Queued'}
+    server.cancel_events[job_id] = __import__('threading').Event()
+
+    try:
+        server._render_job(job_id, {'tracks': []}, {})
+        status = TestClient(server.app).get('/v1/jobs/' + job_id)
+        assert status.status_code == 200
+        payload = status.json()
+        assert payload['state'] == 'failed'
+        assert payload['error'] == (
+            'Errore interno durante il rendering. Consultare i log del server.'
+        )
+        assert 'Traceback' not in str(payload)
+        assert str(tmp_path) not in str(payload)
+    finally:
+        server.jobs.pop(job_id, None)
+        server.cancel_events.pop(job_id, None)
