@@ -93,13 +93,18 @@ void main() {
       find.widgetWithText(TextField, 'Indirizzo del server media'),
       'https://api.example.com',
     );
+    // Dismiss the virtual keyboard before scrolling the lazy list. Otherwise
+    // the viewport can change during the scroll and detach the target finder.
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
     final exportButton = find.text('Avvia esportazione');
     await tester.scrollUntilVisible(
       exportButton,
-      300,
+      250,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
+    expect(exportButton, findsOneWidget);
     await tester.tap(exportButton);
     await tester.pump();
 
