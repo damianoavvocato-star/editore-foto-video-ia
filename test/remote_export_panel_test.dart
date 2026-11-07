@@ -39,6 +39,8 @@ void main() {
 
     expect(find.text('Esporta progetto'), findsOneWidget);
     expect(find.text('Impostazioni esportazione'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Avvia esportazione'));
     await tester.pump();
 
@@ -60,6 +62,8 @@ void main() {
       ),
     ));
 
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
     final button = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Avvia esportazione'),
     );
