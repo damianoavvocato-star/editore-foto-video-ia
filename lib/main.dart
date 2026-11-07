@@ -517,6 +517,13 @@ class _HomePageState extends State<HomePage> {
     _persistProject(updated);
   }
 
+  Future<bool> _applyMagicIAeditProject(EditorProject updated) async {
+    final saved = await _persistProject(updated);
+    if (!saved || !mounted) return false;
+    setState(() => project = updated);
+    return true;
+  }
+
   String t(String key) => Copy.get(widget.language, key);
 
   Future<void> importMedia() async {
@@ -752,7 +759,7 @@ class _HomePageState extends State<HomePage> {
             final editor = selectedTab == 2
                 ? MagicIAeditPanel(
                     project: project,
-                    onProjectChanged: _handleProjectChanged,
+                    onProjectChanged: _applyMagicIAeditProject,
                     onMessage: _message,
                   )
                 : _buildEditor(context);
