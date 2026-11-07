@@ -26,7 +26,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
 
   static const Map<String, Map<String, String>> _translations = {
     'it': {
-      'undo': 'Annulla', 'redo': 'Ripeti', 'split': 'Dividi al cursore',
+      'timeline': 'Timeline', 'undo': 'Annulla', 'redo': 'Ripeti', 'split': 'Dividi al cursore',
       'duplicate': 'Duplica', 'delete': 'Elimina', 'unmute': 'Riattiva audio',
       'mute': 'Silenzia traccia', 'unlock': 'Sblocca traccia',
       'lock': 'Blocca traccia', 'clip': 'Clip', 'duration': 'Durata',
@@ -39,7 +39,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'locked': 'Traccia bloccata: sbloccarla per modificare la clip.',
     },
     'en': {
-      'undo': 'Undo', 'redo': 'Redo', 'split': 'Split at playhead',
+      'timeline': 'Timeline', 'undo': 'Undo', 'redo': 'Redo', 'split': 'Split at playhead',
       'duplicate': 'Duplicate', 'delete': 'Delete', 'unmute': 'Unmute track',
       'mute': 'Mute track', 'unlock': 'Unlock track', 'lock': 'Lock track',
       'clip': 'Clip', 'duration': 'Duration', 'speed': 'Speed',
@@ -51,7 +51,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'locked': 'Track locked: unlock it to edit this clip.',
     },
     'fr': {
-      'undo': 'Annuler', 'redo': 'Rétablir', 'split': 'Couper à la tête de lecture',
+      'timeline': 'Chronologie', 'undo': 'Annuler', 'redo': 'Rétablir', 'split': 'Couper à la tête de lecture',
       'duplicate': 'Dupliquer', 'delete': 'Supprimer', 'unmute': 'Réactiver le son',
       'mute': 'Couper le son', 'unlock': 'Déverrouiller la piste',
       'lock': 'Verrouiller la piste', 'clip': 'Clip', 'duration': 'Durée',
@@ -64,7 +64,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'locked': 'Piste verrouillée : déverrouillez-la pour modifier ce clip.',
     },
     'es': {
-      'undo': 'Deshacer', 'redo': 'Rehacer', 'split': 'Dividir en el cursor',
+      'timeline': 'Línea de tiempo', 'undo': 'Deshacer', 'redo': 'Rehacer', 'split': 'Dividir en el cursor',
       'duplicate': 'Duplicar', 'delete': 'Eliminar', 'unmute': 'Activar sonido',
       'mute': 'Silenciar pista', 'unlock': 'Desbloquear pista',
       'lock': 'Bloquear pista', 'clip': 'Clip', 'duration': 'Duración',
@@ -77,7 +77,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'locked': 'Pista bloqueada: desbloquéala para editar este clip.',
     },
     'ar': {
-      'undo': 'تراجع', 'redo': 'إعادة', 'split': 'تقسيم عند مؤشر التشغيل',
+      'timeline': 'الخط الزمني', 'undo': 'تراجع', 'redo': 'إعادة', 'split': 'تقسيم عند مؤشر التشغيل',
       'duplicate': 'تكرار', 'delete': 'حذف', 'unmute': 'إلغاء كتم المسار',
       'mute': 'كتم المسار', 'unlock': 'إلغاء قفل المسار',
       'lock': 'قفل المسار', 'clip': 'مقطع', 'duration': 'المدة',
@@ -134,6 +134,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           playheadMs: _session.playheadMs,
           onClipSelected: _session.selectClip,
           onPlayheadChanged: _session.setPlayhead,
+          title: _t('timeline'),
         ),
         Card(
           child: Padding(
