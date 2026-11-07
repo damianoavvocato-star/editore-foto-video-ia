@@ -27,7 +27,7 @@ Questa è una base tecnica per gli account individuali, non un sistema multiuten
 - `POST /v1/auth/register`: crea un account utente se la registrazione è abilitata.
 - `POST /v1/auth/login`: verifica credenziali e rilascia token sessione.
 - `GET /v1/auth/me`: restituisce l'identità associata al token sessione.
-- `DELETE /v1/auth/logout`: revoca la sessione corrente.
+- `DELETE /v1/auth/logout`: revoca la sessione corrente.\n- `GET /v1/owner/audit?limit=50`: consultazione paginata degli eventi audit, esclusivamente per l'account con ruolo `owner`.
 
 Le API account validano il token individuale. Tutte le API media (`/v1/assets`, `/v1/render/jobs`, `/v1/ai/jobs`, `/v1/jobs/{id}` e `/v1/outputs/{id}`) richiedono una sessione account e associano/verificano le risorse lato server. Il vecchio `MEDIA_API_TOKEN` condiviso non è accettato come identità utente: un token condiviso non può garantire isolamento. `MEDIA_ALLOW_INSECURE_LOCAL=true` consente ancora un bypass esclusivamente per connessioni loopback locali; deve restare disattivato in produzione.
 
@@ -35,7 +35,7 @@ Le API account validano il token individuale. Tutte le API media (`/v1/assets`, 
 
 1. Estendere ownership a progetti persistenti, file temporanei, eventuali endpoint asset read/delete e ogni nuova risorsa media.
 2. Migrare o isolare i dati preesistenti senza esporli a utenti diversi; le risorse storiche prive di proprietario non devono essere rese visibili automaticamente.
-3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. L'API di lettura audit non è ancora esposta.
+3. Integrare il registro audit nelle future operazioni amministrative; aggiungere reset password verificato, 2FA proprietario, inviti collaboratori e RBAC granulare. L'API `GET /v1/owner/audit` è esposta solo al ruolo `owner`; non è ancora collegata a una UI Flutter e le operazioni di amministrazione account non sono ancora implementate.
 4. Aggiungere protezione CSRF se si introducono cookie di sessione, gestione sicura dei token sui client e revoca globale delle sessioni.
 5. Eseguire test IDOR, escalation privilegi, session fixation/replay, rate limiting multi-processo, migrazione DB, backup e restore.
 6. Integrare il client Flutter con login/logout e gestione scadenza sessione, solo dopo aver definito il contratto API definitivo.
