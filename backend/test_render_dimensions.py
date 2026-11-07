@@ -17,3 +17,7 @@ def test_render_dimensions_use_safe_defaults_for_invalid_project_size():
 
 def test_render_dimensions_clamp_invalid_resolution_to_1080p():
     assert _render_dimensions({'width': 1920, 'height': 1080}, 'unknown') == (1920, 1080)
+
+def test_render_dimensions_preserve_square_and_four_three_aspect_ratios():
+    assert _render_dimensions({'width': 1000, 'height': 1000}, 'p1080') == (1920, 1920)
+    assert _render_dimensions({'width': 1440, 'height': 1080}, 'p1080') == (1920, 1440)
