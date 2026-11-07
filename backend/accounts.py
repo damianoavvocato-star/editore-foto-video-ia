@@ -67,6 +67,16 @@ class AccountStore:
             """)
             db.execute("CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_owner_only ON accounts(role) WHERE role='owner'")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS media_ownership (
+                    resource_type TEXT NOT NULL CHECK(resource_type IN ('asset','job')),
+                    resource_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY(resource_type, resource_id)
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS media_owner_idx ON media_ownership(owner_user_id, resource_type)")
             db.execute("""CREATE TABLE IF NOT EXISTS auth_rate_limits (
                 key_hash TEXT PRIMARY KEY, attempts INTEGER NOT NULL,
                 window_started INTEGER NOT NULL, blocked_until INTEGER NOT NULL
@@ -209,3 +219,45 @@ class AccountStore:
                 (int(time.time()), token_hash),
             )
         return cursor.rowcount == 1
+
+    def claim_media_resource(self, resource_type: str, resource_id: str, owner_user_id: str) -> None:
+        """Bind a server-generated asset/job identifier to one account exactly once."""
+        if resource_type not in {"asset", "job"}:
+            raise AccountError("Tipo di risorsa non valido.")
+        if not isinstance(resource_id, str) or not re.fullmatch(r"[0-9a-f]{32}", resource_id):
+            raise AccountError("Identificativo risorsa non valido.")
+        now = int(time.time())
+        try:
+            with self._connect() as db:
+                account = db.execute(
+                    "SELECT 1 FROM accounts WHERE user_id=? AND disabled_at IS NULL",
+                    (owner_user_id,),
+                ).fetchone()
+                if account is None:
+                    raise AccountError("Account non disponibile.")
+                db.execute(
+                    "INSERT INTO media_ownership(resource_type,resource_id,owner_user_id,created_at) VALUES(?,?,?,?)",
+                    (resource_type, resource_id, owner_user_id, now),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise AccountError("Risorsa già associata a un account.") from exc
+
+    def owns_media_resource(self, resource_type: str, resource_id: str, owner_user_id: str) -> bool:
+        if resource_type not in {"asset", "job"}:
+            return False
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM media_ownership WHERE resource_type=? AND resource_id=? AND owner_user_id=?",
+                (resource_type, resource_id, owner_user_id),
+            ).fetchone()
+        return row is not None
+
+    def get_media_resource_owner(self, resource_type: str, resource_id: str) -> str | None:
+        if resource_type not in {"asset", "job"}:
+            return None
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT owner_user_id FROM media_ownership WHERE resource_type=? AND resource_id=?",
+                (resource_type, resource_id),
+            ).fetchone()
+        return row["owner_user_id"] if row else None
