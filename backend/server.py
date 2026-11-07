@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
 from backend.accounts import AccountError, AccountStore
 from backend.authorization import PermissionError as PolicyError, PermissionPolicy
+from backend.entitlements import EntitlementError, EntitlementStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -230,6 +231,12 @@ class OwnerCreateAccount(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     temporaryPassword: str = Field(min_length=12, max_length=1024)
     role: str = Field(min_length=3, max_length=32)
+
+
+class OwnerPremiumGrant(BaseModel):
+    plan: str = Field(pattern=r"^(premium|family)$")
+    expiresAt: int | None = None
+    reason: str = Field(default="Premium omaggio", min_length=1, max_length=240)
 
 
 def _require_owner(request: Request) -> dict[str, Any]:
@@ -787,3 +794,74 @@ class OwnerCreateAccount(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     temporaryPassword: str = Field(min_length=12, max_length=1024)
     role: str = Field(min_length=3, max_length=32)
+
+def _entitlement_store() -> EntitlementStore:
+    return EntitlementStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+@app.get('/v1/account/entitlement')
+def account_get_entitlement(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    active = _entitlement_store().has_premium(account['userId'])
+    return {
+        'userId': account['userId'],
+        'tier': 'premium' if active else 'free',
+        'isPremium': active,
+    }
+
+
+@app.post('/v1/owner/accounts/{user_id}/premium-grants')
+def owner_create_premium_grant(user_id: str, body: OwnerPremiumGrant, request: Request):
+    owner = _require_owner(request)
+    target = _account_store().get_account(user_id)
+    if target is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        store = _entitlement_store()
+        grant_id = store.grant(
+            'owner', owner['userId'], user_id, body.plan,
+            body.expiresAt, body.reason,
+        )
+    except EntitlementError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        owner['userId'], 'premium.grant_created', user_id,
+        {'grantId': grant_id, 'plan': body.plan, 'expiresAt': body.expiresAt, 'reason': body.reason.strip()},
+    )
+    return {
+        'grantId': grant_id,
+        'userId': user_id,
+        'plan': body.plan,
+        'expiresAt': body.expiresAt,
+        'reason': body.reason.strip(),
+    }
+
+
+@app.get('/v1/owner/accounts/{user_id}/premium-grants')
+def owner_list_premium_grants(user_id: str, request: Request, limit: int = 50):
+    _require_owner(request)
+    if _account_store().get_account(user_id) is None:
+        raise HTTPException(404, 'Account non trovato.')
+    return {'grants': _entitlement_store().list_grants('owner', user_id, limit)}
+
+
+@app.delete('/v1/owner/accounts/{user_id}/premium-grants/{grant_id}')
+def owner_revoke_premium_grant(user_id: str, grant_id: str, request: Request):
+    owner = _require_owner(request)
+    if _account_store().get_account(user_id) is None:
+        raise HTTPException(404, 'Account non trovato.')
+    store = _entitlement_store()
+    matching = [item for item in store.list_grants('owner', user_id, 100)
+                if item['grant_id'] == grant_id]
+    if not matching:
+        raise HTTPException(404, 'Concessione Premium non trovata.')
+    revoked = store.revoke('owner', grant_id)
+    if revoked:
+        _account_store().record_audit_event(
+            owner['userId'], 'premium.grant_revoked', user_id,
+            {'grantId': grant_id, 'plan': matching[0]['plan']},
+        )
+    return {'grantId': grant_id, 'userId': user_id, 'revoked': revoked}
+
