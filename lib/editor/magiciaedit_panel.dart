@@ -58,10 +58,12 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   @override
   void didUpdateWidget(covariant MagicIAeditPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.project != widget.project) {
+      _plan = null;
+    }
     if (oldWidget.project.id != widget.project.id) {
       _selectedPaths.clear();
       _selectAvailableMedia();
-      _plan = null;
     }
   }
 
@@ -105,7 +107,9 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       return;
     }
     for (final path in paths) {
-      if (!await File(path).exists()) {
+      final exists = await File(path).exists();
+      if (!mounted) return;
+      if (!exists) {
         setState(() => _error = 'Un file selezionato non è più disponibile: ${path.split(Platform.pathSeparator).last}');
         return;
       }
