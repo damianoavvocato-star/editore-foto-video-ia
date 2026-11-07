@@ -219,7 +219,10 @@ def logout_account(request: Request):
 
 class OwnerPermissionOverride(BaseModel):
     permission: str = Field(min_length=3, max_length=64)
-    effect: str = Field(pattern='^(allow|deny)
+    effect: str = Field(pattern=r"^(allow|deny)$")
+
+
+class OwnerSetRole(BaseModel):
     role: str = Field(min_length=3, max_length=32)
 
 
