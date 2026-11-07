@@ -34,6 +34,10 @@ class EntitlementStore:
                 PRIMARY KEY(family_id,user_id)
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS family_member_idx ON family_members(user_id, removed_at)")
+            db.execute("""CREATE TABLE IF NOT EXISTS family_groups (
+                family_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )""")
 
     def _connect(self):
         db = sqlite3.connect(self.database, timeout=10)
@@ -79,6 +83,10 @@ class EntitlementStore:
             raise EntitlementError("Identificativo famiglia non valido.")
         with self._connect() as db:
             db.execute(
+                "INSERT INTO family_groups(family_id,owner_user_id,created_at) VALUES(?,?,?)",
+                (family_id, owner_user_id, int(time.time())),
+            )
+            db.execute(
                 "INSERT INTO family_members(family_id,user_id,added_at) VALUES(?,?,?)",
                 (family_id, owner_user_id, int(time.time())),
             )
@@ -92,8 +100,7 @@ class EntitlementStore:
         now = int(time.time())
         with self._connect() as db:
             owner = db.execute(
-                """SELECT 1 FROM family_members
-                   WHERE family_id=? AND user_id=? AND removed_at IS NULL""",
+                "SELECT 1 FROM family_groups WHERE family_id=? AND owner_user_id=?",
                 (family_id, actor_user_id),
             ).fetchone()
             if owner is None:
@@ -124,11 +131,8 @@ class EntitlementStore:
                 return True
             family = db.execute(
                 """SELECT 1 FROM family_members fm
-                   JOIN premium_grants pg ON pg.user_id=(
-                     SELECT owner.user_id FROM family_members owner
-                     WHERE owner.family_id=fm.family_id AND owner.removed_at IS NULL
-                     ORDER BY owner.added_at LIMIT 1
-                   )
+                   JOIN family_groups fg ON fg.family_id=fm.family_id
+                   JOIN premium_grants pg ON pg.user_id=fg.owner_user_id
                    WHERE fm.user_id=? AND fm.removed_at IS NULL
                    AND pg.plan='family' AND pg.revoked_at IS NULL
                    AND pg.starts_at<=? AND (pg.expires_at IS NULL OR pg.expires_at>?)
