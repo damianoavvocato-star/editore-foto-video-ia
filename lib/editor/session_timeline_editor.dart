@@ -4,8 +4,7 @@ import '../models/editor_project.dart';
 import '../state/editor_session.dart';
 import 'timeline_panel.dart';
 
-/// Connects timeline gestures and basic clip operations to an EditorSession.
-/// The parent may persist the emitted project with ProjectStore.
+/// Connects timeline gestures and clip operations to an EditorSession.
 class SessionTimelineEditor extends StatefulWidget {
   const SessionTimelineEditor({
     super.key,
@@ -52,7 +51,9 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   @override
   Widget build(BuildContext context) {
     final selected = _session.selectedClip;
-    final locked = _session.selectedTrack?.locked ?? true;
+    final track = _session.selectedTrack;
+    final locked = track?.locked ?? true;
+    final transition = selected?.transitionAfter ?? 'fade';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -71,7 +72,6 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  alignment: WrapAlignment.spaceBetween,
                   children: [
                     OutlinedButton.icon(
                       onPressed: _session.canUndo ? _session.undo : null,
@@ -84,11 +84,29 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                       label: const Text('Ripeti'),
                     ),
                     FilledButton.icon(
-                      onPressed: selected == null || locked
-                          ? null
-                          : _session.splitSelected,
+                      onPressed: selected == null || locked ? null : _session.splitSelected,
                       icon: const Icon(Icons.content_cut),
                       label: const Text('Dividi al cursore'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: selected == null || locked ? null : _session.duplicateSelected,
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Duplica'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: selected == null || locked ? null : () => _session.deleteSelected(),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Elimina'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: track == null ? null : _session.toggleSelectedTrackMuted,
+                      icon: Icon(track?.muted == true ? Icons.volume_off : Icons.volume_up),
+                      label: Text(track?.muted == true ? 'Riattiva audio' : 'Silenzia traccia'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: track == null ? null : _session.toggleSelectedTrackLocked,
+                      icon: Icon(track?.locked == true ? Icons.lock_open : Icons.lock),
+                      label: Text(track?.locked == true ? 'Sblocca traccia' : 'Blocca traccia'),
                     ),
                   ],
                 ),
@@ -105,9 +123,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                     max: 60000,
                     divisions: 119,
                     value: selected.durationMs.clamp(500, 60000).toDouble(),
-                    onChanged: locked
-                        ? null
-                        : (value) => _session.trimSelected(value.round()),
+                    onChanged: locked ? null : (value) => _session.trimSelected(value.round()),
                   ),
                   Row(
                     children: [
@@ -119,14 +135,59 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                           max: 4,
                           divisions: 15,
                           value: selected.speed.clamp(0.25, 4).toDouble(),
-                          onChanged: locked
-                              ? null
-                              : _session.setSelectedSpeed,
+                          onChanged: locked ? null : _session.setSelectedSpeed,
                         ),
                       ),
                       Text('${selected.speed.toStringAsFixed(2)}×'),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      const Text('Transizione successiva'),
+                      DropdownButton<String>(
+                        value: const ['fade', 'wipeleft', 'wiperight', 'slideleft', 'slideright', 'dissolve']
+                                .contains(transition) ? transition : 'fade',
+                        onChanged: locked ? null : (value) {
+                          if (value != null) {
+                            _session.setSelectedTransition(
+                              type: value, durationMs: selected.transitionAfterMs,
+                            );
+                          }
+                        },
+                        items: const [
+                          DropdownMenuItem(value: 'fade', child: Text('Dissolvenza')),
+                          DropdownMenuItem(value: 'wipeleft', child: Text('Tendina sinistra')),
+                          DropdownMenuItem(value: 'wiperight', child: Text('Tendina destra')),
+                          DropdownMenuItem(value: 'slideleft', child: Text('Scorrimento sinistra')),
+                          DropdownMenuItem(value: 'slideright', child: Text('Scorrimento destra')),
+                          DropdownMenuItem(value: 'dissolve', child: Text('Dissolvenza incrociata')),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const Text('Durata transizione'),
+                      Expanded(
+                        child: Slider(
+                          min: 0,
+                          max: 3000,
+                          divisions: 30,
+                          value: selected.transitionAfterMs.clamp(0, 3000).toDouble(),
+                          onChanged: locked ? null : (value) => _session.setSelectedTransition(
+                            type: transition, durationMs: value.round(),
+                          ),
+                        ),
+                      ),
+                      Text('${(selected.transitionAfterMs / 1000).toStringAsFixed(1)} s'),
+                    ],
+                  ),
+                  if (track?.locked == true)
+                    const Text('Traccia bloccata: sbloccarla per modificare la clip.'),
                 ] else
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
