@@ -67,7 +67,7 @@ def test_non_owner_cannot_manage_accounts_and_owner_cannot_create_owner(tmp_path
         "username": "second_owner", "temporaryPassword": "temporary password 123",
         "role": "owner",
     })
-    assert owner_create.status_code == 422
+    assert owner_create.status_code == 403
     assert store.list_accounts(20)[0]["role"] in {"owner", "user"}
 
 
@@ -88,3 +88,35 @@ def test_owner_management_cannot_disable_owner_and_unknown_user_is_not_found(tmp
         "/v1/owner/accounts/" + "f" * 32 + "/disable", headers=headers
     )
     assert missing.status_code == 404
+
+
+
+def test_owner_role_change_revokes_existing_sessions_and_cannot_change_owner(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("owner_admin", "owner password with enough length")
+    user = store.register("ordinary_user", "ordinary password with enough length")
+    owner_headers = _headers(store, owner["userId"])
+    user_token, _ = store.issue_session(user["userId"])
+    client = TestClient(server.app)
+
+    changed = client.post(
+        f"/v1/owner/accounts/{user['userId']}/role",
+        headers=owner_headers, json={"role": "support"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["user"]["role"] == "support"
+    assert store.resolve_session(user_token) is None
+
+    owner_change = client.post(
+        f"/v1/owner/accounts/{owner['userId']}/role",
+        headers=owner_headers, json={"role": "admin"},
+    )
+    assert owner_change.status_code == 403
+    invalid = client.post(
+        f"/v1/owner/accounts/{user['userId']}/role",
+        headers=owner_headers, json={"role": "owner"},
+    )
+    assert invalid.status_code == 422
