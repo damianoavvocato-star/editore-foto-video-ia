@@ -87,3 +87,17 @@ Before enabling MagicIAedit for production users:
 
 Do not upload confidential or regulated media until the provider's data
 processing, retention and regional hosting terms have been reviewed and approved.
+
+
+## Improved visual reasoning for MagicIAedit
+
+The video analysis stage samples up to eight frames distributed across the full clip
+(instead of only the opening, midpoint and ending). Each frame is sent with its actual
+timestamp. The backend also calculates small, non-identifying image-quality signals
+(brightness, contrast and edge-detail estimates) to help the vision model compare
+candidate moments. These are heuristic signals, not face recognition or semantic truth;
+the model must still inspect the actual image content. The prompt asks it to avoid
+repetitive shots, preserve narrative continuity, select timestamps grounded in sampled
+frames and explain clip choices. This increases visual context but also increases
+provider token/image cost. Production operators must measure cost and latency with
+representative media before increasing limits.

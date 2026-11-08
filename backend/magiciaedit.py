@@ -64,7 +64,39 @@ def _image_data_url(image: Image.Image) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
 
 
-def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
+def _frame_timestamps(duration: float, max_frames: int = 8) -> list[float]:
+    """Return evenly distributed frame times, including the opening and ending."""
+    if not math.isfinite(duration) or duration <= 0:
+        raise MagicIAError("Durata video non valida.")
+    if max_frames < 2 or max_frames > 12:
+        raise MagicIAError("Numero di fotogrammi di analisi non valido.")
+    usable_end = max(0.0, duration - 0.05)
+    if usable_end <= 0:
+        return [0.0]
+    count = min(max_frames, max(2, int(math.ceil(duration / 2.5)) + 1))
+    return [round(usable_end * index / (count - 1), 3) for index in range(count)]
+
+
+def _visual_quality_signals(image: Image.Image) -> dict[str, float]:
+    """Compute lightweight, privacy-preserving visual signals for AI context."""
+    from PIL import ImageFilter
+    sample = image.convert("L")
+    sample.thumbnail((256, 256))
+    pixels = list(sample.getdata())
+    if not pixels:
+        return {"brightness": 0.0, "contrast": 0.0, "detail": 0.0}
+    brightness = sum(pixels) / len(pixels) / 255.0
+    variance = sum((pixel / 255.0 - brightness) ** 2 for pixel in pixels) / len(pixels)
+    edge_pixels = list(sample.filter(ImageFilter.FIND_EDGES).getdata())
+    detail = sum(edge_pixels) / len(edge_pixels) / 255.0 if edge_pixels else 0.0
+    return {
+        "brightness": round(brightness, 3),
+        "contrast": round(math.sqrt(variance), 3),
+        "detail": round(detail, 3),
+    }
+
+
+def _video_frames(path: Path, cancel_event: Any = None) -> list[tuple[float, Image.Image]]:
     if cancel_event is not None and cancel_event.is_set():
         raise MagicIAError("Elaborazione annullata.")
     ffmpeg = os.getenv("FFMPEG_PATH", "ffmpeg")
@@ -86,10 +118,8 @@ def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
     if not math.isfinite(duration) or duration <= 0 or duration > 86_400:
         raise MagicIAError("Durata video fuori dai limiti consentiti.")
 
-    timestamps = sorted({min(duration - 0.05, max(0.0, t))
-                         for t in (0.1, duration / 2, duration - 0.1)})
-    frames: list[Image.Image] = []
-    for timestamp in timestamps:
+    frames: list[tuple[float, Image.Image]] = []
+    for timestamp in _frame_timestamps(duration):
         if cancel_event is not None and cancel_event.is_set():
             raise MagicIAError("Elaborazione annullata.")
         try:
@@ -105,7 +135,7 @@ def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
             continue
         try:
             with Image.open(BytesIO(result.stdout)) as frame:
-                frames.append(frame.copy())
+                frames.append((timestamp, frame.copy()))
         except Exception:
             continue
     if not frames:
@@ -126,15 +156,16 @@ def _media_parts(
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", Image.DecompressionBombWarning)
                     with Image.open(path) as image:
-                        parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=immagine."})
+                        parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=immagine, segnali visivi={_visual_quality_signals(image)}."})
                         parts.append({"type": "image_url", "image_url": {"url": _image_data_url(image)}})
             except (OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
                 raise MagicIAError(f"Impossibile leggere l'immagine {asset_id}.") from exc
         elif suffix in {".mp4", ".mov", ".avi", ".webm", ".m4v"}:
             frames = _video_frames(path, cancel_event)
-            parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=video, fotogrammi campionati in ordine temporale."})
-            for frame_number, frame in enumerate(frames, start=1):
-                parts.append({"type": "text", "text": f"Fotogramma {frame_number} del video {asset_id}."})
+            parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=video, {len(frames)} fotogrammi distribuiti lungo la durata e ordinati temporalmente."})
+            for frame_number, (timestamp, frame) in enumerate(frames, start=1):
+                signals = _visual_quality_signals(frame)
+                parts.append({"type": "text", "text": f"Fotogramma {frame_number} del video {asset_id}, timestampMs={round(timestamp * 1000)}, segnali visivi={signals}."})
                 parts.append({"type": "image_url", "image_url": {"url": _image_data_url(frame)}})
         else:
             raise MagicIAError("MagicIAedit supporta immagini e video, non file audio.")
@@ -232,7 +263,7 @@ def create_magic_plan(
         "usa esclusivamente uno degli assetId forniti. Per i video indica sourceStartMs. "
         "Restituisci SOLO JSON con title, description e clips; ogni clip deve avere "
         "assetId, sourceStartMs, durationMs, transitionAfterMs, transitionAfter e reason. "
-        "Non inventare contenuti o asset. Preferisci momenti nitidi e variazioni visive. "
+        "Non inventare contenuti o asset. Confronta i fotogrammi nel tempo, evita ripetizioni e scegli intervalli con soggetto leggibile, dettaglio e luminosità adeguati. I segnali brightness, contrast e detail sono indizi tecnici, non verità semantiche: valuta anche il contenuto visivo. Per i video sourceStartMs deve corrispondere a un momento realmente campionato o vicino ad esso. Alterna inquadrature, conserva la continuità narrativa e motiva brevemente ogni scelta in reason. "
         f"Preferenze dell'utente: {preferences or 'nessuna'}."
     )
     payload = {

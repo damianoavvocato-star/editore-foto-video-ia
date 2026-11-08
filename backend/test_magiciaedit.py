@@ -485,3 +485,33 @@ def test_ai_job_claim_failure_does_not_consume_monthly_quota(monkeypatch, tmp_pa
             (user["userId"],),
         ).fetchone()[0]
     assert count == 0
+
+
+def test_video_frame_timestamps_are_evenly_distributed_and_bounded():
+    times = magiciaedit._frame_timestamps(20.0)
+    assert len(times) == 8
+    assert times[0] == 0.0
+    assert times[-1] == 19.95
+    assert times == sorted(times)
+    assert len(set(times)) == len(times)
+
+
+def test_video_frame_timestamps_handle_short_clips():
+    assert magiciaedit._frame_timestamps(1.0) == [0.0, 0.95]
+
+
+def test_video_frame_timestamps_reject_invalid_frame_limits():
+    for count in (1, 13):
+        try:
+            magiciaedit._frame_timestamps(10.0, count)
+        except magiciaedit.MagicIAError as exc:
+            assert "fotogrammi" in str(exc)
+        else:
+            raise AssertionError("Unsupported frame count must be rejected")
+
+
+def test_visual_quality_signals_are_bounded_and_finite():
+    image = magiciaedit.Image.new("RGB", (64, 64), color=(120, 120, 120))
+    signals = magiciaedit._visual_quality_signals(image)
+    assert set(signals) == {"brightness", "contrast", "detail"}
+    assert all(0.0 <= value <= 1.0 for value in signals.values())
