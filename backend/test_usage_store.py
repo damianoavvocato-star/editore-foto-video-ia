@@ -145,3 +145,26 @@ def test_reservation_validation_checks_original_month_and_current_limit(tmp_path
     store.reserve("user-a", "studio-draft-3", 3, now=1_800_000_000)
     store.reserve("user-a", "studio-draft-4", 4, now=1_800_000_000)
     assert store.has_reservation("user-a", "studio-draft-1", 2) is False
+
+
+def test_usage_summary_reports_remaining_and_exhaustion(tmp_path):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    store.reserve("user-a", "job-1", 2, now=1_800_000_000)
+    summary = store.summary("user-a", 2, now=1_800_000_000)
+    assert summary["used"] == 1
+    assert summary["limit"] == 2
+    assert summary["remaining"] == 1
+    assert summary["exhausted"] is False
+
+    store.reserve("user-a", "job-2", 2, now=1_800_000_000)
+    exhausted = store.summary("user-a", 2, now=1_800_000_000)
+    assert exhausted["remaining"] == 0
+    assert exhausted["exhausted"] is True
+
+
+def test_usage_summary_is_scoped_to_user_and_validates_limit(tmp_path):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    store.reserve("user-a", "job-1", 2, now=1_800_000_000)
+    assert store.summary("user-b", 2, now=1_800_000_000)["used"] == 0
+    with pytest.raises(ValueError):
+        store.summary("user-a", 0, now=1_800_000_000)
