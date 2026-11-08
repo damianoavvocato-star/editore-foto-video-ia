@@ -359,3 +359,26 @@ def test_owner_can_recover_lost_authenticator_with_unused_recovery_code(tmp_path
             (owner["userId"],),
         ).fetchone()[0]
     assert remaining == 0
+
+
+def test_active_sessions_can_be_listed_and_revoked_only_by_their_owner(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    first = store.register("session_first", "first session password long")
+    second = store.register("session_second", "second session password long")
+    _, first_token, _ = store.login("session_first", "first session password long")
+    _, second_token, _ = store.login("session_first", "first session password long")
+    _, other_token, _ = store.login("session_second", "second session password long")
+
+    sessions = store.list_active_sessions(first["userId"])
+    assert len(sessions) == 2
+    first_session_id = next(
+        item["sessionId"] for item in sessions
+        if item["sessionId"] != __import__("hashlib").sha256(second_token.encode()).hexdigest()
+    )
+    assert store.revoke_session_by_id(second["userId"], first_session_id) is False
+    assert store.revoke_session_by_id(first["userId"], first_session_id) is True
+    assert store.revoke_session_by_id(first["userId"], first_session_id) is False
+    assert store.resolve_session(first_token) is None
+    assert store.resolve_session(second_token) is not None
+    assert store.resolve_session(other_token) is not None
+    assert len(store.list_active_sessions(first["userId"])) == 1
