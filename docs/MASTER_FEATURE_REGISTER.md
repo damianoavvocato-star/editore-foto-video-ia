@@ -24,7 +24,7 @@
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
 | P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta, stato e controlli assegnazione Owner/Admin | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
-| P0-06 | Console Collaboratore / TeamStudio | Collab | client API Flutter per progetti, inviti, membri, commenti e approvazioni; schermata UI ancora da collegare | membership, ACL, elenco membri, commenti, approvazioni e revoca | isolamento tra team, visibilità dei soli membri del progetto, revoca immediata e CI verde | partial |
+| P0-06 | Console Collaboratore / TeamStudio | Collab | schermata Flutter collegata alla navigazione: inviti, progetti, membri, revoca, commenti e approvazioni; test UI ancora da completare | membership, ACL, elenco membri, commenti, approvazioni e revoca | isolamento tra team, visibilità dei soli membri del progetto, revoca immediata e CI verde | partial |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
 | P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente a 24 ore, blocco dopo scadenza | test backend CI superati; database esistenti migrati in modo compatibile | done |
@@ -81,7 +81,7 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P3-01 | TeamStudio condiviso | Collab, Owner | API presenti; schermata Flutter da completare | progetti, inviti, ACL, commenti, approvazioni e audit; versioni non ancora presenti | isolamento, accettazione invito, revoca e approvazione coperti da test backend | partial |
+| P3-01 | TeamStudio condiviso | Collab, Owner | UI Flutter iniziale integrata; mancano notifiche e flussi media | progetti, inviti, ACL, membri, commenti, approvazioni e audit; versioni non ancora presenti | isolamento, accettazione invito, revoca e approvazione coperti da test backend; UI da verificare in CI | partial |
 | P3-02 | AdCreator e materiali promozionali | User, Owner | template e brand kit | rendering e asset | esportazione formati social | missing |
 | P3-03 | MultiSocial e pubblicazione | User | canali, anteprima e calendario | OAuth e API social | token sicuri, consenso e retry | missing |
 | P3-04 | Analytics con consenso | Owner, User | dashboard e opt-out | eventi minimizzati | privacy e cancellazione | missing |
@@ -177,3 +177,13 @@
 - Creato `lib/services/remote_team_api.dart` con chiamate Flutter per progetti, inviti, risposta inviti, membri, revoca, commenti e approvazioni, usando il client account esistente e il token di sessione protetto.
 - P0-06 passa da `missing` a `partial`: manca ancora la schermata Flutter collegata alla navigazione e la verifica CI dell'ultimo commit. P3-01 resta `partial`: sincronizzazione dei media, notifiche e versioni/revisioni non sono ancora implementate.
 - Stato indicativo del registro: 1 done, 25 partial, 28 missing, 3 blocked su 57 voci; stima uniforme circa 24% (1 + 25×0,5)/57. Nessun APK generato; fase 6 invariata come ultima fase.
+
+
+## Aggiornamento TeamStudio — 8 novembre 2026, prima console Flutter integrata
+
+- Creata `lib/team/team_studio_screen.dart`: ripristino sessione account protetta, elenco progetti accessibili, inviti personali per Collaboratori, creazione progetti Owner/Admin, invito tramite ID account Collaboratore, visualizzazione membri e stati, revoca con conferma, commenti e flusso di approvazione.
+- Integrata la schermata nella navigazione laterale e mobile dell'app (`lib/main.dart`), senza sostituire le pagine esistenti.
+- Il client usa `RemoteTeamApi` e il bearer token conservato in secure storage; la schermata non raccoglie né visualizza password o token.
+- Dichiarato in UI il limite attuale: i file multimediali e i progetti locali non vengono caricati/sincronizzati. Non si presenta quindi la collaborazione come sincronizzazione cloud già disponibile.
+- P0-06 e P3-01 restano `partial` in attesa della CI sul nuovo frontend e di test UI dedicati; restano inoltre da implementare sincronizzazione media, notifiche, versioni e cronologia revisioni.
+- Stima del registro invariata: 1 done, 25 partial, 28 missing, 3 blocked su 57; circa 24% con ponderazione uniforme. Nessun APK generato; fase 6 resta l'ultima.
