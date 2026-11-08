@@ -147,3 +147,25 @@ class UsageStore:
             raise
         finally:
             db.close()
+
+
+    def summary(self, user_id: str, limit: int, now: int | float | None = None) -> dict[str, Any]:
+        """Return the authenticated account's monthly reservation count and quota."""
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            raise ValueError("Invalid account identifier.")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
+            raise ValueError("Invalid monthly usage limit.")
+        period = self._period(now)
+        with sqlite3.connect(self.database, timeout=10) as db:
+            db.execute("PRAGMA busy_timeout = 10000")
+            used = db.execute(
+                "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=? AND period=?",
+                (user_id, period),
+            ).fetchone()[0]
+        return {
+            "period": period,
+            "used": used,
+            "limit": limit,
+            "remaining": max(0, limit - used),
+            "exhausted": used >= limit,
+        }
