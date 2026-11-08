@@ -992,7 +992,7 @@ class AccountStore:
             limit = 50
         if not isinstance(offset, int) or isinstance(offset, bool):
             offset = 0
-        limit = max(1, min(100, limit))
+        limit = max(1, min(101, limit))
         offset = max(0, min(1_000_000, offset))
         filters: list[str] = []
         values: list[Any] = []
