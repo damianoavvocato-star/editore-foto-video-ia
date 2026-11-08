@@ -146,9 +146,15 @@ def _normalise_plan(raw: Any, asset_ids: set[str]) -> dict[str, Any]:
         asset_id = str(item.get("assetId", ""))
         if asset_id not in asset_ids:
             raise MagicIAError("Il piano IA contiene un media non selezionato.")
-        source_start = max(0, min(86_400_000, int(item.get("sourceStartMs", 0))))
-        duration = max(500, min(20_000, int(item.get("durationMs", 3000))))
-        transition_ms = max(0, min(2000, int(item.get("transitionAfterMs", 0)), int(duration * 0.45)))
+        try:
+            source_start_value = int(item.get("sourceStartMs", 0))
+            duration_value = int(item.get("durationMs", 3000))
+            transition_value = int(item.get("transitionAfterMs", 0))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise MagicIAError("Il piano IA contiene tempi non validi.") from exc
+        source_start = max(0, min(86_400_000, source_start_value))
+        duration = max(500, min(20_000, duration_value))
+        transition_ms = max(0, min(2000, transition_value, int(duration * 0.45)))
         transition = str(item.get("transitionAfter", "fade")).lower()
         if transition not in ALLOWED_TRANSITIONS:
             transition = "fade"
