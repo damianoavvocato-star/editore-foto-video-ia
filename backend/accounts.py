@@ -607,6 +607,8 @@ class AccountStore:
         self, actor_user_id: str, username: str, password: str, role: str
     ) -> dict[str, Any]:
         """Allow the owner to create non-owner accounts; never create another owner."""
+        if role == "owner":
+            raise AccountError("L'account proprietario non può essere creato tramite gestione account.")
         if role not in {"admin", "support", "collaborator", "user"}:
             raise AccountError("Ruolo non valido o riservato.")
         if not isinstance(username, str) or not _USERNAME.fullmatch(username):
