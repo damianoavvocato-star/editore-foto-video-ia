@@ -73,6 +73,30 @@ class UsageStore:
         finally:
             db.close()
 
+    def has_reservation(self, user_id: str, job_id: str, limit: int) -> bool:
+        """Check that a job has a reservation and its original period is within quota."""
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            raise ValueError("Invalid account identifier.")
+        if not isinstance(job_id, str) or not job_id or len(job_id) > 64:
+            raise ValueError("Invalid job identifier.")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
+            raise ValueError("Invalid monthly usage limit.")
+        with sqlite3.connect(self.database, timeout=10) as db:
+            db.execute("PRAGMA busy_timeout = 10000")
+            row = db.execute(
+                """SELECT period FROM ai_usage_reservations
+                   WHERE user_id=? AND job_id=? ORDER BY created_at DESC LIMIT 1""",
+                (user_id, job_id),
+            ).fetchone()
+            if row is None:
+                return False
+            count = db.execute(
+                """SELECT COUNT(*) FROM ai_usage_reservations
+                   WHERE user_id=? AND period=?""",
+                (user_id, row[0]),
+            ).fetchone()[0]
+            return count <= limit
+
     def reserve(
         self, user_id: str, job_id: str, limit: int, now: int | float | None = None
     ) -> dict[str, Any]:

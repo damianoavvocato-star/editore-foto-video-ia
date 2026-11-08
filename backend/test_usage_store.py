@@ -133,3 +133,15 @@ def test_quota_release_is_visible_across_store_instances(tmp_path):
     )
     assert replacement["used"] == 1
     assert replacement["remaining"] == 0
+
+
+def test_reservation_validation_checks_original_month_and_current_limit(tmp_path):
+    store = UsageStore(tmp_path / "accounts.sqlite3")
+    store.reserve("user-a", "studio-draft-1", 3, now=1_800_000_000)
+    assert store.has_reservation("user-a", "studio-draft-1", 3) is True
+    assert store.has_reservation("user-a", "studio-draft-1", 2) is True
+    assert store.has_reservation("user-a", "missing", 3) is False
+    store.reserve("user-a", "studio-draft-2", 3, now=1_800_000_000)
+    store.reserve("user-a", "studio-draft-3", 3, now=1_800_000_000)
+    store.reserve("user-a", "studio-draft-4", 4, now=1_800_000_000)
+    assert store.has_reservation("user-a", "studio-draft-1", 2) is False

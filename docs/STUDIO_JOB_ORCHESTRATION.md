@@ -81,3 +81,25 @@ not consume a second monthly request. Quota exhaustion returns HTTP 429 with
 `monthly_ai_quota_exceeded`; if queue persistence rejects the request, the
 reservation is released. The queue still does not invoke a video provider:
 quota acceptance is not a claim that paid generation has started.
+
+
+## Supervised worker foundation
+
+A separate `StudioWorker` service can process one queued request at a time.
+It is intentionally not started by FastAPI and is not exposed as a public
+endpoint. Before calling Synthesia it revalidates the request, account's current
+Premium/family entitlement, the original monthly quota reservation, and any
+special consent for personal avatars or cloned voices. The default consent
+verifier denies those special operations until a real, auditable consent
+service is injected.
+
+The worker fails closed when its queue context, quota reservation, configuration,
+or provider task is invalid. Provider submission exceptions are treated as
+ambiguous and become `submission_outcome_unknown`; they are never blindly
+retried because the remote service may already have accepted a billable job.
+The current provider adapter supports script/avatar and template jobs only.
+Other Studio task types remain queued for a future compatible provider.
+
+The worker is infrastructure code only: no background process is launched by
+this commit, no live provider credentials are added, and the default Synthesia
+configuration remains test mode.

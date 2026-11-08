@@ -225,7 +225,13 @@ class StudioJobQueue:
                 (row["job_id"],),
             ).fetchone()
             connection.commit()
-            return self._serialize(claimed)
+            worker_job = self._serialize(claimed)
+            # Private worker context; public account-scoped reads never expose it.
+            worker_job["_worker"] = {
+                "userId": claimed["user_id"],
+                "idempotencyKey": claimed["idempotency_key"],
+            }
+            return worker_job
         except Exception:
             connection.rollback()
             raise
@@ -282,6 +288,33 @@ class StudioJobQueue:
                     provider_video_id, provider_status, timestamp,
                     job_id, worker_id, timestamp,
                 ),
+            )
+            if cursor.rowcount != 1:
+                raise StudioQueueError("Lease scaduta o job non assegnato a questo worker.")
+            row = connection.execute(
+                "SELECT * FROM studio_queue_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+        return self._serialize(row)
+
+    def fail_claimed(
+        self,
+        worker_id: str,
+        job_id: str,
+        error_code: str,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Fail a claimed job without permitting a stale worker to change it."""
+        if not ERROR_CODE_PATTERN.fullmatch(error_code or ""):
+            raise StudioQueueError("Codice errore non valido.")
+        timestamp = time.time() if now is None else float(now)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE studio_queue_jobs
+                   SET state='failed', last_error_code=?,
+                       lease_owner=NULL, lease_expires_at=NULL, updated_at=?
+                   WHERE job_id=? AND state='submitting' AND lease_owner=?
+                     AND lease_expires_at > ?""",
+                (error_code, timestamp, job_id, worker_id, timestamp),
             )
             if cursor.rowcount != 1:
                 raise StudioQueueError("Lease scaduta o job non assegnato a questo worker.")
