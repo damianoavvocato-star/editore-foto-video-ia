@@ -23,7 +23,7 @@
 | P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
-| P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta e stato | storage SQLite, ACL proprietario/staff e audit | isolamento tra utenti e permessi verificati; restano assegnazione operatori, notifiche e supporto media con consenso | partial |
+| P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta e stato | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
 | P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
@@ -135,3 +135,12 @@
 - Aggiunti test API per dashboard Admin, autenticazione, isolamento ticket, risposte staff/utente e transizioni di stato.
 - CI run `42520069602`, commit `6dc37687515e941b749cf305178a3acb3e38da2a`: backend **304 test superati**; Flutter **139 test superati** e `flutter analyze` senza problemi. Android preflight/validazione Gradle era ancora in esecuzione al momento della registrazione; nessun APK generato.
 - Nessun dato personale viene restituito dalla dashboard Admin; gli utenti non possono ottenere dettagli dei ticket altrui.
+
+
+## Avanzamento verificato — 8 novembre 2026, assegnazione ticket Assistenza
+
+- Aggiunto il campo persistente `assigned_to_user_id` con migrazione compatibile dei database esistenti.
+- Nuova API `PUT /v1/support/tickets/{ticket_id}/assignment`: solo Owner/Admin con permesso dedicato possono assegnare o rimuovere l'assegnazione; il destinatario deve essere un account Support attivo.
+- L'assegnazione è restituita in elenco e dettaglio ticket e ogni modifica genera un evento audit senza esporre dati non necessari.
+- Test API aggiunti per ruolo non autorizzato, assegnatario non valido, assegnazione, revoca e lettura del valore aggiornato. La funzionalità resta `partial`: manca il controllo visuale nella console, oltre a notifiche e supporto media con consenso.
+- Modifiche sul branch `feature/magiciaedit-cloud-foundation`; attendere CI prima di considerarle verificate. Nessun APK generato.
