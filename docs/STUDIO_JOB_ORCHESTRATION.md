@@ -119,3 +119,14 @@ temporary provider delivery details and are not copied into account-visible
 queue records. A separate controlled object-storage and media-delivery stage
 is still required before completed output can be safely downloaded by users.
 No polling loop or background service is started by the API process.
+
+
+## Concurrent reconciliation protection
+
+Provider status polling now uses a separate SQLite reconciliation lease. A
+worker must atomically claim a processing job before contacting the provider.
+Only the current lease token may persist the result; stale workers cannot
+overwrite a newer reconciler's state. Transient provider read failures release
+the lease for a later supervised attempt. Expired leases can be reclaimed.
+The migration adds the lease columns to existing queue databases without
+dropping or rewriting existing jobs.

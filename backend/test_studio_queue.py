@@ -161,3 +161,45 @@ def test_list_processing_returns_only_worker_context_for_pending_jobs(tmp_path):
     assert pending[0]["_worker"] == {"userId": "user-a"}
     assert queue.list_for_user("user-a")[0]["state"] == "processing"
     assert "_worker" not in queue.list_for_user("user-a")[0]
+
+
+
+def test_reconciliation_lease_is_exclusive_and_expires(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3", lease_seconds=30)
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("submitter", now=101)
+    queue.mark_submitted("submitter", job["jobId"], "provider-video", now=102)
+
+    first = queue.claim_reconciliation("reconciler-a", now=103)
+    assert first is not None
+    assert first["_worker"]["userId"] == "user-a"
+    assert queue.claim_reconciliation("reconciler-b", now=104) is None
+
+    assert queue.release_reconciliation(
+        job["jobId"], first["_worker"]["reconciliationToken"], now=105
+    ) is True
+    second = queue.claim_reconciliation("reconciler-b", now=106)
+    assert second is not None
+    assert second["_worker"]["reconciliationToken"] != first["_worker"]["reconciliationToken"]
+
+
+def test_stale_reconciliation_token_cannot_update_provider_status(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3", lease_seconds=15)
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("submitter", now=101)
+    queue.mark_submitted("submitter", job["jobId"], "provider-video", now=102)
+
+    stale = queue.claim_reconciliation("reconciler-a", now=103)
+    assert stale is not None
+    current = queue.claim_reconciliation("reconciler-b", now=119)
+    assert current is not None
+    with pytest.raises(StudioQueueError, match="lease"):
+        queue.record_provider_status(
+            "user-a", job["jobId"], "complete", now=120,
+            reconciliation_token=stale["_worker"]["reconciliationToken"],
+        )
+    updated = queue.record_provider_status(
+        "user-a", job["jobId"], "complete", now=120,
+        reconciliation_token=current["_worker"]["reconciliationToken"],
+    )
+    assert updated["state"] == "completed"

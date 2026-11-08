@@ -165,3 +165,18 @@ def test_worker_keeps_job_processing_when_provider_status_is_temporarily_unavail
     assert result["reconciled"] is False
     assert result["errorCode"] == "provider_status_unavailable"
     assert queue.get("user-a", queued["jobId"])["state"] == "processing"
+
+
+
+def test_two_workers_cannot_reconcile_the_same_video_at_once(tmp_path):
+    provider = FakeProvider()
+    worker, queue, queued = _worker(
+        tmp_path, StudioJobRequest(task="script_to_video", script="Reviewed script"),
+        provider=provider,
+    )
+    submitted = worker.process_once()
+    first = queue.claim_reconciliation("reconciler-a")
+    assert first is not None
+    second = queue.claim_reconciliation("reconciler-b")
+    assert second is None
+    assert first["jobId"] == submitted["jobId"]

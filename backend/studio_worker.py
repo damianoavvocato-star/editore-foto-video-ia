@@ -153,14 +153,15 @@ class StudioWorker:
         delivery stage must copy completed media into controlled object storage
         before exposing a user-download URL.
         """
-        pending = self.queue.list_processing(limit=1)
-        if not pending:
+        job = self.queue.claim_reconciliation(self.worker_id)
+        if job is None:
             return {"claimed": False, "state": "idle"}
-        job = pending[0]
         job_id = job["jobId"]
-        user_id = (job.get("_worker") or {}).get("userId")
+        context = job.get("_worker") or {}
+        user_id = context.get("userId")
+        token = context.get("reconciliationToken")
         provider_video_id = job.get("providerVideoId")
-        if not user_id or not provider_video_id:
+        if not user_id or not provider_video_id or not token:
             return {"jobId": job_id, "state": "processing", "reconciled": False,
                     "errorCode": "reconciliation_context_invalid"}
         try:
@@ -169,16 +170,18 @@ class StudioWorker:
             if remote.get("providerVideoId") != provider_video_id:
                 raise ValueError("Provider returned a mismatched video identifier.")
         except Exception:
-            # A transient read failure is not a terminal video failure.
+            # Release the lease so a later supervisor can retry this read.
+            self.queue.release_reconciliation(job_id, token)
             return {"jobId": job_id, "state": "processing", "reconciled": False,
                     "errorCode": "provider_status_unavailable"}
         try:
-            updated = self.queue.record_provider_status(user_id, job_id, status)
+            return self.queue.record_provider_status(
+                user_id, job_id, status, reconciliation_token=token
+            )
         except (StudioQueueError, ValueError):
-            # Another reconciler may have won the race; return the persisted state.
+            # A stale reconciler cannot overwrite a newer worker's result.
             latest = self.queue.get(user_id, job_id)
             if latest is not None and latest["state"] in {"completed", "failed"}:
                 return latest
             return {"jobId": job_id, "state": "processing", "reconciled": False,
                     "errorCode": "provider_status_update_conflict"}
-        return updated

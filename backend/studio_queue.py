@@ -52,10 +52,17 @@ class StudioJobQueue:
                     last_error_code TEXT,
                     lease_owner TEXT,
                     lease_expires_at REAL,
+                    reconciliation_lease_owner TEXT,
+                    reconciliation_lease_expires_at REAL,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 )"""
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(studio_queue_jobs)")}
+            if "reconciliation_lease_owner" not in columns:
+                connection.execute("ALTER TABLE studio_queue_jobs ADD COLUMN reconciliation_lease_owner TEXT")
+            if "reconciliation_lease_expires_at" not in columns:
+                connection.execute("ALTER TABLE studio_queue_jobs ADD COLUMN reconciliation_lease_expires_at REAL")
             connection.execute(
                 """CREATE UNIQUE INDEX IF NOT EXISTS studio_queue_user_idempotency
                    ON studio_queue_jobs(user_id, idempotency_key)
@@ -329,6 +336,7 @@ class StudioJobQueue:
         job_id: str,
         provider_status: str,
         now: float | None = None,
+        reconciliation_token: str | None = None,
     ) -> dict[str, Any]:
         if provider_status not in PROVIDER_STATES:
             raise StudioQueueError("Stato provider non valido.")
@@ -338,13 +346,26 @@ class StudioJobQueue:
             "failed" if provider_status in {"error", "rejected"} else "processing"
         )
         with self._connection() as connection:
-            cursor = connection.execute(
-                """UPDATE studio_queue_jobs SET state=?, provider_status=?, updated_at=?
-                   WHERE job_id=? AND user_id=? AND state='processing'""",
-                (state, provider_status, timestamp, job_id, user_id),
-            )
+            if reconciliation_token is None:
+                cursor = connection.execute(
+                    """UPDATE studio_queue_jobs SET state=?, provider_status=?, updated_at=?
+                       WHERE job_id=? AND user_id=? AND state='processing'""",
+                    (state, provider_status, timestamp, job_id, user_id),
+                )
+            else:
+                cursor = connection.execute(
+                    """UPDATE studio_queue_jobs
+                       SET state=?, provider_status=?, updated_at=?,
+                           reconciliation_lease_owner=NULL,
+                           reconciliation_lease_expires_at=NULL
+                       WHERE job_id=? AND user_id=? AND state='processing'
+                         AND reconciliation_lease_owner=?
+                         AND reconciliation_lease_expires_at > ?""",
+                    (state, provider_status, timestamp, job_id, user_id,
+                     reconciliation_token, timestamp),
+                )
             if cursor.rowcount != 1:
-                raise StudioQueueError("Job non trovato o non aggiornabile.")
+                raise StudioQueueError("Job non trovato, lease scaduta o non aggiornabile.")
             row = connection.execute(
                 "SELECT * FROM studio_queue_jobs WHERE job_id=?", (job_id,)
             ).fetchone()
@@ -390,8 +411,68 @@ class StudioJobQueue:
             ).fetchone()
         return self._serialize(updated)
 
+    def claim_reconciliation(self, worker_id: str, now: float | None = None) -> dict[str, Any] | None:
+        """Atomically lease one processing job to exactly one reconciler."""
+        if not worker_id or len(worker_id) > 128:
+            raise StudioQueueError("Identificativo worker non valido.")
+        timestamp = time.time() if now is None else float(now)
+        token = f"{worker_id}:{uuid.uuid4().hex}"
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT * FROM studio_queue_jobs
+                   WHERE state='processing' AND provider_video_id IS NOT NULL
+                     AND (reconciliation_lease_expires_at IS NULL
+                          OR reconciliation_lease_expires_at <= ?)
+                   ORDER BY updated_at ASC LIMIT 1""",
+                (timestamp,),
+            ).fetchone()
+            if row is None:
+                connection.commit()
+                return None
+            expires = timestamp + self.lease_seconds
+            cursor = connection.execute(
+                """UPDATE studio_queue_jobs
+                   SET reconciliation_lease_owner=?, reconciliation_lease_expires_at=?
+                   WHERE job_id=? AND state='processing'
+                     AND (reconciliation_lease_expires_at IS NULL
+                          OR reconciliation_lease_expires_at <= ?)""",
+                (token, expires, row["job_id"], timestamp),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            claimed = connection.execute(
+                "SELECT * FROM studio_queue_jobs WHERE job_id=?", (row["job_id"],)
+            ).fetchone()
+            connection.commit()
+            result = self._serialize(claimed)
+            result["_worker"] = {"userId": claimed["user_id"], "reconciliationToken": token}
+            return result
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+            self._restrict_permissions()
+
+    def release_reconciliation(self, job_id: str, token: str, now: float | None = None) -> bool:
+        """Release only the active reconciler's lease after a transient failure."""
+        timestamp = time.time() if now is None else float(now)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE studio_queue_jobs
+                   SET reconciliation_lease_owner=NULL,
+                       reconciliation_lease_expires_at=NULL, updated_at=?
+                   WHERE job_id=? AND state='processing'
+                     AND reconciliation_lease_owner=?""",
+                (timestamp, job_id, token),
+            )
+        return cursor.rowcount == 1
+
     def list_processing(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Return internal reconciliation context for provider-backed jobs."""
+        """Return internal processing jobs without acquiring a lease."""
         bounded = max(1, min(100, int(limit)))
         with self._connection() as connection:
             rows = connection.execute(
@@ -403,7 +484,6 @@ class StudioJobQueue:
         jobs = []
         for row in rows:
             job = self._serialize(row)
-            # This method is worker-internal; public API serializers never call it.
             job["_worker"] = {"userId": row["user_id"]}
             jobs.append(job)
         return jobs
