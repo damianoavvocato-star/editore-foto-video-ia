@@ -24,7 +24,7 @@
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
 | P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta, stato e controlli assegnazione Owner/Admin | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
-| P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
+| P0-06 | Console Collaboratore / TeamStudio | Collab | client API Flutter per progetti, inviti, membri, commenti e approvazioni; schermata UI ancora da collegare | membership, ACL, elenco membri, commenti, approvazioni e revoca | isolamento tra team, visibilità dei soli membri del progetto, revoca immediata e CI verde | partial |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
 | P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente a 24 ore, blocco dopo scadenza | test backend CI superati; database esistenti migrati in modo compatibile | done |
@@ -167,3 +167,13 @@
 - Aggiunti test backend per isolamento tra account, invito e accettazione, ruoli, revoca, commenti, approvazione e audit. La CI del commit finale deve ancora confermare il risultato.
 - Limite dichiarato: questa prima fondazione conserva metadati e flussi di collaborazione; non sincronizza ancora i file multimediali/progetti locali, non include UI Flutter, notifiche invito, versioni o cronologia delle revisioni.
 - P3-01 passa da `missing` a `partial`; nessuna voce è conteggiata come completata. Nessun APK generato.
+
+
+## Aggiornamento TeamStudio — 8 novembre 2026, visibilità membri e client Flutter
+
+- Corretto il test di autorizzazione dell'invito: un account Collaboratore diverso dal destinatario riceve la risposta generica e sicura "Invito non disponibile", senza rivelare dettagli sull'esistenza di inviti altrui.
+- Aggiunto `GET /v1/team/projects/{project_id}/members` e metodo backend `list_members`: restituisce soltanto il proprietario e le membership del progetto (attive, pendenti o revocate), con identificativi e username; l'accesso è limitato a chi può già vedere il progetto.
+- Aggiunto test per elenco membri, stati pending/active/revoked e isolamento da account esterni.
+- Creato `lib/services/remote_team_api.dart` con chiamate Flutter per progetti, inviti, risposta inviti, membri, revoca, commenti e approvazioni, usando il client account esistente e il token di sessione protetto.
+- P0-06 passa da `missing` a `partial`: manca ancora la schermata Flutter collegata alla navigazione e la verifica CI dell'ultimo commit. P3-01 resta `partial`: sincronizzazione dei media, notifiche e versioni/revisioni non sono ancora implementate.
+- Stato indicativo del registro: 1 done, 25 partial, 28 missing, 3 blocked su 57 voci; stima uniforme circa 24% (1 + 25×0,5)/57. Nessun APK generato; fase 6 invariata come ultima fase.
