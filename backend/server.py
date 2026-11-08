@@ -301,12 +301,20 @@ def owner_totp_status(request: Request):
 @app.post('/v1/owner/security/totp/setup')
 def owner_totp_setup_start(body: OwnerTotpSetupStart, request: Request):
     owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
     try:
-        secret = _account_store().begin_totp_setup(owner["userId"], body.password)
+        secret = store.begin_totp_setup(owner["userId"], body.password)
     except SecurityConfigurationError as exc:
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
+        if "Password" in str(exc):
+            store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "password_invalid"})
         raise HTTPException(403 if 'proprietario' in str(exc) else 422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
     from urllib.parse import quote
     issuer = "EditoreFotoVideoIA"
     label = quote(f"{issuer}:{owner['username']}")
@@ -321,12 +329,20 @@ def owner_totp_setup_start(body: OwnerTotpSetupStart, request: Request):
 @app.post('/v1/owner/security/totp/setup/confirm')
 def owner_totp_setup_confirm(body: OwnerTotpCode, request: Request):
     owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
     try:
-        recovery_codes = _account_store().confirm_totp_setup(owner["userId"], body.code)
+        recovery_codes = store.confirm_totp_setup(owner["userId"], body.code)
     except SecurityConfigurationError as exc:
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
+        if "Codice di verifica" in str(exc):
+            store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "code_invalid"})
         raise HTTPException(422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
     # Recovery codes are displayed once; only their hashes remain on the server.
     return {"enabled": True, "recoveryCodes": recovery_codes}
 
@@ -334,12 +350,20 @@ def owner_totp_setup_confirm(body: OwnerTotpCode, request: Request):
 @app.delete('/v1/owner/security/totp')
 def owner_totp_disable(body: OwnerTotpDisable, request: Request):
     owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
     try:
-        _account_store().disable_totp(owner["userId"], body.password, body.code)
+        store.disable_totp(owner["userId"], body.password, body.code)
     except SecurityConfigurationError as exc:
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
+        if "Password" in str(exc) or "Secondo fattore" in str(exc):
+            store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_disable_failed", owner["userId"], {"reason": "reauthentication_failed"})
         raise HTTPException(422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
     return {"enabled": False, "sessionsRevoked": True}
 
 
