@@ -148,3 +148,18 @@ signature before returning the destination. Partial files are removed on failure
 The utility is not yet wired to a public upload or job endpoint. The authenticated
 worker must first resolve an account-owned media asset to a server-controlled path;
 never accept arbitrary client filesystem paths. The deployment must install FFmpeg.
+
+
+## Account-scoped speech job orchestration
+
+`backend/speech_job.py` now composes the existing extraction and speech contracts
+into a worker-callable unit. It requires an explicit account/asset ownership
+verifier before resolving a media ID under the server-controlled asset directory.
+It rejects ambiguous IDs, symlinks, duplicate target languages and unsupported
+language codes. The extracted WAV lives in a private temporary work directory
+and is removed after processing. A single source transcript can be translated
+into up to 20 distinct target languages; each result includes validated segment
+data plus SRT and WebVTT text. The function returns artifacts to its caller but
+does not expose an HTTP endpoint or persist files. A later worker/API integration
+must persist outputs under account-scoped IDs and provide authenticated review
+and download routes. A real provider remains a required injected dependency.
