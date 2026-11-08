@@ -4,6 +4,8 @@
 >
 > **Regole di completamento:** una voce passa a `done` solo quando implementazione, test automatici, gestione errori, sicurezza/ownership, documentazione e verifica CI sono dimostrati. `partial` non significa disponibile per gli utenti. APK e release sono esclusi fino alla fase 6.
 
+> **Mappa delle decisioni e dell'intero prodotto:** [docs/MASTER_PROJECT_MAP.md](MASTER_PROJECT_MAP.md). Consultarla prima di pianificare nuovi blocchi: raccoglie requisiti, decisioni non modificabili, ruoli, funzioni, sequenza in 6 fasi e regole operative.
+
 ## Legenda
 
 - `done`: implementazione e test verificati nel perimetro dichiarato.
