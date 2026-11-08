@@ -67,6 +67,11 @@ class AccountStore:
                 )
             """)
             db.execute("CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)")
+            db.execute("""CREATE TABLE IF NOT EXISTS totp_replay_state (
+                user_id TEXT PRIMARY KEY REFERENCES accounts(user_id) ON DELETE CASCADE,
+                last_counter INTEGER NOT NULL CHECK(last_counter >= 0),
+                updated_at INTEGER NOT NULL
+            )""")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_owner_only ON accounts(role) WHERE role='owner'")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS media_ownership (
@@ -234,6 +239,46 @@ class AccountStore:
                 (int(time.time()), token_hash),
             )
         return cursor.rowcount == 1
+
+    def consume_totp_counter(self, user_id: str, counter: int) -> bool:
+        """Atomically accept a TOTP counter only once and only in increasing order.
+
+        Call this only after cryptographically verifying the submitted TOTP code.
+        BEGIN IMMEDIATE serializes competing requests so parallel replays cannot
+        both consume the same moving counter.
+        """
+        if (not isinstance(user_id, str) or not user_id or len(user_id) > 128
+                or not isinstance(counter, int) or isinstance(counter, bool)
+                or counter < 0):
+            return False
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            account = db.execute(
+                "SELECT disabled_at FROM accounts WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if account is None or account["disabled_at"] is not None:
+                return False
+            previous = db.execute(
+                "SELECT last_counter FROM totp_replay_state WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+            if previous is not None and counter <= previous["last_counter"]:
+                return False
+            if previous is None:
+                db.execute(
+                    "INSERT INTO totp_replay_state(user_id,last_counter,updated_at) VALUES(?,?,?)",
+                    (user_id, counter, now),
+                )
+            else:
+                updated = db.execute(
+                    """UPDATE totp_replay_state SET last_counter=?,updated_at=?
+                       WHERE user_id=? AND last_counter<?""",
+                    (counter, now, user_id, counter),
+                )
+                if updated.rowcount != 1:
+                    return False
+            return True
 
     def claim_media_resource(self, resource_type: str, resource_id: str, owner_user_id: str) -> None:
         """Bind a server-generated asset/job identifier to one account exactly once."""
