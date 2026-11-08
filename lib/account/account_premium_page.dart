@@ -31,14 +31,14 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
     _load = _loadEntitlement();
   }
 
-  Future<({String? userId, UserEntitlement? entitlement, String? referralCode})>
+  Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
     if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
-      return (userId: null, entitlement: null, referralCode: null);
+      return (userId: null, entitlement: null, referralCode: null, usageSummary: null);
     }
 
     final api = RemoteAccountApi(
@@ -141,7 +141,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode})>(
+    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})>(
       future: _load,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
