@@ -578,4 +578,38 @@ void main() {
     );
     api.close();
   });
+  test('media upload has a dedicated timeout and aborts a stalled response', () async {
+    final file = File('${tempDirectory.path}/timeout.mp4');
+    await file.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final uploadReceived = Completer<void>();
+    final releaseResponse = Completer<void>();
+    final subscription = server.listen((request) async {
+      await request.drain();
+      if (!uploadReceived.isCompleted) uploadReceived.complete();
+      await releaseResponse.future;
+      try {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'assetId': 'late-asset'}));
+        await request.response.close();
+      } catch (_) {
+        // The client is expected to abort after the upload timeout.
+      }
+    });
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+      uploadTimeout: const Duration(milliseconds: 100),
+    );
+    addTearDown(() async {
+      if (!releaseResponse.isCompleted) releaseResponse.complete();
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final upload = api.uploadFile(file.path);
+    await uploadReceived.future.timeout(const Duration(seconds: 2));
+    await expectLater(upload, throwsA(isA<TimeoutException>()));
+  });
+
 }

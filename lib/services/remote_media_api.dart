@@ -10,7 +10,12 @@ import 'export_coordinator.dart';
 /// POST /v1/render/jobs, GET /v1/jobs/{id}, DELETE /v1/jobs/{id}.
 /// The server is responsible for actual ML inference and media encoding.
 class RemoteMediaApi {
-  RemoteMediaApi({required Uri baseUri, HttpClient? client, this.bearerToken})
+  RemoteMediaApi({
+    required Uri baseUri,
+    HttpClient? client,
+    this.bearerToken,
+    this.uploadTimeout = const Duration(minutes: 15),
+  })
       : baseUri = _validateBaseUri(baseUri),
         _client = client ?? HttpClient();
 
@@ -49,6 +54,10 @@ class RemoteMediaApi {
   final Uri baseUri;
   final HttpClient _client;
   final String? bearerToken;
+  /// Uploads may legitimately take longer than small JSON API requests.
+  /// Keep the timeout bounded without imposing the three-minute request limit
+  /// on large media files over slower mobile connections.
+  final Duration uploadTimeout;
   static const Duration requestTimeout = Duration(minutes: 3);
   static const int maxJsonResponseBytes = 8 * 1024 * 1024;
   // Keep client uploads aligned with the backend's per-file limit.
@@ -134,7 +143,7 @@ class RemoteMediaApi {
     }
     final boundary = '----EditoreMedia${DateTime.now().microsecondsSinceEpoch}';
     final uri = _resolveApiUri('/v1/assets');
-    final req = await _client.postUrl(uri).timeout(requestTimeout);
+    final req = await _client.postUrl(uri).timeout(uploadTimeout);
     req.followRedirects = false;
     _authorize(req);
     req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
@@ -146,8 +155,16 @@ class RemoteMediaApi {
       yield* file.openRead();
       yield utf8.encode('\r\n--$boundary--\r\n');
     }
-    await req.addStream(multipartBody());
-    final response = await req.close().timeout(requestTimeout);
+    HttpClientResponse response;
+    try {
+      // Bound both sending the multipart body and waiting for the server to
+      // accept it. A stalled upload must not leave a socket alive indefinitely.
+      await req.addStream(multipartBody()).timeout(uploadTimeout);
+      response = await req.close().timeout(uploadTimeout);
+    } on TimeoutException {
+      req.abort(TimeoutException('Upload multimediale scaduto.', uploadTimeout));
+      rethrow;
+    }
     final body = await _readResponseText(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException('Upload fallito HTTP ${response.statusCode}', uri: uri);
