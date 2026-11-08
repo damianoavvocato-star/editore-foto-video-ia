@@ -136,3 +136,15 @@ provider to authenticated media jobs, add audio extraction and review UI, then
 add TTS/dubbing and per-language render jobs. Voice cloning must remain disabled
 unless the speaker has explicitly provided informed consent. Provider credentials
 must stay in the server secret manager.
+
+
+## Audio extraction for speech jobs
+
+`backend/media_audio.py` adds a local FFmpeg extraction boundary for speech jobs.
+It extracts the first audio stream to mono 16 kHz PCM WAV, uses an argument list
+(no shell), enforces source/output size and timeout limits, and validates the WAV
+signature before returning the destination. Partial files are removed on failures.
+
+The utility is not yet wired to a public upload or job endpoint. The authenticated
+worker must first resolve an account-owned media asset to a server-controlled path;
+never accept arbitrary client filesystem paths. The deployment must install FFmpeg.
