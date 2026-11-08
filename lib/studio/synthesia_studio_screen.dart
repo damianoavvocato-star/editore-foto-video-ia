@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import '../services/remote_media_api.dart';
 import '../models/studio_job.dart';
 import '../services/account_api.dart';
 import '../services/remote_studio_api.dart';
@@ -16,6 +18,9 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
   final _script = TextEditingController();
   final _languages = TextEditingController(text: 'it-IT');
   RemoteStudioApi? _studio;
+  RemoteMediaApi? _mediaApi;
+  final List<String> _sourceAssetIds = [];
+  final List<String> _sourceNames = [];
   Map<String, dynamic> _capabilities = const {};
   List<StudioJobDraft> _drafts = const [];
   StudioTask _task = StudioTask.scriptToVideo;
@@ -29,7 +34,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
 
   @override
   void dispose() {
-    _title.dispose(); _script.dispose(); _languages.dispose(); _studio?.close();
+    _title.dispose(); _script.dispose(); _languages.dispose(); _studio?.close(); _mediaApi?.close();
     super.dispose();
   }
 
@@ -46,12 +51,51 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
         return;
       }
       final studio = RemoteStudioApi(RemoteAccountApi(baseUri: base, bearerToken: token));
+      final mediaApi = RemoteMediaApi(baseUri: base, bearerToken: token);
       final capabilities = await studio.capabilities();
       final drafts = await studio.listDrafts();
-      if (!mounted) { studio.close(); return; }
-      setState(() { _studio = studio; _capabilities = capabilities; _drafts = drafts; _message = null; });
+      if (!mounted) { studio.close(); mediaApi.close(); return; }
+      setState(() { _studio = studio; _mediaApi = mediaApi; _capabilities = capabilities; _drafts = drafts; _message = null; });
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());
+    }
+  }
+
+  Future<void> _pickAndUploadSource() async {
+    final api = _mediaApi;
+    if (api == null || _busy) return;
+    if (_sourceAssetIds.length >= 20) {
+      setState(() => _message = 'Puoi aggiungere al massimo 20 file sorgente.');
+      return;
+    }
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [
+        'pdf', 'docx', 'pptx', 'txt', 'md', 'rtf',
+        'jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'avi', 'webm', 'm4v',
+      ],
+      withData: false,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final path = file.path;
+    if (path == null || path.isEmpty) {
+      setState(() => _message = 'Il percorso del file selezionato non è disponibile.');
+      return;
+    }
+    setState(() { _busy = true; _message = 'Caricamento protetto del file…'; });
+    try {
+      final assetId = await api.uploadFile(path);
+      if (!mounted) return;
+      setState(() {
+        _sourceAssetIds.add(assetId);
+        _sourceNames.add(file.name);
+        _message = 'File caricato e associato al tuo account.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -63,7 +107,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
     try {
       final draft = await studio.createDraft(StudioJobRequest(
         task: _task, title: _title.text, script: _script.text,
-        targetLanguages: languages, avatarMode: _avatarMode,
+        targetLanguages: languages, sourceAssetIds: List.unmodifiable(_sourceAssetIds), avatarMode: _avatarMode,
         avatarConsent: _avatarConsent, voiceMode: _voiceMode, voiceConsent: _voiceConsent,
       ));
       final drafts = await studio.listDrafts();
@@ -107,6 +151,27 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
       if (_message != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Text(_message!))),
       const SizedBox(height: 12),
       Text('Nuovo progetto', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: _busy || _mediaApi == null ? null : _pickAndUploadSource,
+        icon: const Icon(Icons.upload_file),
+        label: const Text('Importa documento, foto o video'),
+      ),
+      if (_sourceNames.isNotEmpty)
+        ..._sourceNames.asMap().entries.map((entry) => ListTile(
+          dense: true,
+          leading: const Icon(Icons.attach_file),
+          title: Text(entry.value, maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: IconButton(
+            tooltip: 'Rimuovi file dalla bozza',
+            icon: const Icon(Icons.close),
+            onPressed: _busy ? null : () => setState(() {
+              _sourceNames.removeAt(entry.key);
+              _sourceAssetIds.removeAt(entry.key);
+            }),
+          ),
+        )),
+
       const SizedBox(height: 8),
       TextField(controller: _title, maxLength: 120, decoration: const InputDecoration(labelText: 'Titolo', border: OutlineInputBorder())),
       const SizedBox(height: 8),

@@ -88,6 +88,7 @@ class StudioJobRequest {
           StudioTask.slidesToVideo,
           StudioTask.talkingPhoto,
           StudioTask.translateDub,
+          StudioTask.screenExplainer,
         }.contains(task) &&
         sourceAssetIds.isEmpty) {
       throw ArgumentError('Questa attività richiede un file sorgente.');

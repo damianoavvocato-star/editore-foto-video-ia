@@ -111,7 +111,7 @@ class StudioJobRequest(BaseModel):
             raise StudioRequestError("Per usare un avatar personale serve il consenso verificato.")
         if self.voiceMode == "clone" and not self.voiceConsent:
             raise StudioRequestError("Per clonare una voce serve il consenso verificato.")
-        if self.task in {"document_to_video", "slides_to_video", "talking_photo", "translate_dub"} and not self.sourceAssetIds:
+        if self.task in {"document_to_video", "slides_to_video", "talking_photo", "translate_dub", "screen_explainer"} and not self.sourceAssetIds:
             raise StudioRequestError("Questa attività richiede almeno un file multimediale sorgente.")
         if self.task in {"script_to_video", "avatar_video"} and not self.script.strip() and not self.sourceAssetIds:
             raise StudioRequestError("Inserisci uno script o seleziona un contenuto sorgente.")
