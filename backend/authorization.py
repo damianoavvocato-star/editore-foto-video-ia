@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 
 PERMISSIONS = frozenset({
-    "accounts.read", "accounts.create", "accounts.update", "accounts.disable",
+    "accounts.read", "accounts.create", "accounts.update",
+    "support.tickets.read", "support.tickets.reply", "accounts.disable",
     "accounts.password_reset", "audit.read", "media.support_read",
     "billing.read", "billing.grant", "family.manage", "settings.manage",
 })
@@ -19,9 +20,11 @@ ROLE_DEFAULTS = {
     "owner": PERMISSIONS,
     "admin": frozenset({"accounts.read", "accounts.create", "accounts.update",
                         "accounts.disable", "accounts.password_reset",
-                        "media.support_read", "billing.read", "family.manage"}),
+                        "media.support_read", "billing.read", "family.manage",
+                        "support.tickets.read", "support.tickets.reply"}),
     "support": frozenset({"accounts.read", "accounts.password_reset",
-                          "media.support_read", "billing.read"}),
+                          "media.support_read", "billing.read",
+                           "support.tickets.read", "support.tickets.reply"}),
     "collaborator": frozenset({"billing.read"}),
     "user": frozenset(),
 }
