@@ -20,6 +20,7 @@ from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
 from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
 from backend.studio_queue import StudioJobQueue, StudioQueueError
+from backend.team_workspace import TeamWorkspaceError, TeamWorkspaceStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -36,6 +37,10 @@ TOKEN = os.getenv('MEDIA_API_TOKEN', '')
 ALLOW_INSECURE_LOCAL = os.getenv('MEDIA_ALLOW_INSECURE_LOCAL', '').strip().lower() == 'true'
 FFMPEG = os.getenv('FFMPEG_PATH', 'ffmpeg')
 app = FastAPI(title='Editore Foto Video IA Media API', version='0.2.0')
+
+
+def _team_store() -> TeamWorkspaceStore:
+    return TeamWorkspaceStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
 
 def _studio_store() -> StudioJobStore:
@@ -674,6 +679,32 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
     return {"enabled": False, "sessionsRevoked": True}
 
 
+class TeamProjectCreate(BaseModel):
+    name: str = Field(min_length=3, max_length=100)
+    description: str = Field(default="", max_length=1000)
+
+
+class TeamInvitationCreate(BaseModel):
+    collaboratorUserId: str = Field(min_length=1, max_length=128)
+
+
+class TeamInvitationResponse(BaseModel):
+    accept: bool
+
+
+class TeamCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class TeamApprovalCreate(BaseModel):
+    note: str = Field(default="", max_length=2000)
+
+
+class TeamApprovalResponse(BaseModel):
+    decision: str = Field(pattern=r"^(approved|changes_requested)$")
+    note: str = Field(default="", max_length=2000)
+
+
 class SupportTicketCreate(BaseModel):
     subject: str = Field(min_length=5, max_length=120)
     message: str = Field(min_length=10, max_length=4000)
@@ -686,6 +717,128 @@ class SupportTicketReply(BaseModel):
 
 class SupportTicketAssignment(BaseModel):
     assigneeUserId: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+@app.post('/v1/team/projects')
+def team_project_create(body: TeamProjectCreate, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        return {"project": _team_store().create_project(actor["userId"], body.name, body.description)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get('/v1/team/projects')
+def team_project_list(request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"projects": _team_store().list_projects(actor["userId"])}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/invitations')
+def team_invite(project_id: str, body: TeamInvitationCreate, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        return {"invitation": _team_store().invite_member(
+            actor["userId"], project_id, body.collaboratorUserId)}
+    except TeamWorkspaceError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message else 422, message) from exc
+
+
+@app.get('/v1/team/invitations')
+def team_list_invitations(request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"invitations": _team_store().list_invitations(actor["userId"])}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.put('/v1/team/projects/{project_id}/invitation')
+def team_respond_invitation(project_id: str, body: TeamInvitationResponse, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"invitation": _team_store().respond_invitation(
+            actor["userId"], project_id, body.accept)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.delete('/v1/team/projects/{project_id}/members/{member_user_id}')
+def team_revoke_member(project_id: str, member_user_id: str, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        revoked = _team_store().revoke_member(actor["userId"], project_id, member_user_id)
+        if not revoked:
+            raise HTTPException(404, "Collaboratore non trovato.")
+        return {"revoked": True}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get('/v1/team/projects/{project_id}/comments')
+def team_list_comments(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"comments": _team_store().list_comments(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/comments')
+def team_add_comment(project_id: str, body: TeamCommentCreate, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"comment": _team_store().add_comment(actor["userId"], project_id, body.body)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/approvals')
+def team_request_approval(project_id: str, body: TeamApprovalCreate, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approval": _team_store().request_approval(actor["userId"], project_id, body.note)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.put('/v1/team/approvals/{approval_id}')
+def team_respond_approval(approval_id: str, body: TeamApprovalResponse, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approval": _team_store().respond_approval(
+            actor["userId"], approval_id, body.decision, body.note)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get('/v1/team/projects/{project_id}/approvals')
+def team_list_approvals(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approvals": _team_store().list_approvals(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.post('/v1/support/tickets')
