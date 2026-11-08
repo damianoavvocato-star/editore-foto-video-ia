@@ -51,6 +51,10 @@ class RemoteMediaApi {
   final String? bearerToken;
   static const Duration requestTimeout = Duration(minutes: 3);
   static const int maxJsonResponseBytes = 8 * 1024 * 1024;
+  // Keep client uploads aligned with the backend's per-file limit.
+  static const int maxUploadBytes = 400 * 1024 * 1024;
+  // Avoid unbounded disk consumption from a faulty or compromised media server.
+  static const int maxDownloadBytes = 2 * 1024 * 1024 * 1024;
 
   bool _hasSameOrigin(Uri uri) =>
       uri.scheme.toLowerCase() == baseUri.scheme.toLowerCase() &&
@@ -123,6 +127,11 @@ class RemoteMediaApi {
   Future<String> uploadFile(String filePath) async {
     final file = File(filePath);
     if (!await file.exists()) throw FileSystemException('Media sorgente non trovato', filePath);
+    final fileSize = await file.length();
+    if (fileSize == 0) throw ArgumentError('Il file multimediale è vuoto.');
+    if (fileSize > maxUploadBytes) {
+      throw ArgumentError('Il file supera il limite di upload di 400 MB.');
+    }
     final boundary = '----EditoreMedia${DateTime.now().microsecondsSinceEpoch}';
     final uri = _resolveApiUri('/v1/assets');
     final req = await _client.postUrl(uri).timeout(requestTimeout);
@@ -161,14 +170,33 @@ class RemoteMediaApi {
       await response.drain<void>();
       throw HttpException('Download fallito HTTP ${response.statusCode}', uri: uri);
     }
+    if (response.contentLength > maxDownloadBytes) {
+      await response.drain<void>();
+      throw const FormatException('Il file scaricato supera il limite di 2 GB.');
+    }
     final output = File(outputPath);
+    final temporary = File('${output.path}.part');
     await output.parent.create(recursive: true);
-    final sink = output.openWrite();
+    IOSink? sink;
     try {
-      await response.pipe(sink).timeout(const Duration(minutes: 30));
-    } catch (_) {
+      sink = temporary.openWrite();
+      var receivedBytes = 0;
+      await for (final chunk in response.timeout(const Duration(minutes: 30))) {
+        receivedBytes += chunk.length;
+        if (receivedBytes > maxDownloadBytes) {
+          throw const FormatException('Il file scaricato supera il limite di 2 GB.');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
       await sink.close();
+      sink = null;
+      // Replace an existing output only after the new download is complete.
       if (await output.exists()) await output.delete();
+      await temporary.rename(output.path);
+    } catch (_) {
+      if (sink != null) await sink.close();
+      if (await temporary.exists()) await temporary.delete();
       rethrow;
     }
   }

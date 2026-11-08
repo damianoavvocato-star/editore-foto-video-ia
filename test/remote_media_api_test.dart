@@ -22,6 +22,79 @@ void main() {
     }
   });
 
+  test('upload rejects empty files before opening a network request', () async {
+    final file = File('${tempDirectory.path}/empty.mp4');
+    await file.writeAsBytes([]);
+    final api = RemoteMediaApi(baseUri: Uri.parse('https://media.example.test'));
+
+    await expectLater(
+      api.uploadFile(file.path),
+      throwsArgumentError,
+    );
+    api.close();
+  });
+
+  test('upload rejects files above the backend 400 MB limit before network I/O', () async {
+    final file = File('${tempDirectory.path}/too-large.mp4');
+    final handle = await file.open(mode: FileMode.write);
+    await handle.truncate(RemoteMediaApi.maxUploadBytes + 1);
+    await handle.close();
+    final api = RemoteMediaApi(baseUri: Uri.parse('https://media.example.test'));
+
+    await expectLater(
+      api.uploadFile(file.path),
+      throwsArgumentError,
+    );
+    api.close();
+  });
+
+  test('download rejects an oversized Content-Length without creating a file', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      request.response.headers.contentLength = RemoteMediaApi.maxDownloadBytes + 1;
+      await request.response.close();
+    });
+    final output = File('${tempDirectory.path}/oversized.bin');
+
+    await expectLater(
+      api.downloadFile('/oversized', output.path),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await output.exists(), isFalse);
+
+    await subscription.cancel();
+    api.close();
+    await server.close(force: true);
+  });
+
+  test('failed download preserves an existing output and removes partial data', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      request.response.headers.contentLength = 10;
+      request.response.add([1, 2, 3]);
+      await request.response.close();
+    });
+    final output = File('${tempDirectory.path}/existing.bin');
+    await output.writeAsBytes([9, 8, 7]);
+
+    await expectLater(
+      api.downloadFile('/truncated', output.path),
+      throwsA(anything),
+    );
+    expect(await output.readAsBytes(), [9, 8, 7]);
+    expect(await File('${output.path}.part').exists(), isFalse);
+
+    await subscription.cancel();
+    api.close();
+    await server.close(force: true);
+  });
+
   test('download URLs must stay on the API origin', () async {
     final api = RemoteMediaApi(baseUri: Uri.parse('https://media.example.test'));
     await expectLater(

@@ -21,7 +21,7 @@ MagicIAedit usa un endpoint vision compatibile con l'API Chat Completions. Confi
 ## API disponibili
 
 - `GET /health`: stato servizio e disponibilità FFmpeg.
-- `POST /v1/assets`: upload di immagini, video e audio consentiti; nome file sostituito con UUID generato dal server; limite upload 1 GiB e rifiuto file vuoti.
+- `POST /v1/assets`: upload di immagini, video e audio consentiti; nome file sostituito con UUID generato dal server; limite upload 400 MB per file e rifiuto file vuoti.
 - `POST /v1/render/jobs`: avvia un job di rendering.
 - `GET /v1/jobs/{job_id}`: stato e progresso del job.
 - `DELETE /v1/jobs/{job_id}`: richiede annullamento cooperativo.
