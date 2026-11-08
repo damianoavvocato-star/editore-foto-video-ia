@@ -175,6 +175,7 @@ class AccountStore:
         now = int(time.time())
         keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             for key in keys:
                 row = db.execute(
                     "SELECT attempts,window_started FROM auth_rate_limits WHERE key_hash=?", (key,)
@@ -782,7 +783,10 @@ class AccountStore:
             details = {}
         if not isinstance(details, dict) or len(details) > 20:
             raise AccountError("Dettagli audit non validi.")
-        forbidden = {"password", "token", "secret", "authorization", "credential", "apikey"}
+        forbidden = {
+            "password", "token", "secret", "authorization", "credential",
+            "apikey", "otp", "privatekey", "cookie", "bearer", "session",
+        }
         for key, value in details.items():
             normalized_key = re.sub(r"[^a-z0-9]", "", key.lower()) if isinstance(key, str) else ""
             if not normalized_key or any(secret_name in normalized_key for secret_name in forbidden):
