@@ -151,3 +151,8 @@
 - La console Owner/Admin include ora un selettore degli operatori Support attivi e l'azione per assegnare o rimuovere l'assegnazione del ticket tramite endpoint protetto.
 - La lista ticket indica quando un ticket risulta assegnato.
 - La verifica CI successiva alle modifiche UI è in attesa; la modifica non viene conteggiata come completata finché i test non terminano.
+
+## Correzione robustezza assegnazione ticket — 8 novembre 2026
+
+- La console Owner/Admin mantiene ora selezionabile anche l'assegnatario già salvato quando non compare nella prima pagina degli account Support attivi (ad esempio account disattivato o fuori dai primi 100). Viene mostrato come assegnatario attuale non disponibile, così l'operatore può rimuovere l'assegnazione senza crash del menu.
+- Modifica UI committata sul branch; la nuova verifica CI è in attesa. P0-05 resta `partial`: notifiche e supporto media con consenso non sono ancora implementati.
