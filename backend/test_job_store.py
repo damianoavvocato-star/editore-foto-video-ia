@@ -85,3 +85,90 @@ def test_individual_field_mutations_are_persisted(tmp_path):
     del jobs["f" * 32]["message"]
     restored_after_delete = JobRegistry(database)
     assert "message" not in restored_after_delete["f" * 32]
+
+
+
+def test_idempotency_reservation_is_shared_between_registry_instances(tmp_path):
+    import threading
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    first_registry = JobRegistry(database)
+    second_registry = JobRegistry(database)
+    barrier = threading.Barrier(2)
+    results = []
+
+    def reserve(registry):
+        barrier.wait()
+        results.append(registry.create_idempotent_job(
+            uuid.uuid4().hex,
+            {"state": "queued", "progress": 0.0},
+            "account-scope",
+            "same-render-key",
+            "same-fingerprint",
+        ))
+
+    workers = [
+        threading.Thread(target=reserve, args=(first_registry,)),
+        threading.Thread(target=reserve, args=(second_registry,)),
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=5)
+
+    assert all(not worker.is_alive() for worker in workers)
+    assert len(results) == 2
+    assert results[0][0] == results[1][0]
+    assert sorted(created for _, created in results) == [False, True]
+
+
+def test_idempotency_reservation_rejects_changed_fingerprint(tmp_path):
+    import uuid
+    import pytest
+    from backend.job_store import IdempotencyConflict
+
+    registry = JobRegistry(tmp_path / "jobs.sqlite3")
+    registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "same-render-key",
+        "fingerprint-one",
+    )
+
+    with pytest.raises(IdempotencyConflict):
+        registry.create_idempotent_job(
+            uuid.uuid4().hex,
+            {"state": "queued", "progress": 0.0},
+            "account-scope",
+            "same-render-key",
+            "fingerprint-two",
+        )
+
+
+def test_idempotency_reservation_survives_registry_restart(tmp_path):
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    first = JobRegistry(database)
+    job_id, created = first.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "succeeded", "progress": 1.0},
+        "account-scope",
+        "durable-render-key",
+        "fingerprint",
+    )
+    restored = JobRegistry(database)
+
+    replayed_id, replayed_created = restored.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "durable-render-key",
+        "fingerprint",
+    )
+
+    assert created is True
+    assert replayed_created is False
+    assert replayed_id == job_id

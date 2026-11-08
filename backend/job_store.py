@@ -35,6 +35,10 @@ class _PersistentJob(dict):
         self._registry._save(self._job_id, self)
 
 
+class IdempotencyConflict(ValueError):
+    """An idempotency key was reused for a different canonical request."""
+
+
 class JobRegistry(dict[str, dict[str, Any]]):
     """Dict-compatible registry that persists every job state transition."""
 
@@ -55,6 +59,18 @@ class JobRegistry(dict[str, dict[str, Any]]):
                     job_id TEXT PRIMARY KEY,
                     payload TEXT NOT NULL,
                     updated_at REAL NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS render_idempotency (
+                    scope TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    job_id TEXT NOT NULL UNIQUE,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY(scope, idempotency_key)
                 )
                 """
             )
@@ -121,6 +137,62 @@ class JobRegistry(dict[str, dict[str, Any]]):
             )
         self._restrict_database_permissions()
 
+    def create_idempotent_job(
+        self,
+        job_id: str,
+        values: dict[str, Any],
+        scope: str,
+        idempotency_key: str,
+        fingerprint: str,
+    ) -> tuple[str, bool]:
+        """Atomically reserve an idempotency key and persist its job in SQLite.
+
+        The unique (scope, key) constraint and BEGIN IMMEDIATE make this safe
+        across concurrent registry instances sharing the same SQLite database.
+        Returns (canonical_job_id, created); raises IdempotencyConflict when
+        the key was already reserved for a different request fingerprint.
+        """
+        payload_values = dict(values)
+        payload = json.dumps(
+            payload_values, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """SELECT job_id, fingerprint FROM render_idempotency
+                   WHERE scope=? AND idempotency_key=?""",
+                (scope, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                connection.rollback()
+                existing_job_id, existing_fingerprint = existing
+                if existing_fingerprint != fingerprint:
+                    raise IdempotencyConflict(
+                        "Idempotency key was reused with a different request."
+                    )
+                return existing_job_id, False
+            connection.execute(
+                """INSERT INTO media_jobs(job_id, payload, updated_at)
+                   VALUES (?, ?, ?)""",
+                (job_id, payload, time.time()),
+            )
+            connection.execute(
+                """INSERT INTO render_idempotency(
+                       scope, idempotency_key, fingerprint, job_id, created_at
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                (scope, idempotency_key, fingerprint, job_id, time.time()),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        dict.__setitem__(self, job_id, _PersistentJob(job_id, payload_values, self))
+        self._restrict_database_permissions()
+        return job_id, True
+
     def __setitem__(self, job_id: str, values: dict[str, Any]) -> None:
         record = _PersistentJob(job_id, dict(values), self)
         dict.__setitem__(self, job_id, record)
@@ -130,9 +202,11 @@ class JobRegistry(dict[str, dict[str, Any]]):
         value = dict.pop(self, job_id, *default)
         with self._connection() as connection:
             connection.execute("DELETE FROM media_jobs WHERE job_id = ?", (job_id,))
+            connection.execute("DELETE FROM render_idempotency WHERE job_id = ?", (job_id,))
         return value
 
     def clear(self) -> None:
         dict.clear(self)
         with self._connection() as connection:
             connection.execute("DELETE FROM media_jobs")
+            connection.execute("DELETE FROM render_idempotency")

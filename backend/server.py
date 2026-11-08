@@ -628,29 +628,38 @@ def create_render(
         for asset_id in referenced_assets:
             _require_resource_owner(request, 'asset', asset_id)
     with lock:
-        if idempotency_key is not None:
-            for existing_id, existing_job in jobs.items():
-                if (
-                    existing_job.get('_idempotency_scope') == idempotency_scope
-                    and existing_job.get('_idempotency_key') == idempotency_key
-                ):
-                    if existing_job.get('_request_fingerprint') != request_fingerprint:
-                        raise HTTPException(
-                            409,
-                            'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
-                        )
-                    return {'jobId': existing_id}
         job_id = uuid.uuid4().hex
-        _claim_resource(request, 'job', job_id)
         job_record = {'state':'queued','progress':0.0,'message':'In coda'}
         if idempotency_key is not None:
-            # Internal metadata is persisted with the job but never returned by the status API.
+            # SQLite enforces a unique account-scoped reservation across
+            # concurrent backend instances; the in-memory lock is not relied on.
             job_record.update({
                 '_idempotency_scope': idempotency_scope,
                 '_idempotency_key': idempotency_key,
                 '_request_fingerprint': request_fingerprint,
             })
-        jobs[job_id] = job_record
+            try:
+                job_id, created = jobs.create_idempotent_job(
+                    job_id, job_record, idempotency_scope,
+                    idempotency_key, request_fingerprint,
+                )
+            except ValueError as exc:
+                from backend.job_store import IdempotencyConflict
+                if isinstance(exc, IdempotencyConflict):
+                    raise HTTPException(
+                        409,
+                        'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
+                    ) from exc
+                raise
+            if not created:
+                return {'jobId': job_id}
+        else:
+            jobs[job_id] = job_record
+        try:
+            _claim_resource(request, 'job', job_id)
+        except Exception:
+            jobs.pop(job_id, None)
+            raise
         cancel_events[job_id] = threading.Event()
     threading.Thread(target=_render_job, args=(job_id, body.project, body.settings), daemon=True).start()
     return {'jobId': job_id}
