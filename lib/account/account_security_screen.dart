@@ -398,6 +398,13 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                           value: '',
                           child: Text('Non assegnato'),
                         ),
+                        if (assignee.isNotEmpty && !_accounts.any(
+                          (account) => account['userId']?.toString() == assignee,
+                        ))
+                          DropdownMenuItem<String>(
+                            value: assignee,
+                            child: Text('Assegnatario attuale ($assignee) · non disponibile'),
+                          ),
                         ..._accounts.where((account) =>
                           account['role'] == 'support' && account['disabled'] != true
                         ).map((account) => DropdownMenuItem<String>(
