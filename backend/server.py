@@ -684,6 +684,10 @@ class SupportTicketReply(BaseModel):
     status: str | None = Field(default=None, pattern=r"^(open|waiting_user|resolved|escalated)$")
 
 
+class SupportTicketAssignment(BaseModel):
+    assigneeUserId: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 @app.post('/v1/support/tickets')
 def support_ticket_create(body: SupportTicketCreate, request: Request):
     account = _request_account(request)
@@ -706,6 +710,19 @@ def support_ticket_list(request: Request, status: str | None = None,
             owner_user_id=None if staff else account["userId"], status=status, limit=limit, offset=offset)
     except AccountError as exc: raise HTTPException(422, str(exc)) from exc
     return {"tickets": rows, "limit": limit, "offset": offset}
+
+
+@app.put('/v1/support/tickets/{ticket_id}/assignment')
+def support_ticket_assign(ticket_id: str, body: SupportTicketAssignment, request: Request):
+    actor = _require_permission(request, "support.tickets.assign")
+    try:
+        ticket = _account_store().assign_support_ticket(
+            ticket_id, actor["userId"], body.assigneeUserId
+        )
+    except AccountError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message else 422, message) from exc
+    return {"ticket": ticket}
 
 
 @app.get('/v1/support/tickets/{ticket_id}')
