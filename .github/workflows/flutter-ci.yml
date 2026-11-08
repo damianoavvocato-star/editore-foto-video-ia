@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   flutter-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -44,7 +44,7 @@ jobs:
         run: flutter test --reporter expanded
 
   backend-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -70,7 +70,7 @@ jobs:
   android-preflight:
     # Run only for Android/Gradle inputs or an explicitly full validation.
     # This validates configuration; it does not build an APK.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout repository
@@ -204,7 +204,7 @@ jobs:
     needs: [flutter-test, backend-test, android-preflight]
     # Android and iOS scaffolds are generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout repository
