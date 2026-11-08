@@ -505,3 +505,43 @@ def test_interrupted_upload_removes_partial_file(tmp_path, monkeypatch):
 
     assert list(tmp_path.iterdir()) == []
 
+
+
+
+def test_render_api_retries_same_idempotent_request_after_restart(tmp_path, monkeypatch):
+    from backend.job_store import JobRegistry
+
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", True)
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setattr(server, "_render_job", lambda *_args: None)
+    monkeypatch.setattr(server, "cancel_events", {})
+    database = tmp_path / "jobs.sqlite3"
+    first_registry = JobRegistry(database)
+    monkeypatch.setattr(server, "jobs", first_registry)
+    client = TestClient(server.app)
+    headers = {"Idempotency-Key": "restart-render-key"}
+    body = {"project": {"tracks": []}, "settings": {"resolution": "p720"}}
+
+    first = client.post("/v1/render/jobs", json=body, headers=headers)
+    assert first.status_code == 200
+    first_job_id = first.json()["jobId"]
+    assert first_registry[first_job_id]["state"] == "queued"
+
+    # Recreate the registry to model a server restart: the old worker is gone.
+    restored_registry = JobRegistry(database)
+    monkeypatch.setattr(server, "jobs", restored_registry)
+    assert restored_registry[first_job_id]["error"] == "worker_interrupted"
+
+    changed = client.post(
+        "/v1/render/jobs",
+        json={"project": {"tracks": []}, "settings": {"resolution": "p1080"}},
+        headers=headers,
+    )
+    assert changed.status_code == 409
+
+    retry = client.post("/v1/render/jobs", json=body, headers=headers)
+    assert retry.status_code == 200
+    retry_job_id = retry.json()["jobId"]
+    assert retry_job_id != first_job_id
+    assert restored_registry[first_job_id]["state"] == "failed"
+    assert restored_registry[retry_job_id]["state"] == "queued"
