@@ -15,6 +15,7 @@ from backend.magiciaedit import MagicIAError, create_magic_plan, provider_config
 from backend.accounts import AccountError, AccountStore, SecurityConfigurationError
 from backend.authorization import PermissionError as PolicyError, PermissionPolicy
 from backend.entitlements import EntitlementError, EntitlementStore
+from backend.referrals import ReferralError, ReferralStore
 from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
@@ -577,6 +578,10 @@ class OwnerPremiumGrant(BaseModel):
     plan: str = Field(pattern=r"^(premium|family)$")
     expiresAt: int | None = None
     reason: str = Field(default="Premium omaggio", min_length=1, max_length=240)
+
+
+class ReferralClaimRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
 
 
 def _require_owner(request: Request) -> dict[str, Any]:
@@ -1701,6 +1706,10 @@ def _entitlement_store() -> EntitlementStore:
     return EntitlementStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
 
+def _referral_store() -> ReferralStore:
+    return ReferralStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
 def _usage_store() -> UsageStore:
     return UsageStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
@@ -1853,11 +1862,49 @@ def account_remove_family_member(member_user_id: str, request: Request):
     return {'familyId': details['familyId'], 'userId': member_user_id, 'removed': True}
 
 
+@app.get('/v1/account/referrals')
+def account_get_referrals(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _referral_store()
+    try:
+        code = store.create_or_get_code(account['userId'])
+        history = store.history(account['userId'])
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {'code': code, 'claims': history['claims']}
+
+
+@app.post('/v1/account/referrals/claim')
+def account_claim_referral(body: ReferralClaimRequest, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        result = _referral_store().claim(account['userId'], body.code)
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return result
+
+
+@app.get('/v1/account/referrals/history')
+def account_referral_history(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        return _referral_store().history(account['userId'])
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get('/v1/account/entitlement')
 def account_get_entitlement(request: Request):
     account = _request_account(request)
     if account is None:
         raise HTTPException(401, 'Sessione account obbligatoria.')
+    _referral_store().mature_due()
     details = _entitlement_store().entitlement_details(account['userId'])
     valid_until = details['validUntil']
     return {
