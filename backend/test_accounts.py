@@ -178,12 +178,14 @@ def test_owner_totp_requires_second_factor_and_recovery_codes_are_one_time(tmp_p
     monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
     store = AccountStore(tmp_path / "accounts.sqlite3")
     owner = store.bootstrap_owner("secure_owner", "owner password long enough")
+    _, pre_2fa_token, _ = store.login("secure_owner", "owner password long enough")
     secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
     recovery_codes = store.confirm_totp_setup(
         owner["userId"], code_at(secret, int(time.time()))
     )
     assert len(recovery_codes) == 10
     assert store.totp_enabled(owner["userId"])
+    assert store.resolve_session(pre_2fa_token) is None
 
     with pytest.raises(AccountError, match="Secondo fattore"):
         store.login("secure_owner", "owner password long enough")
