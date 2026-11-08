@@ -193,7 +193,7 @@ def test_stale_reconciliation_token_cannot_update_provider_status(tmp_path):
     assert stale is not None
     current = queue.claim_reconciliation("reconciler-b", now=119)
     assert current is not None
-    with pytest.raises(StudioQueueError, match="lease"):
+    with pytest.raises(StudioQueueError, match="Lease"):
         queue.record_provider_status(
             "user-a", job["jobId"], "complete", now=120,
             reconciliation_token=stale["_worker"]["reconciliationToken"],
