@@ -165,7 +165,7 @@ class ReferralStore:
                     """INSERT INTO account_audit_events
                        (actor_user_id,action,target_user_id,details_json,created_at)
                        VALUES(?,?,?,?,?)""",
-                    ("referral-system", "referral.rewarded", row["invitee_user_id"],
+                    (row["inviter_user_id"], "referral.rewarded", row["invitee_user_id"],
                      '{"rewardDays":30,"beneficiaries":2}', current),
                 )
                 matured += 1
