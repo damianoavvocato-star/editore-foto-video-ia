@@ -1,8 +1,21 @@
 import 'package:editore_foto_video_ia/account/account_premium_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const secureStorageChannel =
+    MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, (call) async => null);
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorageChannel, null);
+  });
   testWidgets('shows monthly quota and reached-limit warning', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
