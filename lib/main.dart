@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'models/editor_project.dart';
+import 'account/account_security_screen.dart';
 import 'services/project_store.dart';
 import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
@@ -773,7 +774,11 @@ class _HomePageState extends State<HomePage> {
                     onProjectChanged: _applyMagicIAeditProject,
                     onMessage: _message,
                   )
-                : _buildEditor(context);
+                : selectedTab == 6
+                    ? const AccountSecurityScreen(
+                        apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
+                      )
+                    : _buildEditor(context);
             final sidebar = _buildSidebar(context);
             return Padding(
               padding: const EdgeInsets.all(16),
