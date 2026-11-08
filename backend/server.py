@@ -765,8 +765,9 @@ def owner_audit_events(
     _require_permission(request, "audit.read")
     if since is not None and until is not None and since > until:
         raise HTTPException(422, "Intervallo temporale audit non valido.")
+    page_size = max(1, min(100, limit))
     events = _account_store().list_audit_events(
-        limit=limit,
+        limit=page_size + 1,
         offset=offset,
         action=action,
         actor_user_id=actorUserId,
@@ -774,11 +775,12 @@ def owner_audit_events(
         since=since,
         until=until,
     )
+    has_more = len(events) > page_size
     return {
-        'events': events,
-        'limit': max(1, min(100, limit)),
+        'events': events[:page_size],
+        'limit': page_size,
         'offset': max(0, min(1_000_000, offset)),
-        'hasMore': len(events) == max(1, min(100, limit)),
+        'hasMore': has_more,
     }
 
 
