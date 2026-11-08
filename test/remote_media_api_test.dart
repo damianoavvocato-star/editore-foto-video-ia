@@ -49,13 +49,20 @@ void main() {
   });
 
   test('download rejects an oversized Content-Length without creating a file', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    // HttpServer enforces Content-Length and will throw if the advertised body
+    // is not sent. Use a raw socket to simulate a malicious/incorrect server.
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final api = RemoteMediaApi(
       baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
     );
-    final subscription = server.listen((request) async {
-      request.response.headers.contentLength = RemoteMediaApi.maxDownloadBytes + 1;
-      await request.response.close();
+    final subscription = server.listen((socket) async {
+      socket.add(utf8.encode(
+        'HTTP/1.1 200 OK\\r\\n'
+        'Content-Length: ${RemoteMediaApi.maxDownloadBytes + 1}\\r\\n'
+        'Connection: close\\r\\n\\r\\n',
+      ));
+      await socket.flush();
+      await socket.close();
     });
     final output = File('${tempDirectory.path}/oversized.bin');
 
@@ -66,19 +73,26 @@ void main() {
     expect(await output.exists(), isFalse);
 
     await subscription.cancel();
+    await server.close();
     api.close();
-    await server.close(force: true);
   });
 
   test('failed download preserves an existing output and removes partial data', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    // A raw socket is required to intentionally violate Content-Length;
+    // HttpServer itself rejects and logs this malformed response.
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final api = RemoteMediaApi(
       baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
     );
-    final subscription = server.listen((request) async {
-      request.response.headers.contentLength = 10;
-      request.response.add([1, 2, 3]);
-      await request.response.close();
+    final subscription = server.listen((socket) async {
+      socket.add(utf8.encode(
+        'HTTP/1.1 200 OK\\r\\n'
+        'Content-Length: 10\\r\\n'
+        'Connection: close\\r\\n\\r\\n'
+      ));
+      socket.add([1, 2, 3]);
+      await socket.flush();
+      await socket.close();
     });
     final output = File('${tempDirectory.path}/existing.bin');
     await output.writeAsBytes([9, 8, 7]);
@@ -91,8 +105,8 @@ void main() {
     expect(await File('${output.path}.part').exists(), isFalse);
 
     await subscription.cancel();
+    await server.close();
     api.close();
-    await server.close(force: true);
   });
 
   test('download URLs must stay on the API origin', () async {
