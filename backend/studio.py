@@ -75,34 +75,34 @@ class StudioJobRequest(BaseModel):
         return value
 
     @validator("targetLanguages")
-    def valid_target_languages(cls, values: list[str]) -> list[str]:
-        if not values or len(values) > 20:
+    def valid_target_languages(cls, value: list[str]) -> list[str]:
+        if not value or len(value) > 20:
             raise ValueError("Seleziona da 1 a 20 lingue di destinazione.")
-        if any(not isinstance(value, str) or not LANGUAGE_PATTERN.fullmatch(value) for value in values):
+        if any(not isinstance(item, str) or not LANGUAGE_PATTERN.fullmatch(item) for item in value):
             raise ValueError("Uno o più codici lingua non sono validi.")
-        if len(set(values)) != len(values):
+        if len(set(value)) != len(value):
             raise ValueError("Le lingue di destinazione non possono essere duplicate.")
-        return values
+        return value
 
     @validator("sourceAssetIds")
-    def valid_source_assets(cls, values: list[str]) -> list[str]:
-        if len(values) > 20 or any(
-            not isinstance(value, str) or not ASSET_ID_PATTERN.fullmatch(value)
-            for value in values
+    def valid_source_assets(cls, value: list[str]) -> list[str]:
+        if len(value) > 20 or any(
+            not isinstance(item, str) or not ASSET_ID_PATTERN.fullmatch(item)
+            for item in value
         ):
             raise ValueError("Selezione media non valida: massimo 20 elementi.")
-        if len(set(values)) != len(values):
+        if len(set(value)) != len(value):
             raise ValueError("La selezione contiene media duplicati.")
-        return values
+        return value
 
     @validator("variables")
-    def bounded_variables(cls, values: dict[str, str]) -> dict[str, str]:
-        if len(values) > 100:
+    def bounded_variables(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > 100:
             raise ValueError("Sono ammesse al massimo 100 variabili per modello.")
-        for key, value in values.items():
-            if not key.strip() or len(key) > 80 or len(value) > 2000:
+        for key, item in value.items():
+            if not key.strip() or len(key) > 80 or len(item) > 2000:
                 raise ValueError("Variabile del modello non valida o troppo lunga.")
-        return values
+        return value
 
     def validate_policy(self) -> None:
         if self.sourceLanguage and self.sourceLanguage in self.targetLanguages:

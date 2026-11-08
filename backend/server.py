@@ -701,12 +701,14 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, 'File vuoto')
+        with partial.open('rb') as uploaded:
+            document_header = uploaded.read(5)
         if suffix == '.pdf':
-            valid_document = partial.open('rb').read(5) == b'%PDF-'
+            valid_document = document_header == b'%PDF-'
         elif suffix in {'.docx', '.pptx'}:
-            valid_document = partial.open('rb').read(4) == bytes((80, 75, 3, 4))
+            valid_document = document_header[:4] == bytes((80, 75, 3, 4))
         elif suffix == '.rtf':
-            valid_document = partial.open('rb').read(5).lower() == b'{\\rtf'
+            valid_document = document_header.lower() == b'{\\rtf'
         elif suffix in {'.txt', '.md'}:
             try:
                 partial.read_bytes()[:65536].decode('utf-8-sig')

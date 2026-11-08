@@ -176,7 +176,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
       TextField(controller: _title, maxLength: 120, decoration: const InputDecoration(labelText: 'Titolo', border: OutlineInputBorder())),
       const SizedBox(height: 8),
       DropdownButtonFormField<StudioTask>(
-        value: _task,
+        initialValue: _task,
         decoration: const InputDecoration(labelText: 'Tipo di progetto', border: OutlineInputBorder()),
         items: StudioTask.values.map((task) => DropdownMenuItem(value: task, child: Text(task.label))).toList(),
         onChanged: (value) => setState(() => _task = value ?? _task),
@@ -190,7 +190,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
         helperText: 'Inserisci codici lingua separati da virgole.', border: OutlineInputBorder())),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
-        value: _avatarMode, decoration: const InputDecoration(labelText: 'Presentatore', border: OutlineInputBorder()),
+        initialValue: _avatarMode, decoration: const InputDecoration(labelText: 'Presentatore', border: OutlineInputBorder()),
         items: const [
           DropdownMenuItem(value: 'none', child: Text('Nessun avatar')),
           DropdownMenuItem(value: 'stock', child: Text('Avatar della libreria')),
@@ -204,7 +204,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
         controlAffinity: ListTileControlAffinity.leading),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
-        value: _voiceMode, decoration: const InputDecoration(labelText: 'Voce', border: OutlineInputBorder()),
+        initialValue: _voiceMode, decoration: const InputDecoration(labelText: 'Voce', border: OutlineInputBorder()),
         items: const [
           DropdownMenuItem(value: 'synthetic', child: Text('Voce sintetica')),
           DropdownMenuItem(value: 'licensed', child: Text('Voce con licenza')),
