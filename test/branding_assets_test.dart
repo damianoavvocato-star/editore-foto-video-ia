@@ -16,6 +16,8 @@ void main() {
     expect(appIcon, contains('>I</text>'));
     expect(appIcon, contains('>A</text>'));
     expect(appIcon, contains('linearGradient'));
+    expect(appIcon, contains('Magic'));
+    expect(appIcon, contains('EDITORE FOTO E VIDEO IA'));
     expect(mark, contains('>I</text>'));
     expect(mark, contains('>A</text>'));
     expect(appSource, contains("title: 'MagicIAedit – AI Photo & Video Studio'"));

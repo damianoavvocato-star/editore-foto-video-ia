@@ -6,29 +6,32 @@
  <radialGradient id="aura"><stop stop-color="#8B36FF" stop-opacity=".72"/><stop offset="1" stop-color="#8B36FF" stop-opacity="0"/></radialGradient>
  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="14" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
-<rect width="1024" height="1024" rx="225.28" fill="url(#bg)"/>
-<circle cx="256" cy="737.28" r="430.08" fill="url(#aura)"/><circle cx="839.68" cy="235.52" r="358.4" fill="url(#aura)"/>
-<rect x="25.6" y="25.6" width="972.8" height="972.8" rx="209.92" fill="none" stroke="url(#neon)" stroke-width="12.288"/>
-<g opacity=".95" fill="none" stroke="url(#neon)" stroke-width="25.6" stroke-linecap="round">
- <path d="M 122.88 614.4 C 20.48 378.88, 143.36 174.08, 368.64 163.84"/>
- <path d="M 102.4 645.12 C 276.48 901.12, 716.8 901.12, 921.6 563.2"/>
+<rect width="1024" height="1024" rx="225" fill="url(#bg)"/>
+<circle cx="256" cy="737" r="430" fill="url(#aura)"/><circle cx="840" cy="236" r="358" fill="url(#aura)"/>
+<rect x="26" y="26" width="972" height="972" rx="210" fill="none" stroke="url(#neon)" stroke-width="12"/>
+<g opacity=".95" fill="none" stroke="url(#neon)" stroke-width="25" stroke-linecap="round">
+ <path d="M 123 614 C 20 379, 143 174, 369 164"/><path d="M 102 645 C 276 901, 717 901, 922 563"/>
 </g>
-<g transform="rotate(-8 512 296.96)" filter="url(#glow)">
- <rect x="225.28" y="194.56" width="583.68" height="174.08" rx="35.84" fill="#11102E" stroke="#B8A8FF" stroke-width="12.288"/>
- <path d="M 256 194.56 l 56.32 174.08 m 107.52 -174.08 l 56.32 174.08 m 107.52 -174.08 l 56.32 174.08 m 107.52 -174.08 l 56.32 174.08" stroke="url(#neon)" stroke-width="25.6"/>
+<g transform="rotate(-8 512 297)" filter="url(#glow)">
+ <rect x="225" y="195" width="584" height="174" rx="36" fill="#11102E" stroke="#B8A8FF" stroke-width="12"/>
+ <path d="M 256 195 l 56 174 m 108 -174 l 56 174 m 108 -174 l 56 174 m 108 -174 l 56 174" stroke="url(#neon)" stroke-width="26"/>
 </g>
-<path d="M 112.64 368.64 C 20.48 481.28, 81.92 716.8, 256 778.24" fill="none" stroke="#8D5BFF" stroke-width="35.84" stroke-dasharray="35.84 26.624" opacity=".9"/>
+<path d="M 113 369 C 20 481, 82 717, 256 778" fill="none" stroke="#8D5BFF" stroke-width="36" stroke-dasharray="36 27" opacity=".9"/>
 <g font-family="DejaVu Sans,Arial,sans-serif" font-weight="900" text-anchor="middle" filter="url(#glow)">
- <text x="409.6" y="696.32" font-size="440.32" fill="url(#letters)" stroke="#A9E9FF" stroke-width="6.144" paint-order="stroke fill">I</text>
- <text x="655.36" y="696.32" font-size="440.32" fill="url(#letters)" stroke="#E3B5FF" stroke-width="6.144" paint-order="stroke fill">A</text>
+ <text x="410" y="650" font-size="365" fill="url(#letters)" stroke="#A9E9FF" stroke-width="6" paint-order="stroke fill">I</text>
+ <text x="655" y="650" font-size="365" fill="url(#letters)" stroke="#E3B5FF" stroke-width="6" paint-order="stroke fill">A</text>
 </g>
-<path d="M 619.52 501.76 L 619.52 634.88 L 716.8 568.32 Z" fill="#211044" stroke="#FFFFFF" stroke-width="9.216" stroke-linejoin="round"/>
-<g transform="rotate(35 839.68 430.08)" filter="url(#glow)">
- <rect x="819.2" y="317.44" width="35.84" height="245.76" rx="18.432" fill="#17102F" stroke="#FFD98A" stroke-width="9.216"/>
- <path d="M 836.608 256 l 14.336 46.08 l 46.08 14.336 l -46.08 14.336 l -14.336 46.08 l -14.336 -46.08 l -46.08 -14.336 l 46.08 -14.336 Z" fill="#FFF3C4"/>
+<path d="M 620 455 L 620 588 L 717 522 Z" fill="#211044" stroke="#FFFFFF" stroke-width="9" stroke-linejoin="round"/>
+<g transform="rotate(35 840 430)" filter="url(#glow)">
+ <rect x="819" y="317" width="36" height="246" rx="18" fill="#17102F" stroke="#FFD98A" stroke-width="9"/>
+ <path d="M 837 256 l 14 46 l 46 14 l -46 14 l -14 46 l -14 -46 l -46 -14 l 46 -14 Z" fill="#FFF3C4"/>
 </g>
 <g fill="#FFF4C9" filter="url(#glow)">
- <path d="M 849.92 163.84 l 12.288 40.96 l 40.96 12.288 l -40.96 12.288 l -12.288 40.96 l -12.288 -40.96 l -40.96 -12.288 l 40.96 -12.288 Z"/>
- <circle cx="163.84" cy="256" r="12.288"/><circle cx="798.72" cy="737.28" r="9.216"/><circle cx="296.96" cy="839.68" r="8.192"/>
+ <path d="M 850 164 l 12 41 l 41 12 l -41 12 l -12 41 l -12 -41 l -41 -12 l 41 -12 Z"/>
+ <circle cx="164" cy="256" r="12"/><circle cx="799" cy="737" r="9"/><circle cx="297" cy="840" r="8"/>
 </g>
+<path d="M 130 735 Q 512 700 894 735" fill="none" stroke="url(#neon)" stroke-width="5" opacity=".85"/>
+<text x="512" y="835" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="79" font-weight="900" font-style="italic" fill="#FFFFFF" stroke="#221044" stroke-width="3" paint-order="stroke fill">Magic<tspan fill="#FF48D8">IA</tspan>edit</text>
+<text x="512" y="895" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="600" letter-spacing="3" fill="#E9E6FF">EDITORE FOTO E VIDEO IA</text>
+<path d="M 165 895 H 265 M 759 895 H 859" stroke="url(#neon)" stroke-width="5" stroke-linecap="round"/>
 </svg>
