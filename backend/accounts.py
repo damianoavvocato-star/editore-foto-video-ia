@@ -1184,6 +1184,45 @@ class AccountStore:
         with self._connect() as db:
             return _append_audit_event(db, actor_user_id, action, target_user_id, details, int(time.time()))
 
+    def verify_audit_chain(self) -> dict[str, Any]:
+        """Verify the persisted audit hash chain; HMAC mode requires the same server key."""
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT event_id,actor_user_id,action,target_user_id,details_json,
+                          created_at,prev_hash,event_hash,hash_algorithm
+                   FROM account_audit_events ORDER BY event_id"""
+            ).fetchall()
+        previous_hash = None
+        algorithm = None
+        for row in rows:
+            current_algorithm = row["hash_algorithm"]
+            if current_algorithm not in {"sha256", "hmac-sha256"}:
+                return {"valid": False, "count": len(rows),
+                        "firstInvalidEventId": row["event_id"], "algorithm": current_algorithm}
+            if algorithm is not None and current_algorithm != algorithm:
+                return {"valid": False, "count": len(rows),
+                        "firstInvalidEventId": row["event_id"], "algorithm": "mixed"}
+            algorithm = current_algorithm
+            if row["prev_hash"] != previous_hash:
+                return {"valid": False, "count": len(rows),
+                        "firstInvalidEventId": row["event_id"], "algorithm": algorithm}
+            try:
+                expected = _audit_hash(
+                    previous_hash, row["event_id"], row["actor_user_id"], row["action"],
+                    row["target_user_id"], row["details_json"], row["created_at"], algorithm,
+                )
+            except SecurityConfigurationError:
+                return {"valid": False, "count": len(rows),
+                        "firstInvalidEventId": row["event_id"], "algorithm": algorithm,
+                        "keyAvailable": False}
+            if not hmac.compare_digest(expected, row["event_hash"] or ""):
+                return {"valid": False, "count": len(rows),
+                        "firstInvalidEventId": row["event_id"], "algorithm": algorithm}
+            previous_hash = row["event_hash"]
+        return {"valid": True, "count": len(rows), "firstInvalidEventId": None,
+                "algorithm": algorithm or "sha256",
+                "keyAvailable": algorithm != "hmac-sha256" or bool(os.getenv("MEDIA_AUDIT_HMAC_KEY", ""))}
+
     def list_audit_events(
         self,
         limit: int = 50,
