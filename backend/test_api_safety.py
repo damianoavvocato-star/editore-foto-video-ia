@@ -381,3 +381,30 @@ def test_owner_permission_override_is_enforced_by_api(tmp_path, monkeypatch):
         json={"plan": "premium", "reason": "test"},
     )
     assert denied_after_override.status_code == 403
+
+
+def test_owner_totp_setup_password_attempts_are_rate_limited(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("rate_owner", "owner password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(owner["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    client = TestClient(server.app)
+
+    for _ in range(10):
+        response = client.post(
+            "/v1/owner/security/totp/setup",
+            headers=headers,
+            json={"password": "incorrect owner password"},
+        )
+        assert response.status_code == 422
+    blocked = client.post(
+        "/v1/owner/security/totp/setup",
+        headers=headers,
+        json={"password": "owner password long enough"},
+    )
+    assert blocked.status_code == 429
