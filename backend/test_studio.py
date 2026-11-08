@@ -189,3 +189,51 @@ def test_studio_api_requires_account_session():
 
     monkeypatch_client = TestClient(server.app)
     assert monkeypatch_client.get("/v1/studio/capabilities").status_code == 401
+
+
+def test_studio_api_requires_explicit_review_before_queue_and_lists_queue(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import server
+    from backend.accounts import AccountStore
+
+    auth_db = tmp_path / "accounts.sqlite3"
+    store = AccountStore(auth_db)
+    _user, headers = _studio_api_user(store, "studio_queue_user")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(auth_db))
+    monkeypatch.setenv("MEDIA_STUDIO_DB", str(tmp_path / "studio.sqlite3"))
+    monkeypatch.setenv("MEDIA_STUDIO_QUEUE_DB", str(tmp_path / "studio_queue.sqlite3"))
+    client = TestClient(server.app)
+
+    created = client.post(
+        "/v1/studio/jobs", headers=headers,
+        json={"task": "script_to_video", "title": "Mini serie", "script": "Episodio uno"},
+    )
+    assert created.status_code == 200
+    draft_id = created.json()["jobId"]
+
+    # Merely saving a draft must not put it in the processing queue.
+    assert client.get("/v1/studio/queue", headers=headers).json()["jobs"] == []
+
+    queued = client.post(
+        f"/v1/studio/jobs/{draft_id}/enqueue", headers=headers,
+    )
+    assert queued.status_code == 200
+    payload = queued.json()
+    assert payload["state"] == "queued"
+    assert payload["sourceDraftId"] == draft_id
+    assert payload["providerSubmissionEnabled"] is False
+    assert "nessuna chiamata al provider" in payload["message"]
+
+    listed = client.get("/v1/studio/queue", headers=headers)
+    assert listed.status_code == 200
+    assert len(listed.json()["jobs"]) == 1
+    assert listed.json()["jobs"][0]["jobId"] == payload["jobId"]
+
+    # Repeated confirmation is idempotent and does not create a second queue job.
+    repeated = client.post(
+        f"/v1/studio/jobs/{draft_id}/enqueue", headers=headers,
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["jobId"] == payload["jobId"]
+    assert len(client.get("/v1/studio/queue", headers=headers).json()["jobs"]) == 1
