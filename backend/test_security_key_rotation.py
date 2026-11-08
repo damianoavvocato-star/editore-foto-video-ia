@@ -1,5 +1,5 @@
 import pytest
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 
 from backend.accounts import AccountStore, SecurityConfigurationError
 from backend.security_key_rotation import rotate_totp_encryption_key
@@ -39,15 +39,13 @@ def test_totp_key_rotation_reencrypts_active_and_pending_secrets(tmp_path, monke
     assert new_cipher.decrypt(after["totp_pending_secret_enc"]) == secret.encode("ascii")
 
 
-def test_totp_key_rotation_rolls_back_if_old_key_is_wrong(tmp_path):
+def test_totp_key_rotation_rolls_back_if_old_key_is_wrong(tmp_path, monkeypatch):
     old_key = Fernet.generate_key()
     wrong_key = Fernet.generate_key()
     new_key = Fernet.generate_key()
     store = AccountStore(tmp_path / "accounts.sqlite3")
     owner = store.bootstrap_owner("rotate_owner", "owner password long enough")
-    monkeypatch_key = old_key.decode("ascii")
-    import os
-    os.environ["MEDIA_TOTP_ENCRYPTION_KEY"] = monkeypatch_key
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", old_key.decode("ascii"))
     secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
     with store._connect() as db:
         before = db.execute(
