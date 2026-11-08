@@ -21,11 +21,15 @@ void main() {
     );
 
     expect(find.text('Token di accesso del server (facoltativo)'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Indirizzo del server MagicIAedit'),
-      400,
+
+    final serverField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Indirizzo del server MagicIAedit',
     );
+    expect(serverField, findsOneWidget);
+    await tester.ensureVisible(serverField);
     await tester.pumpAndSettle();
-    expect(find.text('Indirizzo del server MagicIAedit'), findsOneWidget);
+    expect(serverField, findsOneWidget);
   });
 }
