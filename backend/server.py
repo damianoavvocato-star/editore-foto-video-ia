@@ -714,7 +714,11 @@ def support_ticket_detail(ticket_id: str, request: Request):
     if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
     ticket = _account_store().get_support_ticket(ticket_id)
     if ticket is None: raise HTTPException(404, "Ticket non trovato.")
-    if ticket["ownerUserId"] != account["userId"]: _require_permission(request, "support.tickets.read")
+    if account.get("role") in {"owner", "admin", "support"}:
+        _require_permission(request, "support.tickets.read")
+    elif ticket["ownerUserId"] != account["userId"]:
+        # Hide whether another customer's ticket identifier exists.
+        raise HTTPException(404, "Ticket non trovato.")
     return {"ticket": ticket}
 
 
