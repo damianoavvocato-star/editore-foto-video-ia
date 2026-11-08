@@ -22,8 +22,8 @@
 | P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs | — | Ogni voce ha ID, stato, criteri | partial |
 | P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
-| P0-04 | Console autonoma Amministratore | Admin | dashboard separata | permessi server-side dedicati | admin non può creare/modificare owner né promuoversi | missing |
-| P0-05 | Console Assistenza e ticket | Support | inbox, dettaglio, risposta, escalation | ticket con ownership e audit | accesso minimo, nessun accesso privato senza consenso | missing |
+| P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
+| P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta e stato | storage SQLite, ACL proprietario/staff e audit | isolamento tra utenti e permessi verificati; restano assegnazione operatori, notifiche e supporto media con consenso | partial |
 | P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
@@ -108,8 +108,8 @@
 1. Chiudere P0-09: scadenza delle password temporanee, compatibile con i database esistenti.
 2. Verificare e completare con test dedicati la UI Proprietario per grant/revoca Premium e registro audit.
 3. Completare l'eventuale esportazione audit e la protezione antimanomissione, mantenendo l'accesso Owner-only.
-4. Separare davvero le console Admin, Support e Collaboratore con permessi server-side.
-5. Procedere con ticket, team access e hardening di storage/job recovery.
+4. Completare dashboard Admin, assegnazione ticket e notifiche; separare la console Collaboratore.
+5. Procedere con TeamStudio, accesso ai media con consenso e hardening di storage/job recovery.
 
 
 ## Avanzamento verificato — 8 novembre 2026
@@ -126,3 +126,12 @@
 - Backend audit: filtri server-side per azione, attore, destinatario e intervallo temporale; offset/limit bounded e indicatore `hasMore`. Aggiunti test API per filtri, paginazione e intervallo non valido.
 - CI run `42519024360` sul commit `873c5917fa00b0fbecf1e29589f66027a53e8712`: **backend-test superato** e **flutter-test superato**; analisi statica Flutter superata. **Android preflight ancora in esecuzione**; non è stato creato alcun APK.
 - P0-07 e P1-02 restano `partial`: mancano ancora verifica completa, test UI dedicati e, per P0-07, audit antimanomissione/esportazione.
+
+
+## Avanzamento verificato — 8 novembre 2026, console Admin e Assistenza
+
+- P0-04 passa a `partial`: dashboard Admin collegata a un endpoint dedicato che restituisce esclusivamente contatori aggregati (account totali/attivi/sospesi, nuovi ultimi 30 giorni e conteggio per ruolo). Il server rifiuta gli altri ruoli; restano KPI operativi più ampi e test UI dedicati.
+- P0-05 passa a `partial`: utenti possono aprire ticket e consultare solo i propri; Support/Admin/Owner autorizzati possono consultare la coda, rispondere e aggiornare lo stato. Conversazioni persistite, ownership verificata e azioni registrate nell'audit. Restano assegnazione operatori, notifiche, allegati e assistenza su media privati con consenso esplicito.
+- Aggiunti test API per dashboard Admin, autenticazione, isolamento ticket, risposte staff/utente e transizioni di stato.
+- CI run `42520069602`, commit `6dc37687515e941b749cf305178a3acb3e38da2a`: backend **304 test superati**; Flutter **139 test superati** e `flutter analyze` senza problemi. Android preflight/validazione Gradle era ancora in esecuzione al momento della registrazione; nessun APK generato.
+- Nessun dato personale viene restituito dalla dashboard Admin; gli utenti non possono ottenere dettagli dei ticket altrui.
