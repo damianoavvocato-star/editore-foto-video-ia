@@ -28,6 +28,17 @@ class RemoteStudioApi {
     return StudioJobDraft.fromJson(response);
   }
 
+  /// Explicitly queues a saved draft after user review. The server persists
+  /// the request but does not start a paid provider generation.
+  Future<Map<String, dynamic>> enqueueDraft(String jobId) async {
+    if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(jobId)) {
+      throw ArgumentError.value(jobId, 'jobId', 'Identificativo bozza non valido.');
+    }
+    return _accountApi.request(
+      'POST', '/v1/studio/jobs/${Uri.encodeComponent(jobId)}/enqueue',
+    );
+  }
+
   Future<void> deleteDraft(String jobId) async {
     if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(jobId)) {
       throw ArgumentError.value(jobId, 'jobId', 'Identificativo bozza non valido.');
