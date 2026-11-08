@@ -89,3 +89,47 @@ def test_quota_release_is_scoped_to_account_and_period(tmp_path):
     assert store.release("user-a", "job-1", first["period"]) is True
     assert store.reserve("user-a", "job-2", 2, now=1_800_000_000)["used"] == 1
     assert store.reserve("user-b", "job-2", 2, now=1_800_000_000)["used"] == 2
+
+
+def test_concurrent_reservations_across_store_instances_never_exceed_limit(tmp_path):
+    database = tmp_path / "shared-accounts.sqlite3"
+    stores = [UsageStore(database) for _ in range(4)]
+
+    def reserve(index):
+        try:
+            return stores[index % len(stores)].reserve(
+                "shared-user", f"parallel-job-{index}", 2, now=1_800_000_000
+            )
+        except UsageLimitError:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(reserve, range(24)))
+
+    assert sum(result is not None for result in results) == 2
+    with sqlite3.connect(database) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
+            ("shared-user",),
+        ).fetchone()[0]
+    assert count == 2
+
+
+def test_quota_release_is_visible_across_store_instances(tmp_path):
+    database = tmp_path / "shared-accounts.sqlite3"
+    reserver = UsageStore(database)
+    releaser = UsageStore(database)
+    second_request = UsageStore(database)
+
+    reservation = reserver.reserve(
+        "shared-user", "job-first", 1, now=1_800_000_000
+    )
+    assert releaser.release(
+        "shared-user", "job-first", reservation["period"]
+    ) is True
+
+    replacement = second_request.reserve(
+        "shared-user", "job-second", 1, now=1_800_000_000
+    )
+    assert replacement["used"] == 1
+    assert replacement["remaining"] == 0
