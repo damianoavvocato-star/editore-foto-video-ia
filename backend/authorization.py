@@ -13,7 +13,7 @@ PERMISSIONS = frozenset({
     "accounts.read", "accounts.create", "accounts.update",
     "support.tickets.read", "support.tickets.reply", "support.tickets.assign", "accounts.disable",
     "accounts.password_reset", "audit.read", "media.support_read",
-    "billing.read", "billing.grant", "family.manage", "settings.manage",
+    "billing.read", "billing.grant", "family.manage", "settings.manage", "team.manage",
 })
 
 ROLE_DEFAULTS = {
@@ -21,7 +21,7 @@ ROLE_DEFAULTS = {
     "admin": frozenset({"accounts.read", "accounts.create", "accounts.update",
                         "accounts.disable", "accounts.password_reset",
                         "media.support_read", "billing.read", "family.manage",
-                        "support.tickets.read", "support.tickets.reply", "support.tickets.assign"}),
+                        "support.tickets.read", "support.tickets.reply", "support.tickets.assign", "team.manage"}),
     "support": frozenset({"accounts.read", "accounts.password_reset",
                           "media.support_read", "billing.read",
                            "support.tickets.read", "support.tickets.reply"}),
