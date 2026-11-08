@@ -57,11 +57,13 @@ second factor succeeds. Missing second factor returns HTTP 401 with
 `detail.code = two_factor_required`. Invalid/replayed factors are rejected
 and count toward the existing account/IP login throttle.
 
-To disable 2FA, call `DELETE /v1/owner/security/totp` with the current password
-and a fresh authenticator code. The operation removes recovery material and
-revokes all owner sessions. Recovery codes can be used at login, but not to
-disable 2FA; if the authenticator is lost, use the organization's documented
-operator recovery process rather than bypassing the second factor.
+Enabling 2FA revokes every pre-existing owner session; sign in again with the
+new second factor after saving the recovery codes. To disable 2FA, call
+`DELETE /v1/owner/security/totp` with the current password and either a fresh
+authenticator code or one unused recovery code. The operation removes recovery
+material and revokes all owner sessions. If both the authenticator and all
+recovery codes are lost, use the organization's offline operator recovery
+process rather than bypassing the second factor.
 
 ## Optional security alert delivery
 
