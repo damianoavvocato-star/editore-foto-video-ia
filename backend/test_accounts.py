@@ -255,3 +255,44 @@ def test_disabling_owner_totp_requires_password_and_second_factor_and_revokes_se
     assert store.resolve_session(token) is None
     _, fresh_token, _ = store.login("secure_owner", "owner password long enough")
     assert store.resolve_session(fresh_token)["userId"] == owner["userId"]
+
+
+def test_account_store_honors_explicit_permission_overrides(tmp_path):
+    from backend.authorization import PermissionPolicy
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("policy_owner", "owner password long enough")
+    support = store.create_managed_account(
+        owner["userId"], "policy_support", "support password long enough", "support"
+    )
+    policy = PermissionPolicy(tmp_path / "accounts.sqlite3")
+    policy.set_override("owner", support["userId"], "accounts.create", "allow")
+    created = store.create_managed_account(
+        support["userId"], "support_created", "created password long enough", "user"
+    )
+    assert created["role"] == "user"
+
+    policy.set_override("owner", support["userId"], "accounts.create", "deny")
+    with pytest.raises(AccountError, match="Permesso di creazione"):
+        store.create_managed_account(
+            support["userId"], "support_denied", "created password long enough", "user"
+        )
+
+
+def test_owner_totp_pending_enrollment_expires_after_ten_minutes(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.totp import code_at
+    import time
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("pending_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    with store._connect() as db:
+        db.execute(
+            "UPDATE accounts SET totp_pending_created_at=? WHERE user_id=?",
+            (int(time.time()) - 601, owner["userId"]),
+        )
+    with pytest.raises(AccountError, match="scaduta"):
+        store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
+    assert store.totp_enabled(owner["userId"]) is False
