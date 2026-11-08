@@ -57,7 +57,7 @@ void main() {
   });
 
 
-  testWidgets('remote HTTPS export requires the configured server bearer token', (tester) async {
+  testWidgets('remote HTTPS export requires a personal account session', (tester) async {
     const project = EditorProject(
       id: 'secure-export-project',
       name: 'Prova',
@@ -85,6 +85,7 @@ void main() {
           project: project,
           onClose: () {},
           onMessage: (_) {},
+          sessionTokenProvider: () async => null,
         ),
       ),
     ));
@@ -109,7 +110,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.textContaining('è obbligatorio il token condiviso'),
+      find.textContaining('Accedi prima dalla sezione Impostazioni'),
       findsOneWidget,
     );
   });
