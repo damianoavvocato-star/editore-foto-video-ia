@@ -480,3 +480,115 @@ Ordine vincolante:
 7. Fase 6 — esclusivamente dopo tutti i gate: APK release firmato, installazione e smoke test. Nessun APK prima.
 
 **Regola di rendicontazione:** la percentuale complessiva misura soltanto lavoro implementato e verificato rispetto all'ambito approvato; l'aggiunta di requisiti amplia il denominatore e non aumenta il numeratore. Riportare separatamente avanzamento tecnico, copertura requisiti e blocchi esterni. Se la cronologia dei rami non è integralmente recuperabile, dichiarare esplicitamente la copertura documentale e non affermare che ogni messaggio storico è stato acquisito.
+
+
+## 8. Estensione approvata: Synthesia Studio IA (parità funzionale e miglioramenti)
+
+Questa estensione prende come riferimento le capacità pubbliche di Synthesia, ma prevede un prodotto originale integrato nell'editor e nella timeline di Editore foto e Video IA. **Tutte le voci di questa sezione sono requisiti pianificati: non sono implementate né attive per effetto dell'inserimento in roadmap.** L'integrazione dovrà usare provider selezionabili e API autorizzate, senza dipendere dall'account Synthesia o copiarne marchi, avatar, modelli, interfaccia o contenuti proprietari.
+
+### 8.1 Creazione video guidata da IA
+- Generazione da prompt, testo, script, PDF, DOC/DOCX, PPT/PPTX, immagini, URL e materiali multipli.
+- Assistente conversazionale che crea scaletta, scene, script, storyboard, visual e proposta di montaggio; l'utente può chiedere revisioni in linguaggio naturale.
+- Scelta della durata, pubblico, obiettivo, tono, lingua, stile dinamico o presentazione e formato verticale/quadrato/orizzontale.
+- Importazione PowerPoint con trasformazione delle slide in scene editabili, mantenendo ove possibile testi, immagini, note e struttura.
+- Generazione di video tutorial, corsi, onboarding, presentazioni, spiegazioni, demo prodotto, comunicazioni, marketing e social.
+- Anteprima della scaletta e approvazione prima di consumare risorse di generazione; tutte le scene restano modificabili nella timeline.
+
+### 8.2 Avatar IA e presentatori
+- Libreria di avatar stock con filtri per stile, lingua, voce, inquadratura e uso consentito.
+- Avatar personalizzato sintetico (Avatar Builder) e avatar personale/digital twin creato dalla persona interessata.
+- Avatar espressivi con gesti, postura, espressioni e indicazioni di regia coerenti con il testo.
+- Più avatar nella stessa scena, dialoghi, alternanza speaker e gestione turni.
+- Talking photo e animazione controllata di immagini autorizzate.
+- Personalizzazione di abiti, sfondo, inquadratura e ambientazione, se supportata dal provider.
+- Consenso verificabile, prova di presenza/liveness quando richiesta dal provider, revoca, tracciabilità e blocco di impersonificazione non autorizzata; etichettatura dei contenuti sintetici.
+
+### 8.3 Voice Studio avanzato
+- Ampia libreria di voci IA, accenti, pronunce, stili, emozioni e velocità.
+- Clonazione della propria voce con consenso verificabile; gestione delle versioni e revoca del consenso.
+- Voiceover per scene, dialoghi multi-speaker, dizionario di pronuncia e glossario di nomi/termini.
+- Editing del parlato per segmenti: correggere testo, pause, pronuncia, enfasi e timing senza rigenerare l'intero video.
+- Separazione voce/musica/ambiente, riduzione rumore, rimozione pause e pulizia audio, con confronto prima/dopo.
+- Nessuna clonazione di terzi senza autorizzazione; registrazioni e modelli vocali protetti e cancellabili.
+
+### 8.4 AI Playground e generazione media
+- Generazione di immagini, clip B-roll, sfondi, motion graphics e scene da prompt.
+- Inserimento e sostituzione dei B-roll direttamente nella scena selezionata della timeline.
+- Provider/modelli intercambiabili, con indicazione del modello, durata, risoluzione, limiti e costo stimato prima dell'avvio.
+- Generazione di varianti e selezione del risultato migliore; coerenza visiva tra scene e continuità dei soggetti.
+- Etichettatura e provenienza degli asset generati; controlli su copyright, diritti e contenuti ammessi.
+
+### 8.5 Localizzazione, traduzione e doppiaggio
+- Traduzione di video creati nell'app e doppiaggio di video esterni, distinguendo chiaramente i due flussi.
+- Trascrizione automatica con timestamp, editor del transcript, diarizzazione, glossario e revisione umana.
+- Traduzione di script, sottotitoli, testi grafici e contenuti parlati; doppiaggio con voce originale autorizzata e lip-sync quando disponibile.
+- Generazione batch di versioni distinte per lingua, con stati, retry, cancellazione, file e sottotitoli separati per ciascuna lingua.
+- Player multilingue che propone la lingua del dispositivo/browser e consente di cambiarla manualmente.
+- Obiettivo minimo di progetto: 20 lingue selezionabili per batch; estensione progressiva verso 140+ lingue/dialetti solo quando provider, qualità, diritti e costi lo consentono. Non promettere una copertura linguistica non testata.
+- Glossari per nomi, marchi, termini tecnici e pronuncia; controllo qualità e correzione indipendente di ogni lingua.
+
+### 8.6 Registratore schermo e acquisizione
+- Registrazione schermo con audio microfono/sistema secondo permessi della piattaforma.
+- Trascrizione automatica, rilevamento e rimozione delle pause, tagli rapidi, zoom/pan guidato e callout.
+- Importazione di registrazioni esistenti e montaggio nella timeline.
+- Permessi espliciti, indicatore di registrazione visibile e nessuna acquisizione nascosta.
+
+### 8.7 Video interattivi e avatar conversazionali
+- Pulsanti CTA cliccabili, link, schede, domande, quiz, sondaggi e verifiche di apprendimento.
+- Percorsi ramificati: le scelte dello spettatore determinano scene o contenuti successivi.
+- Avatar conversazionali in tempo reale per assistenza, onboarding, demo, formazione e supporto, con sessioni vocali/testuali.
+- Roleplay: simulazioni di vendita, colloqui, assistenza e conversazioni difficili; rubriche configurabili, feedback e punteggi.
+- Survey Sessions: interviste guidate da avatar con domande di approfondimento, trascrizioni, sintesi e report.
+- Modalità accessibile: sottotitoli, tastiera, controlli chiari, trascrizione e alternative non vocali.
+- Le funzioni real-time richiedono infrastruttura streaming/provider dedicato e non sono equivalenti a un normale video esportato.
+
+### 8.8 Brand Kit, modelli e collaborazione
+- Brand Kit per loghi, colori, font, intro/outro, lower-third, watermark e regole di impaginazione.
+- Template riutilizzabili e modelli personalizzati per tipologia di video.
+- Spazi di lavoro condivisi, ruoli granulari, commenti su scene/timecode, revisione e approvazione prima della pubblicazione.
+- Versioni, cronologia modifiche, confronto e ripristino; aggiornamento controllato dei video pubblicati e dei link/embed.
+- Flussi di approvazione e audit per organizzazioni; isolamento rigoroso dei progetti tra account e team.
+
+### 8.9 Pubblicazione, distribuzione e analytics
+- Link condivisibili, pagine video pubbliche/private, password e scadenza link.
+- Player incorporabile (embed) con sottotitoli e selezione lingua.
+- Esportazione SCORM e pacchetti per LMS, oltre ai formati video già previsti.
+- Analytics: visualizzazioni, tempo di visione, completamento, abbandoni, click CTA, risposte ai quiz e confronto per lingua/versione.
+- Controllo privacy, consenso analytics, minimizzazione e retention dei dati; non tracciare utenti senza base giuridica e informativa adeguata.
+- Controllo versioni per non lasciare link pubblici a contenuti obsoleti o non approvati.
+
+### 8.10 Personalizzazione massiva e API
+- Template con variabili (nome, azienda, prodotto, lingua, immagini, script e CTA).
+- Importazione CSV/XLSX, mappatura colonne e generazione in batch di video personalizzati.
+- Anteprima e stima di minuti/costi, limite di batch, conferma esplicita, report degli esiti e link di output.
+- API pubbliche e webhook per creare video da dati/template, verificare lo stato, ricevere completamento e scaricare gli output.
+- API per avatar interattivi in tempo reale, separate dalle API asincrone di generazione file.
+- Chiavi API solo server-side, scope minimi, rotazione, rate limit, audit, idempotenza e protezione da abuso.
+
+### 8.11 Miglioramenti distintivi rispetto al riferimento
+- Un unico editor vero: ogni scena generata, avatar, B-roll, audio, sottotitolo e grafica è modificabile nella timeline multitraccia, non bloccata in un progetto a slide.
+- Fusione tra montaggio manuale professionale e MagicIAedit: l'IA propone, l'utente controlla; possibilità di accettare, rifiutare o modificare ogni scelta.
+- Workflow ibrido foto/video/avatar: partire da media personali, testo, documenti, presentazioni o registrazione schermo nello stesso progetto.
+- Versioni multilingue sincronizzate: modificare una scena sorgente e vedere le traduzioni interessate, con approvazione e rigenerazione selettiva senza perdere le correzioni manuali.
+- Elaborazione locale quando possibile, modalità risparmio dati, anteprime leggere e ripresa affidabile dei job cloud dopo interruzioni.
+- Trasparenza: stima costi prima del render, consumo per provider/lingua, limiti configurabili, modalità gratuita realmente utilizzabile e Premium per elaborazioni avanzate.
+- Accessibilità e localizzazione complete, inclusi RTL e shaping arabo nel renderer, non solo nelle schermate.
+- Controlli qualità automatici su sincronizzazione labiale, sottotitoli, pronuncia, audio, leggibilità e safe area, con segnalazione degli errori prima dell'export.
+
+### 8.12 Requisiti bloccanti e criteri di rilascio
+1. Realizzare prima job durevoli e riprendibili, storage derivati, quote, preventivi, cancellazione e isolamento per account/team.
+2. Integrare provider reali solo dietro interfacce server-side, con test sandbox e successiva verifica autorizzata su provider reali; nessuna API key nel client.
+3. Per avatar/voice clone richiedere consenso verificabile e strumenti di revoca/cancellazione; vietare impersonificazione e deepfake ingannevoli.
+4. Per traduzioni, avatar e media generati mostrare limiti qualitativi e disclosure; prevedere revisione umana prima di pubblicare.
+5. Testare Android, iOS e desktop; le funzioni di registrazione schermo e avatar live possono avere disponibilità diversa per sistema operativo.
+6. Non dichiarare una funzione disponibile finché non sono implementati UI, backend/provider, test, gestione errori, privacy e documentazione.
+7. Non conteggiare questa estensione come avanzamento tecnico: la percentuale sale solo dopo implementazioni e verifiche CI.
+8. Restano invariati i vincoli: lavorare esclusivamente sul branch `feature/magiciaedit-cloud-foundation`, non modificare `main`, non unire la PR #1 e non generare APK prima della fase 6.
+
+### Fonti pubbliche di riferimento
+- Synthesia — panoramica funzionalità: https://www.synthesia.io/features
+- Synthesia — AI video platform: https://www.synthesia.io/video
+- Synthesia Help Center — capacità e limiti: https://help.synthesia.io/en/articles/9994493-what-is-synthesia
+- Synthesia — Assistant e creazione da prompt/documenti: https://docs.synthesia.io/docs/assistant
+- Synthesia — API e avatar interattivi: https://developers.synthesia.io/docs/introduction
+- Synthesia — bulk personalization: https://docs.synthesia.io/docs/bulk-personalization
