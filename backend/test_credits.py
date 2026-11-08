@@ -37,7 +37,7 @@ def test_refund_is_bounded_by_original_charge_and_idempotent(tmp_path):
     assert refund["balance"] == 20
     repeated = store.refund("user-1", 12, "job-1")
     assert repeated["applied"] is False
-    with pytest.raises(CreditError, match="superiore"):
+    with pytest.raises(CreditError, match="quantità diversa"):
         store.refund("user-1", 1, "job-1")
 
 
