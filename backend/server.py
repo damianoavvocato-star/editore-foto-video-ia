@@ -83,6 +83,58 @@ if _cleanup_result['removed_files'] or _cleanup_result['removed_directories']:
     logging.info('Removed stale media temp files: %s', _cleanup_result)
 
 lock = threading.Lock()
+# FFmpeg processes are tracked per render so DELETE can stop expensive work,
+# not merely mark the job cancelled while the encoder keeps running.
+active_render_processes: dict[str, subprocess.Popen] = {}
+
+
+class RenderCancelled(RuntimeError):
+    """Raised when a render worker is stopped by an explicit cancellation."""
+
+
+def _run_ffmpeg(job_id: str, command: list[str], timeout: float) -> subprocess.CompletedProcess:
+    cancel_event = cancel_events.setdefault(job_id, threading.Event())
+    if cancel_event.is_set():
+        raise RenderCancelled("Rendering annullato")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    # Register under the same lock used by DELETE. This closes the race where
+    # cancellation arrives just as FFmpeg is being started.
+    with lock:
+        if cancel_event.is_set():
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        else:
+            active_render_processes[job_id] = process
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except OSError:
+                pass
+            process.communicate()
+            raise RuntimeError("FFmpeg ha superato il tempo massimo")
+    finally:
+        with lock:
+            if active_render_processes.get(job_id) is process:
+                active_render_processes.pop(job_id, None)
+    if cancel_event.is_set():
+        raise RenderCancelled("Rendering annullato")
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _stop_render_process(job_id: str) -> None:
+    process = active_render_processes.get(job_id)
+    if process is not None:
+        try:
+            process.terminate()
+        except OSError:
+            logging.info("FFmpeg process for job %s already exited", job_id)
 
 @app.middleware('http')
 async def auth(request, call_next):
@@ -725,7 +777,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 cmd=[FFMPEG,'-y']
                 if source_start: cmd += ['-ss',str(source_start)]
                 cmd += ['-i',str(src),*common,str(segment)]
-            result=subprocess.run(cmd, capture_output=True, text=True, timeout=max(120,duration*10))
+            result=_run_ffmpeg(job_id, cmd, timeout=max(120,duration*10))
             if result.returncode: raise RuntimeError('FFmpeg: '+result.stderr[-1800:])
             segments.append(segment)
             clip_durations.append(duration)
@@ -852,7 +904,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
         if cancel_events.get(job_id, threading.Event()).is_set():
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
             return
-        result=subprocess.run(cmd,capture_output=True,text=True,timeout=1800)
+        result=_run_ffmpeg(job_id, cmd, timeout=1800)
         if result.returncode: raise RuntimeError('FFmpeg finale: '+result.stderr[-1800:])
         if cancel_events.get(job_id, threading.Event()).is_set():
             output.unlink(missing_ok=True)
@@ -922,6 +974,7 @@ def cancel_job(job_id: str, request: Request):
         if job_id not in jobs: raise HTTPException(404,'Job non trovato')
         if jobs[job_id]['state'] in {'queued','rendering'}:
             cancel_events.setdefault(job_id, threading.Event()).set()
+            _stop_render_process(job_id)
             jobs[job_id].update(state='cancelled',message='Annullamento richiesto')
     return {'ok':True}
 
