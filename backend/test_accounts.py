@@ -166,3 +166,92 @@ def test_totp_replay_counter_rejects_invalid_or_disabled_accounts(tmp_path):
     with store._connect() as db:
         db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (user_id,))
     assert store.consume_totp_counter(user_id, 1) is False
+
+
+def test_owner_totp_requires_second_factor_and_recovery_codes_are_one_time(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.totp import code_at
+    import time
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("secure_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    recovery_codes = store.confirm_totp_setup(
+        owner["userId"], code_at(secret, int(time.time()))
+    )
+    assert len(recovery_codes) == 10
+    assert store.totp_enabled(owner["userId"])
+
+    with pytest.raises(AccountError, match="Secondo fattore"):
+        store.login("secure_owner", "owner password long enough")
+
+    # The setup counter is consumed; use the next moving factor for login.
+    next_code = code_at(secret, int(time.time()) + 30)
+    user, token, _ = store.login(
+        "secure_owner", "owner password long enough", next_code
+    )
+    assert user["role"] == "owner"
+    assert store.resolve_session(token)["userId"] == owner["userId"]
+
+    # A recovery code can replace a TOTP once, and is never reusable.
+    _, recovery_token, _ = store.login(
+        "secure_owner", "owner password long enough", recovery_codes[0]
+    )
+    assert store.resolve_session(recovery_token)["userId"] == owner["userId"]
+    with pytest.raises(AccountError, match="Secondo fattore"):
+        store.login("secure_owner", "owner password long enough", recovery_codes[0])
+
+
+def test_owner_totp_secret_is_encrypted_and_missing_key_fails_closed(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.accounts import SecurityConfigurationError
+    from backend.totp import code_at
+    import time
+
+    key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", key)
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("secure_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    with store._connect() as db:
+        row = db.execute(
+            "SELECT totp_pending_secret_enc FROM accounts WHERE user_id=?",
+            (owner["userId"],),
+        ).fetchone()
+    assert secret.encode("ascii") not in bytes(row["totp_pending_secret_enc"])
+    store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
+
+    monkeypatch.delenv("MEDIA_TOTP_ENCRYPTION_KEY")
+    with pytest.raises(SecurityConfigurationError):
+        store.login(
+            "secure_owner", "owner password long enough",
+            code_at(secret, int(time.time()) + 30),
+        )
+
+
+def test_disabling_owner_totp_requires_password_and_second_factor_and_revokes_sessions(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.totp import code_at
+    import time
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("secure_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
+    _, token, _ = store.login(
+        "secure_owner", "owner password long enough",
+        code_at(secret, int(time.time()) + 30),
+    )
+
+    with pytest.raises(AccountError, match="Password"):
+        store.disable_totp(owner["userId"], "wrong password", code_at(secret, int(time.time()) + 60))
+    store.disable_totp(
+        owner["userId"], "owner password long enough",
+        code_at(secret, int(time.time()) + 60),
+    )
+    assert store.totp_enabled(owner["userId"]) is False
+    assert store.resolve_session(token) is None
+    _, fresh_token, _ = store.login("secure_owner", "owner password long enough")
+    assert store.resolve_session(fresh_token)["userId"] == owner["userId"]
