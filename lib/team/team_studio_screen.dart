@@ -415,31 +415,33 @@ class _TeamStudioScreenState extends State<TeamStudioScreen> {
   Widget _projectsCard() => Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Progetti accessibili', style: Theme.of(context).textTheme.titleMedium),
-              if (_projects.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Non ci sono ancora progetti condivisi.'),
-                ),
-              for (final project in _projects)
-                RadioListTile<String>(
-                  value: project['projectId'].toString(),
-                  groupValue: _selectedProjectId,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(project['name']?.toString() ?? 'Progetto'),
-                  subtitle: Text(project['description']?.toString() ?? ''),
-                  onChanged: _busy
-                      ? null
-                      : (value) async {
-                          setState(() => _selectedProjectId = value);
-                          await _loadProjectDetails();
-                          if (mounted) setState(() {});
-                        },
-                ),
-            ],
+          child: RadioGroup<String>(
+            groupValue: _selectedProjectId,
+            onChanged: _busy
+                ? null
+                : (value) async {
+                    setState(() => _selectedProjectId = value);
+                    await _loadProjectDetails();
+                    if (mounted) setState(() {});
+                  },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Progetti accessibili', style: Theme.of(context).textTheme.titleMedium),
+                if (_projects.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text('Non ci sono ancora progetti condivisi.'),
+                  ),
+                for (final project in _projects)
+                  RadioListTile<String>(
+                    value: project['projectId'].toString(),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(project['name']?.toString() ?? 'Progetto'),
+                    subtitle: Text(project['description']?.toString() ?? ''),
+                  ),
+              ],
+            ),
           ),
         ),
       );
