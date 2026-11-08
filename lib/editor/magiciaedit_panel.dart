@@ -32,6 +32,10 @@ class MagicIAeditPanel extends StatefulWidget {
 
 class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   final _endpointController = TextEditingController();
+  final _ideaController = TextEditingController();
+  int _episodeCount = 10;
+  int _episodeDurationSeconds = 60;
+  String _ideaGenre = 'Romantico';
   final _selectedPaths = <String>{};
   MagicIAeditWorkflow? _workflow;
   MagicIAeditPlan? _plan;
@@ -107,6 +111,70 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
         {'localhost', '127.0.0.1', '10.0.2.2'}.contains(uri.host);
     if (uri.scheme != 'https' && !localHttp) return null;
     return uri.replace(path: '');
+  }
+
+  Future<void> _prepareIdeaOutline() async {
+    final idea = _ideaController.text.trim();
+    if (idea.length < 12) {
+      setState(() => _error = 'Descrivi l’idea con almeno 12 caratteri.');
+      return;
+    }
+    final beats = <String>[
+      'Presentazione dei protagonisti e del mondo della storia',
+      'Primo incontro e nascita del conflitto',
+      'Un ostacolo mette alla prova i protagonisti',
+      'Un segreto cambia il rapporto tra i personaggi',
+      'Una scelta difficile aumenta la tensione',
+      'Un evento inatteso cambia la direzione della storia',
+      'I protagonisti affrontano le conseguenze',
+      'La verità viene finalmente rivelata',
+      'Confronto decisivo e svolta emotiva',
+      'Conclusione dell’arco narrativo e apertura al seguito',
+    ];
+    final episodes = List<String>.generate(
+      _episodeCount,
+      (index) => 'Episodio ${index + 1}: ${beats[index % beats.length]}',
+    );
+    if (!mounted) return;
+    setState(() => _error = null);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Scaletta iniziale del progetto'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Genere: $_ideaGenre · $_episodeCount episodi · almeno $_episodeDurationSeconds secondi ciascuno'),
+                const SizedBox(height: 10),
+                Text('Idea: $idea'),
+                const SizedBox(height: 12),
+                ...episodes.asMap().entries.map((entry) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(child: Text('${entry.key + 1}')),
+                  title: Text(entry.value),
+                  subtitle: Text('Durata minima: $_episodeDurationSeconds secondi'),
+                )),
+                const SizedBox(height: 8),
+                const Text(
+                  'Questa è una bozza strutturale locale, non un video generato. La scrittura creativa completa e la generazione di immagini, voci e video richiedono un provider IA collegato al server.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Chiudi'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _generate() async {
@@ -245,6 +313,7 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
     }
     // The API is closed by _generate in its finally block.
     _endpointController.dispose();
+    _ideaController.dispose();
     super.dispose();
   }
 
@@ -317,6 +386,87 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
                   '2. Seleziona i contenuti qui sotto · massimo 20 per ogni proposta IA.',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(color: const Color(0xFFB8DFFF)),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF321B58), Color(0xFF142E50)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: const Color(0x887B65E8)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  const Icon(Icons.lightbulb_outline, color: Color(0xFFB9A5FF)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Crea partendo da un’idea',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+                ]),
+                const SizedBox(height: 6),
+                const Text('Non hai foto o video? Descrivi un film, una serie, un cartone, un documentario o un video social. Puoi partire completamente da zero.'),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _ideaController,
+                  minLines: 3,
+                  maxLines: 6,
+                  maxLength: 3000,
+                  decoration: const InputDecoration(
+                    labelText: 'Che cosa vuoi creare?',
+                    hintText: 'Esempio: crea una miniserie romantica di 10 puntate, ambientata a Parigi, con episodi di almeno un minuto...',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                DropdownButtonFormField<String>(
+                  initialValue: _ideaGenre,
+                  decoration: const InputDecoration(labelText: 'Genere / formato'),
+                  items: const [
+                    DropdownMenuItem(value: 'Romantico', child: Text('Romantico')),
+                    DropdownMenuItem(value: 'Azione e avventura', child: Text('Azione e avventura')),
+                    DropdownMenuItem(value: 'Commedia', child: Text('Commedia')),
+                    DropdownMenuItem(value: 'Horror e mistero', child: Text('Horror e mistero')),
+                    DropdownMenuItem(value: 'Documentario', child: Text('Documentario')),
+                    DropdownMenuItem(value: 'Animazione', child: Text('Animazione')),
+                    DropdownMenuItem(value: 'Social / pubblicità', child: Text('Social / pubblicità')),
+                    DropdownMenuItem(value: 'Personalizzato', child: Text('Personalizzato')),
+                  ],
+                  onChanged: (value) => setState(() { if (value != null) _ideaGenre = value; }),
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: DropdownButtonFormField<int>(
+                    initialValue: _episodeCount,
+                    decoration: const InputDecoration(labelText: 'Episodi'),
+                    items: [1, 3, 5, 10, 15, 20, 30].map((value) => DropdownMenuItem(value: value, child: Text('$value'))).toList(),
+                    onChanged: (value) => setState(() { if (value != null) _episodeCount = value; }),
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: DropdownButtonFormField<int>(
+                    initialValue: _episodeDurationSeconds,
+                    decoration: const InputDecoration(labelText: 'Durata minima'),
+                    items: [30, 60, 90, 120, 180, 300, 600].map((value) => DropdownMenuItem(value: value, child: Text('${value >= 60 ? '${value ~/ 60} min' : '$value sec'}'))).toList(),
+                    onChanged: (value) => setState(() { if (value != null) _episodeDurationSeconds = value; }),
+                  )),
+                ]),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _prepareIdeaOutline,
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Prepara la scaletta del progetto'),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                ),
+                const SizedBox(height: 4),
+                Text('Puoi creare anche senza importare alcun media. La scaletta è una bozza iniziale; la generazione audiovisiva completa sarà attivata collegando i provider IA.',
+                  style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
