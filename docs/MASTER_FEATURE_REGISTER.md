@@ -81,7 +81,7 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P3-01 | TeamStudio condiviso | Collab, Owner | team, progetti e commenti | ACL, versioni, inviti e audit | approvazione e revoca verificate | missing |
+| P3-01 | TeamStudio condiviso | Collab, Owner | API presenti; schermata Flutter da completare | progetti, inviti, ACL, commenti, approvazioni e audit; versioni non ancora presenti | isolamento, accettazione invito, revoca e approvazione coperti da test backend | partial |
 | P3-02 | AdCreator e materiali promozionali | User, Owner | template e brand kit | rendering e asset | esportazione formati social | missing |
 | P3-03 | MultiSocial e pubblicazione | User | canali, anteprima e calendario | OAuth e API social | token sicuri, consenso e retry | missing |
 | P3-04 | Analytics con consenso | Owner, User | dashboard e opt-out | eventi minimizzati | privacy e cancellazione | missing |
@@ -156,3 +156,14 @@
 
 - La console Owner/Admin mantiene ora selezionabile anche l'assegnatario già salvato quando non compare nella prima pagina degli account Support attivi (ad esempio account disattivato o fuori dai primi 100). Viene mostrato come assegnatario attuale non disponibile, così l'operatore può rimuovere l'assegnazione senza crash del menu.
 - Modifica UI committata sul branch; la nuova verifica CI è in attesa. P0-05 resta `partial`: notifiche e supporto media con consenso non sono ancora implementati.
+
+
+## Fondazione TeamStudio — 8 novembre 2026
+
+- Aggiunto archivio SQLite per progetti TeamStudio, inviti a account Collaboratore attivi, accettazione/rifiuto, revoca, commenti e richieste di approvazione.
+- Le autorizzazioni sono verificate sul server: il collaboratore vede soltanto i progetti per cui ha accettato l'invito; la revoca elimina immediatamente l'accesso. Le operazioni principali generano eventi nell'audit account.
+- Aggiunto permesso `team.manage` per Owner/Admin; Support, Collaborator e User non possono amministrare i team.
+- Esposte API protette per creazione/lista progetti, inviti, risposta agli inviti, revoca, commenti e approvazioni.
+- Aggiunti test backend per isolamento tra account, invito e accettazione, ruoli, revoca, commenti, approvazione e audit. La CI del commit finale deve ancora confermare il risultato.
+- Limite dichiarato: questa prima fondazione conserva metadati e flussi di collaborazione; non sincronizza ancora i file multimediali/progetti locali, non include UI Flutter, notifiche invito, versioni o cronologia delle revisioni.
+- P3-01 passa da `missing` a `partial`; nessuna voce è conteggiata come completata. Nessun APK generato.
