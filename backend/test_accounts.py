@@ -416,3 +416,52 @@ def test_media_resource_claim_can_only_be_released_by_its_owner(tmp_path):
     assert store.release_media_resource("job", resource_id, owner["userId"]) is False
     assert store.release_media_resource("invalid", resource_id, owner["userId"]) is False
     assert store.release_media_resource("job", "../outside", owner["userId"]) is False
+
+
+def test_managed_and_reset_temporary_passwords_expire_after_24_hours(tmp_path, monkeypatch):
+    import time
+
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("expiry_owner", "owner password long enough")
+    managed = store.create_managed_account(
+        owner["userId"], "expiry_user", "initial temporary password", "user"
+    )
+    assert managed["mustChangePassword"] is True
+    assert managed["temporaryPasswordExpiresAt"] == clock + 24 * 60 * 60
+
+    _, token, _ = store.login("expiry_user", "initial temporary password")
+    assert store.resolve_session(token)["mustChangePassword"] is True
+    clock += 24 * 60 * 60 + 1
+
+    with pytest.raises(AccountError, match="Password temporanea scaduta"):
+        store.login("expiry_user", "initial temporary password")
+    with pytest.raises(AccountError, match="Password temporanea scaduta"):
+        store.change_password(
+            managed["userId"], None, "new permanent password long enough"
+        )
+
+    replacement = store.reset_account_password(owner["userId"], managed["userId"])
+    assert replacement
+    with store._connect() as db:
+        expiry = db.execute(
+            "SELECT temporary_password_expires_at FROM accounts WHERE user_id=?",
+            (managed["userId"],),
+        ).fetchone()[0]
+    assert expiry == clock + 24 * 60 * 60
+
+    _, fresh_token, _ = store.login("expiry_user", replacement)
+    assert store.resolve_session(fresh_token)["mustChangePassword"] is True
+    store.change_password(
+        managed["userId"], None, "new permanent password long enough"
+    )
+    with store._connect() as db:
+        row = db.execute(
+            "SELECT must_change_password,temporary_password_expires_at "
+            "FROM accounts WHERE user_id=?",
+            (managed["userId"],),
+        ).fetchone()
+    assert row["must_change_password"] == 0
+    assert row["temporary_password_expires_at"] is None
+    store.login("expiry_user", "new permanent password long enough")
