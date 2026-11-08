@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../models/editor_project.dart';
 import '../models/magiciaedit_plan.dart';
@@ -18,11 +19,13 @@ class MagicIAeditPanel extends StatefulWidget {
     required this.project,
     required this.onProjectChanged,
     required this.onMessage,
+    required this.onImportMedia,
   });
 
   final EditorProject project;
   final Future<bool> Function(EditorProject) onProjectChanged;
   final ValueChanged<String> onMessage;
+  final Future<void> Function() onImportMedia;
 
   @override
   State<MagicIAeditPanel> createState() => _MagicIAeditPanelState();
@@ -63,10 +66,21 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.project != widget.project) {
       _plan = null;
-    }
-    if (oldWidget.project.id != widget.project.id) {
-      _selectedPaths.clear();
-      _selectAvailableMedia();
+      final previousPaths = oldWidget.project.tracks
+          .where((track) => track.kind == MediaKind.image || track.kind == MediaKind.video)
+          .expand((track) => track.clips)
+          .map((clip) => clip.source)
+          .toSet();
+      if (oldWidget.project.id != widget.project.id) {
+        _selectedPaths.clear();
+        _selectAvailableMedia();
+      } else {
+        for (final clip in _availableMedia) {
+          if (!previousPaths.contains(clip.source) && _selectedPaths.length < 20) {
+            _selectedPaths.add(clip.source);
+          }
+        }
+      }
     }
   }
 
@@ -255,8 +269,57 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Seleziona le foto e i video già importati. L’IA prepara una proposta; nessuna modifica viene applicata finché non la approvi.',
+          Text(
+            'Prima aggiungi le tue foto e i tuoi video. Poi scegli i contenuti e lascia che MagicIAedit prepari un montaggio da rivedere e approvare.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF29204D), Color(0xFF172B48)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: const Color(0x665E9BFF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  const Icon(Icons.photo_library_outlined, color: Color(0xFF8FE8FF)),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text(
+                    '1. Aggiungi foto e video',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  )),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  media.isEmpty
+                      ? 'La galleria è vuota. Tocca qui sotto per scegliere fino a 20 elementi.'
+                      : '${media.length} elementi disponibili · puoi aggiungerne altri.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _busy ? null : widget.onImportMedia,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Aggiungi foto e video dalla galleria'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF6857D8),
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '2. Seleziona i contenuti qui sotto · massimo 20 per ogni proposta IA.',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: const Color(0xFFB8DFFF)),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -343,7 +406,7 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
           if (media.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('Importa prima almeno una foto o un video nell’editor.'),
+              child: Text('Nessun contenuto ancora. Usa il pulsante “Aggiungi foto e video dalla galleria” qui sopra.'),
             )
           else
             ...media.map((clip) {
