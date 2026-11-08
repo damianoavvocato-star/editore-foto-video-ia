@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, logging, ipaddress
+import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Query
@@ -248,6 +248,38 @@ def current_account(request: Request):
     if account is None:
         raise HTTPException(401, 'Sessione non valida o scaduta.')
     return {'user': account}
+
+
+@app.get('/v1/auth/sessions')
+def list_account_sessions(request: Request):
+    store = _account_store()
+    token = _bearer_token(request)
+    account = store.resolve_session(token)
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    current_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    sessions = store.list_active_sessions(account["userId"])
+    for session in sessions:
+        session["current"] = session["sessionId"] == current_hash
+    return {"sessions": sessions}
+
+
+@app.delete('/v1/auth/sessions/{session_id}')
+def revoke_account_session(session_id: str, request: Request):
+    store = _account_store()
+    token = _bearer_token(request)
+    account = store.resolve_session(token)
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    current_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    if not store.revoke_session_by_id(account["userId"], session_id):
+        raise HTTPException(404, 'Sessione non trovata o già revocata.')
+    is_current = session_id == current_hash
+    store.record_audit_event(
+        account["userId"], "auth.session_revoked", account["userId"],
+        {"current": is_current},
+    )
+    return {"ok": True, "currentSessionRevoked": is_current}
 
 
 @app.delete('/v1/auth/logout')
