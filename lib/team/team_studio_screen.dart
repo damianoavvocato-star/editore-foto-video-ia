@@ -38,7 +38,6 @@ class _TeamStudioScreenState extends State<TeamStudioScreen> {
 
   bool get _isManager => _user?['role'] == 'owner' || _user?['role'] == 'admin';
   bool get _isCollaborator => _user?['role'] == 'collaborator';
-  String get _userId => _user?['userId']?.toString() ?? '';
 
   @override
   void initState() {
