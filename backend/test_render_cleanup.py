@@ -120,7 +120,12 @@ def test_cancellation_wins_if_requested_before_render_finalization(tmp_path, mon
             generated.write(b"completed-render")
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server, "_run_ffmpeg",
+        lambda _job_id, command, timeout: fake_run(
+            command, capture_output=True, text=True, timeout=timeout
+        ),
+    )
     cancel_event = threading.Event()
     server.jobs[job_id] = {"state": "queued", "progress": 0.0, "message": "Queued"}
     server.cancel_events[job_id] = cancel_event
