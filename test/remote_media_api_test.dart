@@ -369,6 +369,58 @@ void main() {
     expect(states, contains(AiJobState.cancelled));
   });
 
+  test('MagicIAedit cancellation aborts an in-flight media upload', () async {
+    final source = File('${tempDirectory.path}/cancel-upload.jpg');
+    await source.writeAsBytes([1, 2, 3, 4]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final uploadReceived = Completer<void>();
+    final releaseServer = Completer<void>();
+    var aiJobCreated = false;
+    final api = RemoteMediaApi(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+    );
+    final subscription = server.listen((request) async {
+      if (request.uri.path == '/v1/assets') {
+        if (!uploadReceived.isCompleted) uploadReceived.complete();
+        await releaseServer.future;
+        try {
+          await request.drain();
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({'assetId': 'cancelled-asset'}));
+          await request.response.close();
+        } catch (_) {
+          // The client should close the socket immediately on cancellation.
+        }
+      } else if (request.uri.path == '/v1/ai/jobs') {
+        aiJobCreated = true;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'jobId': 'unexpected-job'}));
+        await request.response.close();
+      }
+    });
+    addTearDown(() async {
+      if (!releaseServer.isCompleted) releaseServer.complete();
+      await subscription.cancel();
+      api.close();
+      await server.close(force: true);
+    });
+
+    final backend = RemoteAiBackend(api);
+    final updatesFuture = backend.run(AiTaskRequest(
+      jobId: 'cancel-upload-job',
+      task: AiTaskKind.magicIAedit,
+      inputPath: source.path,
+      inputPaths: [source.path],
+    )).toList();
+
+    await uploadReceived.future.timeout(const Duration(seconds: 2));
+    await backend.cancel('cancel-upload-job');
+    final updates = await updatesFuture.timeout(const Duration(seconds: 2));
+
+    expect(updates.last.state, AiJobState.cancelled);
+    expect(aiJobCreated, isFalse);
+  });
+
   test('remote render cancellation during upload prevents job creation', () async {
     final source = File('${tempDirectory.path}/render.mp4');
     await source.writeAsBytes([1, 2, 3, 4]);

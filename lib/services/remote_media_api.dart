@@ -64,6 +64,16 @@ class RemoteMediaApi {
   static const int maxUploadBytes = 400 * 1024 * 1024;
   // Avoid unbounded disk consumption from a faulty or compromised media server.
   static const int maxDownloadBytes = 2 * 1024 * 1024 * 1024;
+  final Map<String, HttpClientRequest> _activeUploads = {};
+  final Set<String> _cancelledUploads = {};
+
+  /// Abort an in-flight upload before a server-side job has been created.
+  void cancelUpload(String cancellationKey) {
+    _cancelledUploads.add(cancellationKey);
+    _activeUploads.remove(cancellationKey)?.abort(
+      HttpException('Upload multimediale annullato.'),
+    );
+  }
 
   bool _hasSameOrigin(Uri uri) =>
       uri.scheme.toLowerCase() == baseUri.scheme.toLowerCase() &&
@@ -133,7 +143,10 @@ class RemoteMediaApi {
   }
 
   /// Uploads a local media file. The API must return {"assetId": "..."}.
-  Future<String> uploadFile(String filePath) async {
+  Future<String> uploadFile(
+    String filePath, {
+    String? cancellationKey,
+  }) async {
     final file = File(filePath);
     if (!await file.exists()) throw FileSystemException('Media sorgente non trovato', filePath);
     final fileSize = await file.length();
@@ -144,36 +157,51 @@ class RemoteMediaApi {
     final boundary = '----EditoreMedia${DateTime.now().microsecondsSinceEpoch}';
     final uri = _resolveApiUri('/v1/assets');
     final req = await _client.postUrl(uri).timeout(uploadTimeout);
-    req.followRedirects = false;
-    _authorize(req);
-    req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
-    final filename = Uri.encodeComponent(file.uri.pathSegments.last);
-    Stream<List<int>> multipartBody() async* {
-      yield utf8.encode('--$boundary\r\n'
-          'Content-Disposition: form-data; name="file"; filename="$filename"\r\n'
-          'Content-Type: application/octet-stream\r\n\r\n');
-      yield* file.openRead();
-      yield utf8.encode('\r\n--$boundary--\r\n');
+    if (cancellationKey != null) {
+      if (_cancelledUploads.contains(cancellationKey)) {
+        req.abort(HttpException('Upload multimediale annullato.'));
+        _cancelledUploads.remove(cancellationKey);
+        throw HttpException('Upload multimediale annullato.', uri: uri);
+      }
+      _activeUploads[cancellationKey] = req;
     }
-    HttpClientResponse response;
     try {
-      // Bound both sending the multipart body and waiting for the server to
-      // accept it. A stalled upload must not leave a socket alive indefinitely.
-      await req.addStream(multipartBody()).timeout(uploadTimeout);
-      response = await req.close().timeout(uploadTimeout);
-    } on TimeoutException {
-      req.abort(TimeoutException('Upload multimediale scaduto.', uploadTimeout));
-      rethrow;
+      req.followRedirects = false;
+      _authorize(req);
+      req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
+      final filename = Uri.encodeComponent(file.uri.pathSegments.last);
+      Stream<List<int>> multipartBody() async* {
+        yield utf8.encode('--$boundary\\r\\n'
+            'Content-Disposition: form-data; name="file"; filename="$filename"\\r\\n'
+            'Content-Type: application/octet-stream\\r\\n\\r\\n');
+        yield* file.openRead();
+        yield utf8.encode('\\r\\n--$boundary--\\r\\n');
+      }
+      HttpClientResponse response;
+      try {
+        await req.addStream(multipartBody()).timeout(uploadTimeout);
+        response = await req.close().timeout(uploadTimeout);
+      } on TimeoutException {
+        req.abort(TimeoutException('Upload multimediale scaduto.', uploadTimeout));
+        rethrow;
+      }
+      final body = await _readResponseText(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('Upload fallito HTTP ${response.statusCode}', uri: uri);
+      }
+      final decoded = jsonDecode(body);
+      if (decoded is! Map || decoded['assetId'] == null || decoded['assetId'].toString().isEmpty) {
+        throw const FormatException('Upload: risposta senza assetId.');
+      }
+      return decoded['assetId'].toString();
+    } finally {
+      if (cancellationKey != null) {
+        if (identical(_activeUploads[cancellationKey], req)) {
+          _activeUploads.remove(cancellationKey);
+        }
+        _cancelledUploads.remove(cancellationKey);
+      }
     }
-    final body = await _readResponseText(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException('Upload fallito HTTP ${response.statusCode}', uri: uri);
-    }
-    final decoded = jsonDecode(body);
-    if (decoded is! Map || decoded['assetId'] == null || decoded['assetId'].toString().isEmpty) {
-      throw const FormatException('Upload: risposta senza assetId.');
-    }
-    return decoded['assetId'].toString();
   }
 
   /// Downloads a completed asset to the requested local destination.
@@ -231,6 +259,7 @@ class RemoteAiBackend implements AiProcessingBackend {
   @override
   Future<void> cancel(String jobId) async {
     _cancelled.add(jobId);
+    api.cancelUpload(jobId);
     final remoteId = _remoteJobs[jobId];
     // The upload/create phase may not have produced a server job yet.
     // run() observes the cancellation flag before creating one.
@@ -292,7 +321,20 @@ class RemoteAiBackend implements AiProcessingBackend {
           );
           return;
         }
-        assetIds.add(await api.uploadFile(path));
+        try {
+          assetIds.add(await api.uploadFile(path, cancellationKey: request.jobId));
+        } catch (_) {
+          if (_cancelled.contains(request.jobId)) {
+            yield AiJobProgress(
+              jobId: request.jobId,
+              task: request.task,
+              state: AiJobState.cancelled,
+              message: 'Caricamento annullato.',
+            );
+            return;
+          }
+          rethrow;
+        }
       }
       if (_cancelled.contains(request.jobId)) {
         yield AiJobProgress(
