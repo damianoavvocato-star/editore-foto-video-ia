@@ -29,7 +29,7 @@
 | P0-08 | Audit log antimanomissione | Owner | endpoint integrità Owner-only | hash chain SHA-256; HMAC-SHA256 opzionale con MEDIA_AUDIT_HMAC_KEY; migrazione eventi legacy e verifica sequenza | alterazione di contenuto o collegamento rilevata dai test; configurare HMAC key persistente in produzione | partial |
 | P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente a 24 ore, blocco dopo scadenza | test backend CI superati; database esistenti migrati in modo compatibile | done |
 | P0-10 | 2FA per Admin e Support | Admin, Support | setup, recovery, enforcement | policy MFA e recovery | accesso negato senza secondo fattore | partial |
-| P0-11 | Backup, restore e retention | Owner | console backup | snapshot cifrati, restore verificato | ripristino in ambiente isolato | missing |
+| P0-11 | Backup, restore e retention | Owner | API Owner-only per creazione, elenco e verifica | snapshot SQLite cifrato Fernet con controllo integrità; chiave esterna MEDIA_BACKUP_ENCRYPTION_KEY | test cifratura, chiave obbligatoria e alterazione; restore, media assets, retention e replica remota mancanti | partial |
 | P0-12 | Ripresa job dopo riavvio | Owner, User | stato e retry | lease, retry idempotente, recovery | crash simulato e ripresa senza duplicati | partial |
 | P0-13 | Isolamento account end-to-end | Tutti | indicatori accesso | asset, progetti, export, storage e download ACL | test cross-account su ogni risorsa | partial |
 | P0-14 | Storage privato e cancellazione dati | Owner, User | gestione file/cestino | storage integrato, delete e retention | accesso negato a URL non autorizzati | partial |
@@ -50,16 +50,16 @@
 | P1-10 | Keyframe, curve velocità, maschere e tracking | User | editor avanzato | renderer/engine | progetto riapribile e output coerente | missing |
 | P1-11 | Color grading, LUT, HDR, stabilizzazione | User | controlli avanzati | pipeline media | file campione e device reali | missing |
 | P1-12 | Player professionale e zoom post-export | User | player e gesture | streaming/file output | pinch zoom durante playback, non solo anteprima | partial |
-| P1-13 | Libreria media e scorciatoia ultime 2 foto | User | recenti + galleria completa | import e permessi | scorciatoia senza limitare selezione completa | missing |
+| P1-13 | Libreria media e scorciatoia ultime 2 foto | User | scorciatoia AppBar per importare fino a 2 immagini; importazione completa resta disponibile | FilePicker image picker e pipeline import condivisa | selezione rapida limitata a due file; ordinamento automatico per data e verifica permessi/device ancora mancanti | partial |
 | P1-14 | Formati export e preset | User | preset e compatibilità | FFmpeg codec map | MP4/MOV/AVI/WebM validati con file reali | partial |
-| P1-15 | Font, RTL e gestione risorse mancanti | User | fallback e layout | renderer font shaping | arabo corretto e fallback testati | missing |
+| P1-15 | Font, RTL e gestione risorse mancanti | User | lingua araba e Directionality RTL a livello app già presenti | renderer font shaping e fallback font ancora da completare | layout RTL di base disponibile; test di shaping e device con testi arabi lunghi mancanti | partial |
 
 ## P2 — MagicIAedit, Studio IA, lingue e strumenti media
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
 | P2-01 | MagicIAedit analisi, piano e revisione | User | flusso dedicato | piano JSON e apply | test già presenti; completare casi media | partial |
-| P2-02 | MagicIAedit trasversale nell'app | User | pulsante persistente nell'AppBar per aprire MagicIAedit dalle altre schermate | riuso della sessione/progetto corrente; orchestrazione contestuale completa ancora da sviluppare | accesso globale alla schermata verificabile; suggerimenti automatici per selezione media ancora mancanti | partial |
+| P2-02 | MagicIAedit trasversale nell'app | User | pulsante persistente nell'AppBar per aprire MagicIAedit dalle altre schermate | riuso della sessione/progetto corrente; orchestrazione contestuale completa ancora da sviluppare | accesso globale alla schermata; suggerimenti automatici per selezione media ancora mancanti | partial |
 | P2-03 | Provider IA MagicIAedit reale | Owner, User | stato provider e costi | config server-side e routing | chiamata sandbox/produzione verificata | blocked |
 | P2-04 | Generazione da prompt senza media | User | prompt studio | generazione contenuti reale | prompt aperti, non template statico | partial |
 | P2-05 | Miniserie completa multi-episodio | User | storyboard e revisione episodi | script, scene, personaggi, voce e render | 10 episodi completi, almeno 1 minuto ciascuno | missing |
@@ -206,3 +206,10 @@
 - **Audit P0-08:** gli eventi nuovi sono concatenati con SHA-256; se configurata `MEDIA_AUDIT_HMAC_KEY`, usano HMAC-SHA256. Migrazione degli eventi legacy, endpoint di verifica Owner-only e test di alterazione. Senza chiave HMAC la catena SHA-256 rileva modifiche accidentali/strutturali ma non è una prova contro un amministratore del database capace di ricalcolare gli hash; configurare una chiave segreta persistente in produzione.
 - **MagicIAedit P2-02:** aggiunto un accesso persistente dalla barra superiore, disponibile anche quando si è in altre sezioni. Non equivale ancora all'automazione contestuale di ogni selezione foto/video.
 - Tutte queste voci restano `partial` fino a verifica CI e completamento dei limiti elencati. Nessun APK generato.
+
+
+## Aggiornamento backup, import rapido e RTL — 8 novembre 2026
+
+- **P0-11 Backup:** creato servizio di snapshot SQLite online, cifrato con Fernet e verificabile con controllo `PRAGMA quick_check`; API Owner-only per creare, elencare e verificare. Richiede `MEDIA_BACKUP_ENCRYPTION_KEY`; senza chiave fallisce in modo esplicito. Non include ancora media assets, ripristino, retention automatica o replica remota.
+- **P1-13 Media:** aggiunta scorciatoia nell'AppBar per selezionare e importare al massimo due immagini nella pipeline esistente. Il pulsante normale di importazione mantiene la selezione completa di foto/video/audio. L'ordinamento automatico delle due immagini più recenti non è ancora garantito dal provider di selezione.
+- **P1-15 Lingue:** riconosciuto il supporto già presente per lingua araba e direzione RTL a livello app. Font shaping, fallback tipografici e test su testi arabi lunghi restano da fare.
