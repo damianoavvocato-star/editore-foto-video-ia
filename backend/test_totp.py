@@ -18,3 +18,23 @@ def test_totp_verification_accepts_current_and_adjacent_window():
 
 def test_totp_rejects_invalid_secrets_and_parameters():
     assert verify_code("not valid!", "123456", timestamp=90) is False
+
+
+def test_totp_verification_checks_the_entire_window(monkeypatch):
+    import backend.totp as totp
+
+    checked = []
+
+    def fake_code_at(secret, timestamp, digits=6, period=30):
+        checked.append(timestamp)
+        return "123456" if timestamp == 90 else "000000"
+
+    monkeypatch.setattr(totp, "code_at", fake_code_at)
+    assert totp.verify_code("unused", "123456", timestamp=90, window=1)
+    assert checked == [60, 90, 120]
+
+
+def test_totp_verification_rejects_invalid_window_and_code_shape():
+    secret = generate_secret()
+    assert verify_code(secret, "123456", timestamp=90, window=3) is False
+    assert verify_code(secret, "12345x", timestamp=90) is False
