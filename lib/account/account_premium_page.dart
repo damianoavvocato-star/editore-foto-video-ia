@@ -23,7 +23,7 @@ class AccountPremiumPage extends StatefulWidget {
 }
 
 class _AccountPremiumPageState extends State<AccountPremiumPage> {
-  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})> _load;
+  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance, List<dynamic>? referralClaims})> _load;
 
   @override
   void initState() {
@@ -34,7 +34,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
   Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
-    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null);
+    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null, referralClaims: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
@@ -78,6 +78,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
       String? referralCode;
       Map<String, dynamic>? usageSummary;
       int? creditBalance;
+      List<dynamic>? referralClaims;
       try {
         final credits = await api.request('GET', '/v1/account/credits');
         final balance = credits['balance'];
@@ -95,10 +96,11 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
       try {
         final referral = await api.request('GET', '/v1/account/referrals');
         referralCode = referral['code'] as String?;
+        referralClaims = referral['claims'] is List ? referral['claims'] as List : const [];
       } on AccountApiException {
         // Entitlement remains usable if the referral endpoint is temporarily unavailable.
       }
-      return (userId: userId, entitlement: entitlement, referralCode: referralCode, usageSummary: usageSummary, creditBalance: creditBalance);
+      return (userId: userId, entitlement: entitlement, referralCode: referralCode, usageSummary: usageSummary, creditBalance: creditBalance, referralClaims: referralClaims);
     } finally {
       api.close();
     }
@@ -195,6 +197,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
           referralCode: data.referralCode,
           usageSummary: data.usageSummary,
           creditBalance: data.creditBalance,
+          referralClaims: data.referralClaims ?? const [],
           apiBaseUrl: widget.apiBaseUrl,
           onSignIn: widget.onSignIn,
           onUpgrade: () => _notice(
