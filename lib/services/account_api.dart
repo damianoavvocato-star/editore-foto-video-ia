@@ -67,6 +67,7 @@ class RemoteAccountApi {
     String method,
     String path, {
     Map<String, Object?>? body,
+    Map<String, String>? headers,
   }) async {
     final uri = _resolve(path);
     final request = await _client.openUrl(method, uri).timeout(
@@ -78,6 +79,7 @@ class RemoteAccountApi {
     if (token != null && token.isNotEmpty) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
     }
+    headers?.forEach((name, value) => request.headers.set(name, value));
     if (body != null) request.write(jsonEncode(body));
     final response = await request.close().timeout(const Duration(seconds: 20));
     final bytes = <int>[];

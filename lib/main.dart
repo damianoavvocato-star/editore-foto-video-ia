@@ -13,6 +13,7 @@ import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
 import 'editor/magiciaedit_panel.dart';
 import 'editor/remote_export_panel.dart';
+import 'studio/synthesia_studio_screen.dart';
 
 void main() => runApp(const EditoreApp());
 
@@ -778,7 +779,11 @@ class _HomePageState extends State<HomePage> {
                     ? const AccountSecurityScreen(
                         apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
                       )
-                    : _buildEditor(context);
+                    : selectedTab == 7
+                        ? const SynthesiaStudioScreen(
+                            apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
+                          )
+                        : _buildEditor(context);
             final sidebar = _buildSidebar(context);
             return Padding(
               padding: const EdgeInsets.all(16),
@@ -1075,6 +1080,7 @@ class _HomePageState extends State<HomePage> {
                 onTap: () => _openSavedProject(saved),
               ),
             ),
+          _sideItem(Icons.video_camera_front_outlined, 'Synthesia Studio IA', 7),
           const Divider(),
           _sideItem(Icons.settings, t('settings'), 6),
           if (selectedTab == 2)
