@@ -259,9 +259,20 @@ class _UsageSummaryCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text('$used di $limit elaborazioni · $remaining rimanenti'),
             const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: limit == 0 ? 0 : (used / limit).clamp(0.0, 1.0).toDouble(),
+            Semantics(
+              label: 'Utilizzo mensile: $used di $limit elaborazioni',
+              value: '$remaining rimanenti',
+              child: LinearProgressIndicator(
+                value: limit <= 0 ? 0 : (used / limit).clamp(0.0, 1.0).toDouble(),
+              ),
             ),
+            if (remaining == 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Limite mensile raggiunto. Le nuove elaborazioni saranno disponibili nel prossimo periodo.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 6),
             Text('Periodo: $period',
                 style: Theme.of(context).textTheme.bodySmall),
