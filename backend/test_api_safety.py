@@ -408,3 +408,32 @@ def test_owner_totp_setup_password_attempts_are_rate_limited(tmp_path, monkeypat
         json={"password": "owner password long enough"},
     )
     assert blocked.status_code == 429
+
+
+def test_collaborator_billing_read_is_limited_to_self(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("billing_owner", "owner password long enough")
+    collaborator = store.create_managed_account(
+        owner["userId"], "billing_collab", "collab password long enough", "collaborator"
+    )
+    store.change_password(
+        collaborator["userId"], None, "collab changed password long enough"
+    )
+    other = store.register("billing_other", "other account password long")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(collaborator["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    client = TestClient(server.app)
+
+    own = client.get(
+        f"/v1/owner/accounts/{collaborator['userId']}/premium-grants",
+        headers=headers,
+    )
+    other_account = client.get(
+        f"/v1/owner/accounts/{other['userId']}/premium-grants",
+        headers=headers,
+    )
+    assert own.status_code == 200
+    assert other_account.status_code == 403
