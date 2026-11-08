@@ -821,3 +821,40 @@ def test_owner_audit_integrity_endpoint_is_owner_only(tmp_path, monkeypatch):
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert denied.status_code == 403
+
+
+
+def test_backup_api_is_owner_only_and_requires_encryption_key(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+
+    database = tmp_path / "accounts.sqlite3"
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("backup_api_owner", "owner password long enough")
+    user = store.register("backup_api_user", "user password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.delenv("MEDIA_BACKUP_ENCRYPTION_KEY", raising=False)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    assert client.post("/v1/owner/backups", headers=headers(user["userId"])).status_code == 403
+    missing_key = client.post("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert missing_key.status_code == 503
+
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    created = client.post("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert created.status_code == 200
+    backup_id = created.json()["backupId"]
+    listed = client.get("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert listed.status_code == 200
+    assert listed.json()["backups"][0]["backupId"] == backup_id
+    verified = client.post(
+        f"/v1/owner/backups/{backup_id}/verify",
+        headers=headers(owner["userId"]),
+    )
+    assert verified.status_code == 200
+    assert verified.json()["valid"] is True
