@@ -94,3 +94,66 @@ def test_render_rejects_non_uuid_asset_ids_before_creating_job():
 
     assert error.value.status_code == 422
     assert error.value.detail == "Identificativo media non valido"
+
+
+def test_cancellation_wins_if_requested_before_render_finalization(tmp_path, monkeypatch):
+    assets = tmp_path / "assets"
+    outputs = tmp_path / "outputs"
+    assets.mkdir()
+    outputs.mkdir()
+    asset_id = uuid.uuid4().hex
+    job_id = uuid.uuid4().hex
+    (assets / f"{asset_id}.png").write_bytes(b"test-image")
+
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "OUTPUTS", outputs)
+    monkeypatch.setattr(server.shutil, "which", lambda _binary: "/usr/bin/ffmpeg")
+
+    def fake_run(command, **kwargs):
+        with open(command[-1], "wb") as generated:
+            generated.write(b"completed-render")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    cancel_event = threading.Event()
+    server.jobs[job_id] = {"state": "queued", "progress": 0.0, "message": "Queued"}
+    server.cancel_events[job_id] = cancel_event
+
+    real_chmod = server.os.chmod
+
+    def cancel_during_output_permission_update(path, mode):
+        if Path(path).parent == outputs:
+            cancel_event.set()
+        return real_chmod(path, mode)
+
+    from pathlib import Path
+    monkeypatch.setattr(server.os, "chmod", cancel_during_output_permission_update)
+
+    try:
+        server._render_job(
+            job_id,
+            {
+                "width": 160,
+                "height": 120,
+                "tracks": [
+                    {
+                        "kind": "video",
+                        "clips": [
+                            {
+                                "kind": "image",
+                                "assetId": asset_id,
+                                "durationMs": 1000,
+                            }
+                        ],
+                    }
+                ],
+            },
+            {"resolution": "p720", "fps": 24, "container": "mp4"},
+        )
+
+        assert server.jobs[job_id]["state"] == "cancelled"
+        assert list(outputs.iterdir()) == []
+    finally:
+        server.jobs.pop(job_id, None)
+        server.cancel_events.pop(job_id, None)

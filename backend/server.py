@@ -862,7 +862,24 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 os.chmod(output, 0o600)
             except OSError:
                 logging.warning('Unable to restrict rendered output permissions for job %s', job_id)
-            with lock: jobs[job_id].update(state='completed',progress=1.0,message='Rendering completato',downloadUrl=f'/v1/outputs/{job_id}')
+            # Serialize the final state transition with DELETE /v1/jobs. A
+            # cancellation accepted before this lock must never become completed.
+            with lock:
+                if (
+                    cancel_events.get(job_id, threading.Event()).is_set()
+                    or jobs.get(job_id, {}).get('state') == 'cancelled'
+                ):
+                    output.unlink(missing_ok=True)
+                    jobs[job_id].update(
+                        state='cancelled', progress=0.0, message='Annullato'
+                    )
+                else:
+                    jobs[job_id].update(
+                        state='completed',
+                        progress=1.0,
+                        message='Rendering completato',
+                        downloadUrl=f'/v1/outputs/{job_id}',
+                    )
     except Exception:
         # Remove a partially written output when FFmpeg or post-processing fails.
         if output is not None:
@@ -871,12 +888,20 @@ def _render_job(job_id: str, project: dict, settings: dict):
         # filesystem paths through the client-facing job status endpoint.
         logging.exception('Media render job %s failed', job_id)
         with lock:
-            jobs[job_id].update(
-                state='failed',
-                progress=1.0,
-                message='Rendering non riuscito',
-                error='Errore interno durante il rendering. Consultare i log del server.',
-            )
+            if (
+                cancel_events.get(job_id, threading.Event()).is_set()
+                or jobs.get(job_id, {}).get('state') == 'cancelled'
+            ):
+                jobs[job_id].update(
+                    state='cancelled', progress=0.0, message='Annullato'
+                )
+            else:
+                jobs[job_id].update(
+                    state='failed',
+                    progress=1.0,
+                    message='Rendering non riuscito',
+                    error='Errore interno durante il rendering. Consultare i log del server.',
+                )
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
