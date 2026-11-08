@@ -342,6 +342,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     if (id.isEmpty) return;
     final reply = TextEditingController();
     var status = row['status']?.toString() ?? 'open';
+    var assignee = row['assignedToUserId']?.toString() ?? '';
     Map<String, dynamic>? ticket;
     try {
       final response = await api.request('GET', '/v1/support/tickets/${Uri.encodeComponent(id)}');
@@ -387,6 +388,48 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                     maxLength: 4000,
                     decoration: const InputDecoration(labelText: 'Scrivi una risposta'),
                   ),
+                  if (_isOwner || _isAdmin) ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: assignee,
+                      decoration: const InputDecoration(labelText: 'Operatore assegnato'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text('Non assegnato'),
+                        ),
+                        ..._accounts.where((account) =>
+                          account['role'] == 'support' && account['disabled'] != true
+                        ).map((account) => DropdownMenuItem<String>(
+                          value: account['userId']?.toString() ?? '',
+                          child: Text(account['username']?.toString() ?? 'Support'),
+                        )),
+                      ],
+                      onChanged: (value) => refresh(() => assignee = value ?? ''),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          try {
+                            final updated = await api.request(
+                              'PUT',
+                              '/v1/support/tickets/${Uri.encodeComponent(id)}/assignment',
+                              body: {'assigneeUserId': assignee.isEmpty ? null : assignee},
+                            );
+                            ticket = Map<String, dynamic>.from(updated['ticket'] as Map);
+                            await _refreshSupportTickets();
+                            refresh(() {});
+                            _notify('Assegnazione ticket aggiornata.');
+                          } catch (error) {
+                            _notify(error.toString());
+                          }
+                        },
+                        icon: const Icon(Icons.assignment_ind_outlined),
+                        label: const Text('Salva assegnazione'),
+                      ),
+                    ),
+                  ],
                   if (_isSupportStaff)
                     DropdownButtonFormField<String>(
                       initialValue: status,
@@ -1422,7 +1465,12 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   ..._supportTickets.map((ticket) => ListTile(
                     leading: const Icon(Icons.confirmation_number_outlined),
                     title: Text(ticket['subject']?.toString() ?? 'Ticket'),
-                    subtitle: Text('Stato: ${ticket['status']}'),
+                    subtitle: Text(
+                      'Stato: ${ticket['status']}' +
+                      ((_isOwner || _isAdmin) && ticket['assignedToUserId'] != null
+                        ? ' • Assegnato'
+                        : ''),
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openSupportTicket(ticket),
                   )),
