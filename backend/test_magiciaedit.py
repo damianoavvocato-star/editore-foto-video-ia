@@ -192,6 +192,33 @@ def test_magic_media_preprocessing_stops_immediately_when_cancelled(tmp_path):
         raise AssertionError("Cancelled preprocessing must stop before reading media")
 
 
+def test_video_frame_extraction_rejects_non_finite_duration(monkeypatch, tmp_path):
+    class ProbeResult:
+        returncode = 0
+        stdout = "inf"
+
+    monkeypatch.setattr(magiciaedit.subprocess, "run", lambda *args, **kwargs: ProbeResult())
+    try:
+        magiciaedit._video_frames(tmp_path / "clip.mp4")
+    except magiciaedit.MagicIAError as exc:
+        assert "fuori dai limiti" in str(exc)
+    else:
+        raise AssertionError("Non-finite video duration must be rejected")
+
+
+def test_video_frame_extraction_handles_ffprobe_timeout(monkeypatch, tmp_path):
+    def timeout(*args, **kwargs):
+        raise magiciaedit.subprocess.TimeoutExpired("ffprobe", 20)
+
+    monkeypatch.setattr(magiciaedit.subprocess, "run", timeout)
+    try:
+        magiciaedit._video_frames(tmp_path / "clip.mp4")
+    except magiciaedit.MagicIAError as exc:
+        assert "Lettura della durata" in str(exc)
+    else:
+        raise AssertionError("ffprobe timeout must become a safe media error")
+
+
 def test_video_frame_extraction_checks_cancellation_before_ffprobe(monkeypatch, tmp_path):
     cancelled = threading.Event()
     cancelled.set()

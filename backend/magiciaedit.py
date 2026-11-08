@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -68,17 +69,22 @@ def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
         raise MagicIAError("Elaborazione annullata.")
     ffmpeg = os.getenv("FFMPEG_PATH", "ffmpeg")
     ffprobe = os.getenv("FFPROBE_PATH", "ffprobe")
-    probe = subprocess.run(
-        [ffprobe, "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-        capture_output=True, text=True, timeout=20,
-    )
+    try:
+        probe = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise MagicIAError("Lettura della durata video non riuscita.") from exc
     if probe.returncode:
         raise MagicIAError("Impossibile leggere la durata di un video.")
     try:
-        duration = max(0.1, float(probe.stdout.strip()))
-    except ValueError as exc:
+        duration = float(probe.stdout.strip())
+    except (TypeError, ValueError, OverflowError) as exc:
         raise MagicIAError("Durata video non valida.") from exc
+    if not math.isfinite(duration) or duration <= 0 or duration > 86_400:
+        raise MagicIAError("Durata video fuori dai limiti consentiti.")
 
     timestamps = sorted({min(duration - 0.05, max(0.0, t))
                          for t in (0.1, duration / 2, duration - 0.1)})
