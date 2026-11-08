@@ -1,0 +1,27 @@
+name: editore_foto_video_ia
+description: Cross-platform AI photo and video editor starter for Android, iOS, and desktop.
+publish_to: "none"
+version: 0.1.0+12
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  file_picker: ^10.3.10
+  video_player: ^2.9.2
+  just_audio: ^0.10.5
+  path_provider: ^2.1.5
+  share_plus: ^10.1.4
+  flutter_secure_storage: ^9.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
