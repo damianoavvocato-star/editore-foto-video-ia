@@ -382,3 +382,22 @@ def test_active_sessions_can_be_listed_and_revoked_only_by_their_owner(tmp_path)
     assert store.resolve_session(second_token) is not None
     assert store.resolve_session(other_token) is not None
     assert len(store.list_active_sessions(first["userId"])) == 1
+
+
+def test_owner_sessions_have_shorter_lifetime_than_standard_accounts(tmp_path):
+    import time
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("short_owner", "owner password long enough")
+    user = store.register("long_user", "regular user password long")
+    _, owner_token, owner_expiry = store.login(
+        "short_owner", "owner password long enough"
+    )
+    _, user_token, user_expiry = store.login(
+        "long_user", "regular user password long"
+    )
+    now = int(time.time())
+    assert now < owner_expiry <= now + 12 * 60 * 60
+    assert user_expiry > owner_expiry
+    assert store.resolve_session(owner_token)["userId"] == owner["userId"]
+    assert store.resolve_session(user_token)["userId"] == user["userId"]
