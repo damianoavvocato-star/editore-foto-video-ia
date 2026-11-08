@@ -26,7 +26,7 @@
 | P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta, stato e controlli assegnazione Owner/Admin | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
 | P0-06 | Console Collaboratore / TeamStudio | Collab | schermata Flutter collegata alla navigazione: inviti, progetti, membri, revoca, commenti e approvazioni; test UI ancora da completare | membership, ACL, elenco membri, commenti, approvazioni e revoca | isolamento tra team, visibilità dei soli membri del progetto, revoca immediata e CI verde | partial |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
-| P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
+| P0-08 | Audit log antimanomissione | Owner | endpoint integrità Owner-only | hash chain SHA-256; HMAC-SHA256 opzionale con MEDIA_AUDIT_HMAC_KEY; migrazione eventi legacy e verifica sequenza | alterazione di contenuto o collegamento rilevata dai test; configurare HMAC key persistente in produzione | partial |
 | P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente a 24 ore, blocco dopo scadenza | test backend CI superati; database esistenti migrati in modo compatibile | done |
 | P0-10 | 2FA per Admin e Support | Admin, Support | setup, recovery, enforcement | policy MFA e recovery | accesso negato senza secondo fattore | partial |
 | P0-11 | Backup, restore e retention | Owner | console backup | snapshot cifrati, restore verificato | ripristino in ambiente isolato | missing |
@@ -38,13 +38,13 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P1-01 | Schermata Premium collegata alla navigazione | User | AccountPremiumPage collegata a menu desktop e mobile; stato sessione e messaggi di fallback | lettura reale di /v1/auth/me e /v1/account/entitlement | piano mostrato solo dopo verifica server; errori ritentabili; test widget; pagamenti e referral non simulati | partial |
+| P1-01 | Schermata Premium collegata alla navigazione | User | AccountPremiumPage collegata a menu desktop e mobile; saldo crediti, quota mensile e referral code | lettura reale di profilo, entitlement, usage e referrals | stato server verificato e fallback; pagamenti reali ancora assenti | partial |
 | P1-02 | Concessione/revoca/estensione Premium | Owner | console grant | grant API e audit | scadenze, revoca e audit verificati | partial |
 | P1-03 | Pagamenti reali e store billing | User, Owner | acquisto, restore, ricevute | store validation, webhook, entitlement sync | sandbox Apple/Google/web | missing |
-| P1-04 | Matrice Free/Premium e quote | Owner, User | paywall e consumi | policy e contatori per feature | enforcement server-side e trasparenza quote | missing |
-| P1-05 | Referral bilaterale 1 mese | User | invito, riscatto, storico | attribuzione, antifrode, maturazione e grant | inviter e invitee premiati una sola volta | partial |
+| P1-04 | Matrice Free/Premium e quote | Owner, User | riepilogo account con richieste IA usate, limite, residuo e periodo | quota mensile Free/Premium configurabile e riservazioni atomiche già applicate ai job; endpoint /v1/account/usage | test conteggio, isolamento, esaurimento e API autenticata; matrice per singola feature/paywall ancora da completare | partial |
+| P1-05 | Referral bilaterale 1 mese | User | codice personale, copia/condivisione, riscatto e storico | claim univoco per invitato, blocco auto-invito, account attivi, maturazione 7 giorni e grant atomico di 30 giorni a entrambi | test duplicati, account disabilitati, maturazione, idempotenza e API; controlli antifrode avanzati e monitoraggio account multipli ancora da completare | partial |
 | P1-06 | Premium famiglia | Owner, User | gestione membri e posti | inviti e membership di base | UI completa, limiti posti, revoca | partial |
-| P1-07 | Gestione crediti IA e costi | Owner, User | saldo e consumi | ledger, limiti, idempotenza | nessun saldo negativo o doppio addebito | missing |
+| P1-07 | Gestione crediti IA e costi | Owner, User | saldo crediti visibile nell'account | ledger SQLite atomico, grant Owner-only, consumo, rimborso limitato al consumo originale, chiavi idempotenti e storico | test saldo non negativo, doppio addebito, rimborso, isolamento e API; collegamento al costo reale dei job/provider ancora da completare | partial |
 | P1-08 | Timeline ed editing manuale | User | strumenti e anteprima | modello/render base | test gesture, playback e salvataggio su device | partial |
 | P1-09 | Effetti, testo, audio completi | User | pannelli operativi | renderer e asset | nessun pulsante placeholder; export testato | partial |
 | P1-10 | Keyframe, curve velocità, maschere e tracking | User | editor avanzato | renderer/engine | progetto riapribile e output coerente | missing |
@@ -59,7 +59,7 @@
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
 | P2-01 | MagicIAedit analisi, piano e revisione | User | flusso dedicato | piano JSON e apply | test già presenti; completare casi media | partial |
-| P2-02 | MagicIAedit trasversale nell'app | User | entry point contestuali | orchestrazione condivisa | accessibile da schermate e selezioni rilevanti | missing |
+| P2-02 | MagicIAedit trasversale nell'app | User | pulsante persistente nell'AppBar per aprire MagicIAedit dalle altre schermate | riuso della sessione/progetto corrente; orchestrazione contestuale completa ancora da sviluppare | accesso globale alla schermata verificabile; suggerimenti automatici per selezione media ancora mancanti | partial |
 | P2-03 | Provider IA MagicIAedit reale | Owner, User | stato provider e costi | config server-side e routing | chiamata sandbox/produzione verificata | blocked |
 | P2-04 | Generazione da prompt senza media | User | prompt studio | generazione contenuti reale | prompt aperti, non template statico | partial |
 | P2-05 | Miniserie completa multi-episodio | User | storyboard e revisione episodi | script, scene, personaggi, voce e render | 10 episodi completi, almeno 1 minuto ciascuno | missing |
@@ -196,3 +196,13 @@
 - Acquisto, ripristino e referral non vengono simulati: la UI dichiara che pagamenti e servizio inviti non sono ancora collegati. Nessun codice invito fittizio e nessuna concessione Premium lato client.
 - Aggiunti test widget per stato senza sessione/configurazione e trasparenza sul pagamento non attivo. La modifica resta da confermare con CI.
 - P1-01 resta `partial`: la lettura entitlement è collegata, ma mancano flussi di accesso integrati, billing reale e verifica multipiattaforma. P1-03 e P1-05 non avanzano di stato.
+
+
+## Blocco avanzamento autonomo — referral, quote, crediti e audit — 8 novembre 2026
+
+- **Referral P1-05:** creato codice personale stabile; claim autenticato; auto-invito rifiutato; un solo claim per account invitato; entrambi gli account devono essere attivi. Il premio resta pending per 7 giorni e poi il server assegna in un'unica transazione 30 giorni Premium a invitante e invitato. Maturazione lazy al successivo accesso a entitlement/usage/storico; non è un processo pianificato in background. Restano controlli antifrode avanzati contro multi-account, analisi abuso e notifiche.
+- **Quote P1-04:** endpoint autenticato `GET /v1/account/usage` espone periodo, usato, limite e residuo; la schermata Premium visualizza il dato. Si basa sulle prenotazioni mensili già applicate ai job IA. Mancano matrice per funzione, paywall e catalogo completo delle quote.
+- **Crediti P1-07:** aggiunto ledger atomico con grant solo Owner, addebito, rimborso non superiore all'addebito originale, chiave idempotente e storico per account. API per saldo/storico e grant Owner; saldo visibile in Premium. I job/provider non consumano ancora questo saldo: non va confuso con la quota mensile esistente.
+- **Audit P0-08:** gli eventi nuovi sono concatenati con SHA-256; se configurata `MEDIA_AUDIT_HMAC_KEY`, usano HMAC-SHA256. Migrazione degli eventi legacy, endpoint di verifica Owner-only e test di alterazione. Senza chiave HMAC la catena SHA-256 rileva modifiche accidentali/strutturali ma non è una prova contro un amministratore del database capace di ricalcolare gli hash; configurare una chiave segreta persistente in produzione.
+- **MagicIAedit P2-02:** aggiunto un accesso persistente dalla barra superiore, disponibile anche quando si è in altre sezioni. Non equivale ancora all'automazione contestuale di ogni selezione foto/video.
+- Tutte queste voci restano `partial` fino a verifica CI e completamento dei limiti elencati. Nessun APK generato.
