@@ -185,6 +185,10 @@ def test_cancel_stops_active_ffmpeg_process(tmp_path, monkeypatch):
         def terminate(self):
             terminated.set()
 
+        def wait(self, timeout=None):
+            assert terminated.wait(timeout=timeout)
+            return self.returncode
+
         def kill(self):
             terminated.set()
 
@@ -214,3 +218,29 @@ def test_cancel_stops_active_ffmpeg_process(tmp_path, monkeypatch):
         assert job_id not in server.active_render_processes
     finally:
         server.cancel_events.pop(job_id, None)
+
+
+def test_cancel_force_kills_ffmpeg_if_graceful_stop_times_out(monkeypatch):
+    class StubbornProcess:
+        def __init__(self):
+            self.terminated = False
+            self.killed = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            raise server.subprocess.TimeoutExpired("ffmpeg", timeout)
+
+        def kill(self):
+            self.killed = True
+
+    job_id = uuid.uuid4().hex
+    process = StubbornProcess()
+    server.active_render_processes[job_id] = process
+    try:
+        server._stop_render_process(job_id)
+        assert process.terminated is True
+        assert process.killed is True
+    finally:
+        server.active_render_processes.pop(job_id, None)

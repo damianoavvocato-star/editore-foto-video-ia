@@ -130,11 +130,24 @@ def _run_ffmpeg(job_id: str, command: list[str], timeout: float) -> subprocess.C
 
 def _stop_render_process(job_id: str) -> None:
     process = active_render_processes.get(job_id)
-    if process is not None:
+    if process is None:
+        return
+    try:
+        process.terminate()
+    except OSError:
+        logging.info("FFmpeg process for job %s already exited", job_id)
+        return
+    # Do not let a stuck encoder occupy a worker indefinitely after DELETE.
+    # Give FFmpeg a short graceful-shutdown window, then force termination.
+    try:
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
         try:
-            process.terminate()
+            process.kill()
         except OSError:
-            logging.info("FFmpeg process for job %s already exited", job_id)
+            logging.info("FFmpeg process for job %s exited during forced stop", job_id)
+    except OSError:
+        logging.info("Unable to wait for FFmpeg process for job %s", job_id)
 
 @app.middleware('http')
 async def auth(request, call_next):
