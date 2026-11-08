@@ -216,6 +216,24 @@ class TeamWorkspaceStore:
                  "name": r["name"], "description": r["description"], "status": r["status"],
                  "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
 
+    def list_members(self, actor_id: str, project_id: str) -> list[dict[str, Any]]:
+        if not self._id(project_id) or self.get_project(actor_id, project_id) is None:
+            raise TeamWorkspaceError("Progetto non disponibile.")
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT a.user_id,a.username,a.role,'active' AS status,p.created_at AS joined_at
+                   FROM team_projects p JOIN accounts a ON a.user_id=p.owner_user_id
+                   WHERE p.project_id=?
+                   UNION ALL
+                   SELECT a.user_id,a.username,a.role,m.status,m.invited_at
+                   FROM team_memberships m JOIN accounts a ON a.user_id=m.user_id
+                   WHERE m.project_id=?
+                   ORDER BY status,user_id""",
+                (project_id, project_id),
+            ).fetchall()
+        return [{"userId": r["user_id"], "username": r["username"], "role": r["role"],
+                 "status": r["status"], "joinedAt": r["joined_at"]} for r in rows]
+
     def list_invitations(self, actor_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
             actor = self._actor(db, actor_id)
