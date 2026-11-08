@@ -25,7 +25,7 @@
 | P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
-| P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente, blocco dopo scadenza | scadenza, migrazione, reset e cambio password testati | partial |
+| P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente a 24 ore, blocco dopo scadenza | test backend CI superati; database esistenti migrati in modo compatibile | done |
 | P0-10 | 2FA per Admin e Support | Admin, Support | setup, recovery, enforcement | policy MFA e recovery | accesso negato senza secondo fattore | partial |
 | P0-11 | Backup, restore e retention | Owner | console backup | snapshot cifrati, restore verificato | ripristino in ambiente isolato | missing |
 | P0-12 | Ripresa job dopo riavvio | Owner, User | stato e retry | lease, retry idempotente, recovery | crash simulato e ripresa senza duplicati | partial |
@@ -108,3 +108,10 @@
 3. Rendere il registro audit filtrabile e paginato, mantenendo l'accesso Owner-only.
 4. Separare davvero le console Admin, Support e Collaboratore con permessi server-side.
 5. Procedere con ticket, team access e hardening di storage/job recovery.
+
+
+## Avanzamento verificato — 8 novembre 2026
+
+- Registro maestro creato e salvato nel branch.
+- P0-09 implementato: password temporanee generate alla creazione account o al reset scadono dopo 24 ore; dopo la scadenza l'accesso e il cambio password con la vecchia credenziale sono rifiutati; un nuovo reset riattiva il flusso. La migrazione aggiunge una colonna nullable e non invalida credenziali temporanee preesistenti.
+- CI run `42517113363`, commit `04deff5155a11d6816919ac66f955c0bed126955`: backend **300 test superati**; Flutter **139 test superati** e analisi statica superata. Android preflight ancora in corso al momento dell'aggiornamento; APK disabilitato intenzionalmente.
