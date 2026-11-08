@@ -174,6 +174,8 @@ def test_owner_totp_api_requires_second_factor_before_session(tmp_path, monkeypa
     import time
     clock = 1_700_000_000
     monkeypatch.setattr(time, "time", lambda: clock)
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
     from cryptography.fernet import Fernet
     from backend.accounts import AccountStore
     from backend.totp import code_at
@@ -251,6 +253,8 @@ def test_non_owner_cannot_manage_owner_totp(tmp_path, monkeypatch):
 
 def test_owner_totp_login_fails_closed_when_encryption_key_is_missing(tmp_path, monkeypatch):
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
     from cryptography.fernet import Fernet
     from backend.accounts import AccountStore
     from backend.totp import code_at
