@@ -171,7 +171,7 @@ class RemoteMediaApi {
       throw HttpException('Download fallito HTTP ${response.statusCode}', uri: uri);
     }
     if (response.contentLength > maxDownloadBytes) {
-      await response.drain<void>();
+      // Reject from headers without consuming a potentially enormous body.
       throw const FormatException('Il file scaricato supera il limite di 2 GB.');
     }
     final output = File(outputPath);
