@@ -168,3 +168,105 @@ def test_render_failure_does_not_expose_server_traceback(tmp_path, monkeypatch):
     finally:
         server.jobs.pop(job_id, None)
         server.cancel_events.pop(job_id, None)
+
+
+def test_owner_totp_api_requires_second_factor_before_session(tmp_path, monkeypatch):
+    import time
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+    from backend.totp import code_at
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    token, _ = store.issue_session(owner["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    status = client.get("/v1/owner/security/totp", headers=headers)
+    assert status.status_code == 200 and status.json()["enabled"] is False
+
+    setup = client.post(
+        "/v1/owner/security/totp/setup",
+        headers=headers,
+        json={"password": "owner password long enough"},
+    )
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert setup.json()["otpauthUri"].startswith("otpauth://totp/")
+
+    confirm = client.post(
+        "/v1/owner/security/totp/setup/confirm",
+        headers=headers,
+        json={"code": code_at(secret, int(time.time()))},
+    )
+    assert confirm.status_code == 200
+    recovery = confirm.json()["recoveryCodes"]
+    assert len(recovery) == 10
+
+    missing = client.post(
+        "/v1/auth/login",
+        json={"username": "api_owner", "password": "owner password long enough"},
+    )
+    assert missing.status_code == 401
+    assert missing.json()["detail"]["code"] == "two_factor_required"
+    assert "accessToken" not in missing.json()
+
+    login = client.post(
+        "/v1/auth/login",
+        json={
+            "username": "api_owner",
+            "password": "owner password long enough",
+            "totpCode": code_at(secret, int(time.time()) + 30),
+        },
+    )
+    assert login.status_code == 200
+    assert login.json()["accessToken"]
+    assert client.get(
+        "/v1/owner/security/totp", headers={
+            "Authorization": "Bearer " + login.json()["accessToken"]
+        }
+    ).json()["enabled"] is True
+
+
+def test_non_owner_cannot_manage_owner_totp(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "api_admin", "admin password long enough", "admin"
+    )
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(admin["userId"])
+    response = TestClient(server.app).get(
+        "/v1/owner/security/totp",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+def test_owner_totp_login_fails_closed_when_encryption_key_is_missing(tmp_path, monkeypatch):
+    import time
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+    from backend.totp import code_at
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.delenv("MEDIA_TOTP_ENCRYPTION_KEY")
+    response = TestClient(server.app).post(
+        "/v1/auth/login",
+        json={
+            "username": "api_owner",
+            "password": "owner password long enough",
+            "totpCode": code_at(secret, int(time.time()) + 30),
+        },
+    )
+    assert response.status_code == 503
+    assert "accessToken" not in response.json()
