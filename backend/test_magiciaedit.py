@@ -515,3 +515,35 @@ def test_visual_quality_signals_are_bounded_and_finite():
     signals = magiciaedit._visual_quality_signals(image)
     assert set(signals) == {"brightness", "contrast", "detail"}
     assert all(0.0 <= value <= 1.0 for value in signals.values())
+
+
+def test_magic_options_are_normalised_with_safe_defaults():
+    options = magiciaedit._normalise_options({"goal": "  racconto viaggio  ", "style": "cinematic"})
+    assert options == {
+        "goal": "  racconto viaggio  ",
+        "style": "cinematic",
+        "pace": "balanced",
+        "aspectRatio": "9:16",
+        "language": "it",
+        "targetDurationSeconds": 30,
+    }
+
+
+def test_magic_options_reject_unknown_style_and_language():
+    for options in ({"style": "unknown"}, {"language": "xx"}, {"aspectRatio": "3:2"}):
+        try:
+            magiciaedit._normalise_options(options)
+        except magiciaedit.MagicIAError:
+            pass
+        else:
+            raise AssertionError("Unsupported creative options must be rejected")
+
+
+def test_magic_options_bound_target_duration():
+    for value in (4, 181, "not-a-number"):
+        try:
+            magiciaedit._normalise_options({"targetDurationSeconds": value})
+        except magiciaedit.MagicIAError:
+            pass
+        else:
+            raise AssertionError("Out-of-range duration must be rejected")

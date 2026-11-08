@@ -38,6 +38,10 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   String _progressMessage = '';
   double _progress = 0;
   bool _busy = false;
+  String _style = 'balanced';
+  String _pace = 'balanced';
+  String _aspectRatio = '9:16';
+  int _targetDurationSeconds = 30;
 
   List<EditorClip> get _availableMedia {
     final clips = widget.project.tracks
@@ -144,6 +148,13 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       final plan = await workflow.generate(
         jobId: jobId,
         mediaPaths: paths,
+        options: {
+          'style': _style,
+          'pace': _pace,
+          'aspectRatio': _aspectRatio,
+          'targetDurationSeconds': _targetDurationSeconds,
+          'language': Localizations.localeOf(context).languageCode,
+        },
         onProgress: (event) {
           if (!mounted) return;
           setState(() {
@@ -263,6 +274,69 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
           const Text(
             'MagicIAedit usa la sessione personale salvata in modo protetto dopo l’accesso. Non inserire o condividere token manualmente.',
             style: TextStyle(fontSize: 12),
+          ),
+
+          const SizedBox(height: 14),
+          Text('Direzione creativa', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: _style,
+            decoration: const InputDecoration(labelText: 'Stile del montaggio', border: OutlineInputBorder()),
+            items: const [
+              DropdownMenuItem(value: 'balanced', child: Text('Equilibrato')),
+              DropdownMenuItem(value: 'cinematic', child: Text('Cinematografico')),
+              DropdownMenuItem(value: 'travel', child: Text('Viaggio')),
+              DropdownMenuItem(value: 'family', child: Text('Famiglia e ricordi')),
+              DropdownMenuItem(value: 'social_short', child: Text('Social breve')),
+              DropdownMenuItem(value: 'product', child: Text('Prodotto')),
+              DropdownMenuItem(value: 'storytelling', child: Text('Racconto')),
+              DropdownMenuItem(value: 'dynamic', child: Text('Dinamico')),
+            ],
+            onChanged: _busy ? null : (value) => setState(() { if (value != null) { _style = value; _plan = null; } }),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _pace,
+                  decoration: const InputDecoration(labelText: 'Ritmo', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'slow', child: Text('Calmo')),
+                    DropdownMenuItem(value: 'balanced', child: Text('Medio')),
+                    DropdownMenuItem(value: 'fast', child: Text('Veloce')),
+                  ],
+                  onChanged: _busy ? null : (value) => setState(() { if (value != null) { _pace = value; _plan = null; } }),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _aspectRatio,
+                  decoration: const InputDecoration(labelText: 'Formato', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: '9:16', child: Text('Verticale 9:16')),
+                    DropdownMenuItem(value: '16:9', child: Text('Orizzontale 16:9')),
+                    DropdownMenuItem(value: '1:1', child: Text('Quadrato 1:1')),
+                    DropdownMenuItem(value: '4:5', child: Text('Ritratto 4:5')),
+                  ],
+                  onChanged: _busy ? null : (value) => setState(() { if (value != null) { _aspectRatio = value; _plan = null; } }),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<int>(
+            initialValue: _targetDurationSeconds,
+            decoration: const InputDecoration(labelText: 'Durata obiettivo', border: OutlineInputBorder()),
+            items: const [
+              DropdownMenuItem(value: 15, child: Text('15 secondi')),
+              DropdownMenuItem(value: 30, child: Text('30 secondi')),
+              DropdownMenuItem(value: 60, child: Text('60 secondi')),
+              DropdownMenuItem(value: 90, child: Text('90 secondi')),
+              DropdownMenuItem(value: 120, child: Text('120 secondi')),
+            ],
+            onChanged: _busy ? null : (value) => setState(() { if (value != null) { _targetDurationSeconds = value; _plan = null; } }),
           ),
           const SizedBox(height: 12),
           Text('Media disponibili', style: Theme.of(context).textTheme.titleMedium),

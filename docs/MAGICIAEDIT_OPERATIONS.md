@@ -101,3 +101,14 @@ repetitive shots, preserve narrative continuity, select timestamps grounded in s
 frames and explain clip choices. This increases visual context but also increases
 provider token/image cost. Production operators must measure cost and latency with
 representative media before increasing limits.
+
+
+## Creative controls and grounded shot selection
+
+MagicIAedit accepts a strict creative-direction object: preset (balanced, cinematic,
+travel, family, social short, product, storytelling, dynamic), pace, aspect ratio,
+target duration (5–180 seconds), language and a bounded free-text goal. Unknown values
+are rejected before contacting the model. The Flutter panel now exposes style, pace,
+aspect ratio and duration controls and sends the device locale as the output-language
+hint. These preferences guide the proposal; actual crop/render adaptation and soundtrack
+generation remain separate implementation tasks.

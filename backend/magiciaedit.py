@@ -216,6 +216,46 @@ def _normalise_plan(raw: Any, asset_ids: set[str]) -> dict[str, Any]:
     }
 
 
+
+_STYLE_PRESETS = {"balanced", "cinematic", "travel", "family", "social_short", "product", "storytelling", "dynamic"}
+_PACES = {"slow", "balanced", "fast"}
+_ASPECT_RATIOS = {"9:16", "16:9", "1:1", "4:5"}
+_LANGUAGES = {"it", "en", "fr", "es", "ar", "de", "pt"}
+
+
+def _normalise_options(options: Any) -> dict[str, Any]:
+    """Whitelist and bound user-controlled creative direction."""
+    if options is None:
+        options = {}
+    if not isinstance(options, dict):
+        raise MagicIAError("Le preferenze MagicIAedit non sono valide.")
+    goal = options.get("goal", "")
+    if not isinstance(goal, str):
+        raise MagicIAError("La descrizione del montaggio deve essere testuale.")
+    style = str(options.get("style", "balanced")).lower()
+    pace = str(options.get("pace", "balanced")).lower()
+    aspect_ratio = str(options.get("aspectRatio", "9:16"))
+    language = str(options.get("language", "it")).lower()
+    if style not in _STYLE_PRESETS or pace not in _PACES or aspect_ratio not in _ASPECT_RATIOS:
+        raise MagicIAError("Una preferenza creativa MagicIAedit non è supportata.")
+    if language not in _LANGUAGES:
+        raise MagicIAError("Lingua MagicIAedit non supportata.")
+    try:
+        target_duration = int(options.get("targetDurationSeconds", 30))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise MagicIAError("Durata obiettivo MagicIAedit non valida.") from exc
+    if not 5 <= target_duration <= 180:
+        raise MagicIAError("La durata obiettivo deve essere compresa tra 5 e 180 secondi.")
+    return {
+        "goal": goal[:300],
+        "style": style,
+        "pace": pace,
+        "aspectRatio": aspect_ratio,
+        "language": language,
+        "targetDurationSeconds": target_duration,
+    }
+
+
 def create_magic_plan(
     asset_paths: dict[str, Path],
     options: dict[str, Any] | None = None,
@@ -253,10 +293,7 @@ def create_magic_plan(
         raise MagicIAError("L'indirizzo del provider IA deve usare HTTPS.")
 
     media_parts = _media_parts(asset_paths, cancel_event)
-    preferences = (options or {}).get("goal", "")
-    if not isinstance(preferences, str):
-        preferences = ""
-    preferences = preferences[:300]
+    preferences = _normalise_options(options)
     prompt = (
         "Sei MagicIAedit, un assistente di montaggio video. Analizza solo i media "
         "forniti e crea una proposta breve, coerente e modificabile. Per ogni clip "
