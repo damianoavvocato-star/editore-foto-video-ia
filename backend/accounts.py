@@ -584,17 +584,31 @@ class AccountStore:
             "disabled": row["disabled_at"] is not None,
         }
 
-    def list_accounts(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_accounts(
+        self, limit: int = 100, search: str | None = None
+    ) -> list[dict[str, Any]]:
         """Return public account fields only; never expose password hashes or sessions."""
         if not isinstance(limit, int) or isinstance(limit, bool):
             limit = 100
         limit = max(1, min(200, limit))
+        term = search.strip()[:64] if isinstance(search, str) else ""
         with self._connect() as db:
-            rows = db.execute(
-                """SELECT user_id,username,role,created_at,disabled_at
-                   FROM accounts ORDER BY created_at DESC,user_id LIMIT ?""",
-                (limit,),
-            ).fetchall()
+            if term:
+                escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                rows = db.execute(
+                    """SELECT user_id,username,role,created_at,disabled_at
+                       FROM accounts
+                       WHERE username LIKE ? ESCAPE '\\' COLLATE NOCASE
+                          OR user_id LIKE ? ESCAPE '\\'
+                       ORDER BY created_at DESC,user_id LIMIT ?""",
+                    (f"%{escaped}%", f"%{escaped}%", limit),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    """SELECT user_id,username,role,created_at,disabled_at
+                       FROM accounts ORDER BY created_at DESC,user_id LIMIT ?""",
+                    (limit,),
+                ).fetchall()
         return [{
             "userId": row["user_id"],
             "username": row["username"],
