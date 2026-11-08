@@ -4,3 +4,4 @@ python-multipart>=0.0.9
 Pillow>=10.0,<13
 httpx
 httpx2
+cryptography>=42,<47
