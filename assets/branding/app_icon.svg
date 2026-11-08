@@ -31,7 +31,11 @@
  <circle cx="164" cy="256" r="12"/><circle cx="799" cy="737" r="9"/><circle cx="297" cy="840" r="8"/>
 </g>
 <path d="M 130 735 Q 512 700 894 735" fill="none" stroke="url(#neon)" stroke-width="5" opacity=".85"/>
-<text x="512" y="835" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="79" font-weight="900" font-style="italic" fill="#FFFFFF" stroke="#221044" stroke-width="3" paint-order="stroke fill">Magic<tspan fill="#FF48D8">IA</tspan>edit</text>
+<g text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="72" font-weight="900" font-style="italic" stroke="#221044" stroke-width="3" paint-order="stroke fill">
+ <text x="326" y="835" fill="#FFFFFF">Magic</text>
+ <text x="518" y="835" fill="#FF48D8">IA</text>
+ <text x="704" y="835" fill="#FFFFFF">edit</text>
+</g>
 <text x="512" y="895" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="600" letter-spacing="3" fill="#E9E6FF">EDITORE FOTO E VIDEO IA</text>
 <path d="M 165 895 H 265 M 759 895 H 859" stroke="url(#neon)" stroke-width="5" stroke-linecap="round"/>
 </svg>
