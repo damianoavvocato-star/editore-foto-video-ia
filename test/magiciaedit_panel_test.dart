@@ -14,6 +14,7 @@ void main() {
             project: const EditorProject(id: 'test-project', name: 'Test'),
             onProjectChanged: (_) async => true,
             onMessage: (_) {},
+            onImportMedia: () async {},
           ),
         ),
       ),
