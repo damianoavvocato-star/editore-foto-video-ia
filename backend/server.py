@@ -7,7 +7,7 @@ from __future__ import annotations
 import os, uuid, shutil, subprocess, threading, time, logging, ipaddress
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
@@ -382,7 +382,7 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
 
 @app.get('/v1/owner/accounts')
 def owner_list_accounts(
-    request: Request, limit: int = 100, q: str | None = Field(default=None, max_length=64)
+    request: Request, limit: int = 100, q: str | None = Query(default=None, max_length=64)
 ):
     _require_permission(request, "accounts.read")
     return {'accounts': _account_store().list_accounts(limit, q)}
