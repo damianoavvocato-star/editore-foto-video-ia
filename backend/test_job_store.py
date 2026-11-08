@@ -65,3 +65,20 @@ def test_database_file_is_private_immediately_after_initialization(tmp_path):
     JobRegistry(database)
 
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_individual_field_mutations_are_persisted(tmp_path):
+    database = tmp_path / "jobs.sqlite3"
+    jobs = JobRegistry(database)
+    jobs["f" * 32] = {"state": "queued", "progress": 0.0}
+
+    jobs["f" * 32]["progress"] = 0.5
+    jobs["f" * 32]["message"] = "Elaborazione"
+
+    restored = JobRegistry(database)
+    assert restored["f" * 32]["progress"] == 0.5
+    assert restored["f" * 32]["message"] == "Elaborazione"
+
+    del jobs["f" * 32]["message"]
+    restored_after_delete = JobRegistry(database)
+    assert "message" not in restored_after_delete["f" * 32]
