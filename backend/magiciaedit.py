@@ -63,7 +63,9 @@ def _image_data_url(image: Image.Image) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
 
 
-def _video_frames(path: Path) -> list[Image.Image]:
+def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
+    if cancel_event is not None and cancel_event.is_set():
+        raise MagicIAError("Elaborazione annullata.")
     ffmpeg = os.getenv("FFMPEG_PATH", "ffmpeg")
     ffprobe = os.getenv("FFPROBE_PATH", "ffprobe")
     probe = subprocess.run(
@@ -82,6 +84,8 @@ def _video_frames(path: Path) -> list[Image.Image]:
                          for t in (0.1, duration / 2, duration - 0.1)})
     frames: list[Image.Image] = []
     for timestamp in timestamps:
+        if cancel_event is not None and cancel_event.is_set():
+            raise MagicIAError("Elaborazione annullata.")
         result = subprocess.run(
             [ffmpeg, "-v", "error", "-ss", f"{timestamp:.3f}", "-i", str(path),
              "-frames:v", "1", "-vf", "scale=1024:1024:force_original_aspect_ratio=decrease",
@@ -100,9 +104,13 @@ def _video_frames(path: Path) -> list[Image.Image]:
     return frames
 
 
-def _media_parts(asset_paths: dict[str, Path]) -> list[dict[str, Any]]:
+def _media_parts(
+    asset_paths: dict[str, Path], cancel_event: Any = None,
+) -> list[dict[str, Any]]:
     parts: list[dict[str, Any]] = []
     for asset_id, path in asset_paths.items():
+        if cancel_event is not None and cancel_event.is_set():
+            raise MagicIAError("Elaborazione annullata.")
         suffix = path.suffix.lower()
         if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
             try:
@@ -114,7 +122,7 @@ def _media_parts(asset_paths: dict[str, Path]) -> list[dict[str, Any]]:
             except (OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
                 raise MagicIAError(f"Impossibile leggere l'immagine {asset_id}.") from exc
         elif suffix in {".mp4", ".mov", ".avi", ".webm", ".m4v"}:
-            frames = _video_frames(path)
+            frames = _video_frames(path, cancel_event)
             parts.append({"type": "text", "text": f"Media assetId={asset_id}, tipo=video, fotogrammi campionati in ordine temporale."})
             for frame_number, frame in enumerate(frames, start=1):
                 parts.append({"type": "text", "text": f"Fotogramma {frame_number} del video {asset_id}."})
@@ -198,7 +206,7 @@ def create_magic_plan(
     if not base_url.startswith("https://"):
         raise MagicIAError("L'indirizzo del provider IA deve usare HTTPS.")
 
-    media_parts = _media_parts(asset_paths)
+    media_parts = _media_parts(asset_paths, cancel_event)
     preferences = (options or {}).get("goal", "")
     if not isinstance(preferences, str):
         preferences = ""
