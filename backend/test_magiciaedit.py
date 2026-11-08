@@ -192,6 +192,29 @@ def test_magic_media_preprocessing_stops_immediately_when_cancelled(tmp_path):
         raise AssertionError("Cancelled preprocessing must stop before reading media")
 
 
+def test_video_frame_extraction_handles_ffmpeg_timeout(monkeypatch, tmp_path):
+    class ProbeResult:
+        returncode = 0
+        stdout = "12.0"
+
+    calls = 0
+
+    def subprocess_run(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ProbeResult()
+        raise magiciaedit.subprocess.TimeoutExpired("ffmpeg", 30)
+
+    monkeypatch.setattr(magiciaedit.subprocess, "run", subprocess_run)
+    try:
+        magiciaedit._video_frames(tmp_path / "clip.mp4")
+    except magiciaedit.MagicIAError as exc:
+        assert "Estrazione dei fotogrammi" in str(exc)
+    else:
+        raise AssertionError("ffmpeg timeout must become a safe media error")
+
+
 def test_video_frame_extraction_rejects_non_finite_duration(monkeypatch, tmp_path):
     class ProbeResult:
         returncode = 0

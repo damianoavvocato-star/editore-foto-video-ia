@@ -92,12 +92,15 @@ def _video_frames(path: Path, cancel_event: Any = None) -> list[Image.Image]:
     for timestamp in timestamps:
         if cancel_event is not None and cancel_event.is_set():
             raise MagicIAError("Elaborazione annullata.")
-        result = subprocess.run(
-            [ffmpeg, "-v", "error", "-ss", f"{timestamp:.3f}", "-i", str(path),
-             "-frames:v", "1", "-vf", "scale=1024:1024:force_original_aspect_ratio=decrease",
-             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
-            capture_output=True, timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                [ffmpeg, "-v", "error", "-ss", f"{timestamp:.3f}", "-i", str(path),
+                 "-frames:v", "1", "-vf", "scale=1024:1024:force_original_aspect_ratio=decrease",
+                 "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+                capture_output=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise MagicIAError("Estrazione dei fotogrammi video non riuscita.") from exc
         if result.returncode or not result.stdout:
             continue
         try:
