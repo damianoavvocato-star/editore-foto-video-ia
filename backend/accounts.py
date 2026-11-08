@@ -977,16 +977,48 @@ class AccountStore:
             )
             return int(cursor.lastrowid)
 
-    def list_audit_events(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Return newest audit events; callers must enforce owner authorization."""
+    def list_audit_events(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        action: str | None = None,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        since: int | None = None,
+        until: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return a bounded, filterable audit page; callers enforce owner authorization."""
         if not isinstance(limit, int) or isinstance(limit, bool):
             limit = 50
+        if not isinstance(offset, int) or isinstance(offset, bool):
+            offset = 0
         limit = max(1, min(100, limit))
+        offset = max(0, min(1_000_000, offset))
+        filters: list[str] = []
+        values: list[Any] = []
+        if action:
+            filters.append("action=?")
+            values.append(action[:64])
+        if actor_user_id:
+            filters.append("actor_user_id=?")
+            values.append(actor_user_id[:128])
+        if target_user_id:
+            filters.append("target_user_id=?")
+            values.append(target_user_id[:128])
+        if since is not None:
+            filters.append("created_at>=?")
+            values.append(max(0, since))
+        if until is not None:
+            filters.append("created_at<=?")
+            values.append(max(0, until))
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        values.extend((limit, offset))
         with self._connect() as db:
             rows = db.execute(
                 """SELECT event_id,actor_user_id,action,target_user_id,details_json,created_at
-                   FROM account_audit_events ORDER BY event_id DESC LIMIT ?""",
-                (limit,),
+                   FROM account_audit_events""" + where +
+                " ORDER BY event_id DESC LIMIT ? OFFSET ?",
+                values,
             ).fetchall()
         return [{
             "eventId": row["event_id"],
