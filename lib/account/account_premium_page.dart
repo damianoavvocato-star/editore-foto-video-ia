@@ -31,14 +31,14 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
     _load = _loadEntitlement();
   }
 
-  Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})>
+  Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance, List<dynamic>? referralClaims})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
     if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null, referralClaims: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
-      return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null);
+      return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null, referralClaims: null);
     }
 
     final api = RemoteAccountApi(
