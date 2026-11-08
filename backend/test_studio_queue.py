@@ -36,7 +36,7 @@ def test_claim_is_exclusive_and_lease_owner_is_required(tmp_path):
     assert claimed["jobId"] == job["jobId"]
     assert claimed["attempts"] == 1
     assert queue.claim_next("worker-b", now=102) is None
-    with pytest.raises(StudioQueueError, match="Lease"):
+    with pytest.raises(StudioQueueError, match="lease"):
         queue.mark_submitted("worker-b", job["jobId"], "provider-1", now=103)
 
 
