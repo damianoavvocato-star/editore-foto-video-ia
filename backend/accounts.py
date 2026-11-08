@@ -22,6 +22,7 @@ from cryptography.fernet import Fernet, InvalidToken
 _USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 _ROLES = {"owner", "admin", "support", "collaborator", "user"}
 _SESSION_SECONDS = 60 * 60 * 24 * 30
+_OWNER_SESSION_SECONDS = 60 * 60 * 12
 
 
 class AccountError(ValueError):
@@ -280,15 +281,16 @@ class AccountStore:
 
     def issue_session(self, user_id: str) -> tuple[str, int]:
         now = int(time.time())
-        expires = now + _SESSION_SECONDS
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
         with self._connect() as db:
             row = db.execute(
-                "SELECT disabled_at FROM accounts WHERE user_id=?", (user_id,)
+                "SELECT role,disabled_at FROM accounts WHERE user_id=?", (user_id,)
             ).fetchone()
             if row is None or row["disabled_at"] is not None:
                 raise AccountError("Account non disponibile.")
+            lifetime = _OWNER_SESSION_SECONDS if row["role"] == "owner" else _SESSION_SECONDS
+            expires = now + lifetime
             db.execute(
                 "INSERT INTO sessions(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)",
                 (token_hash, user_id, now, expires),
