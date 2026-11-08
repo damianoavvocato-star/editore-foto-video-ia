@@ -18,7 +18,7 @@ PERMISSIONS = frozenset({
 ROLE_DEFAULTS = {
     "owner": PERMISSIONS,
     "admin": frozenset({"accounts.read", "accounts.create", "accounts.update",
-                        "accounts.disable", "accounts.password_reset", "audit.read",
+                        "accounts.disable", "accounts.password_reset",
                         "media.support_read", "billing.read", "family.manage"}),
     "support": frozenset({"accounts.read", "accounts.password_reset",
                           "media.support_read", "billing.read"}),
