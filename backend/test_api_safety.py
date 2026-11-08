@@ -734,3 +734,74 @@ def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypa
     assert client.get("/v1/admin/dashboard", headers=headers(support["userId"])).status_code == 403
     assert client.get("/v1/admin/dashboard", headers=headers(user["userId"])).status_code == 403
     assert client.get("/v1/admin/dashboard").status_code == 401
+
+
+def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("dashboard_owner", "owner password long enough")
+    admin = store.create_managed_account(owner["userId"], "dashboard_admin", "admin password long enough", "admin")
+    support = store.create_managed_account(owner["userId"], "dashboard_support", "support password long enough", "support")
+    user = store.register("dashboard_user", "user password long enough")
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    def headers(uid):
+        token, _ = store.issue_session(uid)
+        return {"Authorization": f"Bearer {token}"}
+    response = client.get("/v1/admin/dashboard", headers=headers(admin["userId"]))
+    assert response.status_code == 200
+    dashboard = response.json()["dashboard"]
+    assert dashboard["totalAccounts"] == 4 and dashboard["activeAccounts"] == 4
+    assert dashboard["disabledAccounts"] == 0 and dashboard["accountsByRole"]["admin"] == 1
+    assert dashboard["createdLast30Days"] == 4 and "username" not in dashboard
+    assert client.get("/v1/admin/dashboard", headers=headers(owner["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(support["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(user["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard").status_code == 401
+
+
+def test_support_ticket_owner_isolation_and_staff_reply(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("ticket_owner", "owner password long enough")
+    support = store.create_managed_account(owner["userId"], "ticket_support", "support password long enough", "support")
+    first = store.register("ticket_first", "first password long enough")
+    second = store.register("ticket_second", "second password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    def headers(uid):
+        token, _ = store.issue_session(uid)
+        return {"Authorization": f"Bearer {token}"}
+    created = client.post("/v1/support/tickets", headers=headers(first["userId"]),
+        json={"subject": "Problema esportazione", "message": "Non riesco a esportare il mio progetto."})
+    assert created.status_code == 200
+    ticket_id = created.json()["ticket"]["ticketId"]
+    assert client.get(f"/v1/support/tickets/{ticket_id}", headers=headers(second["userId"])).status_code == 404
+    assert client.get("/v1/support/tickets", headers=headers(second["userId"])).json()["tickets"] == []
+    assert client.get("/v1/support/tickets", headers=headers(support["userId"])).status_code == 200
+    reply = client.post(f"/v1/support/tickets/{ticket_id}/messages", headers=headers(support["userId"]),
+        json={"message": "Stiamo verificando il problema.", "status": "waiting_user"})
+    assert reply.status_code == 200 and reply.json()["ticket"]["status"] == "waiting_user"
+    assert len(reply.json()["ticket"]["messages"]) == 2
+    user_reply = client.post(f"/v1/support/tickets/{ticket_id}/messages", headers=headers(first["userId"]),
+        json={"message": "Grazie, resto in attesa."})
+    assert user_reply.status_code == 200 and user_reply.json()["ticket"]["status"] == "open"
+
+
+def test_support_ticket_requires_auth_and_valid_input(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("ticket_owner2", "owner password long enough")
+    support = store.create_managed_account(owner["userId"], "ticket_support2", "support password long enough", "support")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    token, _ = store.issue_session(support["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.post("/v1/support/tickets", json={"subject": "Problema account", "message": "Ho bisogno di assistenza."}).status_code == 401
+    assert client.get("/v1/support/tickets", headers=headers).status_code == 200
+    assert client.get("/v1/support/tickets").status_code == 401
+    assert client.post("/v1/support/tickets", headers=headers, json={"subject": "x", "message": "y"}).status_code == 422
