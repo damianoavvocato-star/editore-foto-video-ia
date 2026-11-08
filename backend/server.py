@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib
+import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib, json
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Query
@@ -571,8 +571,34 @@ class RenderBody(BaseModel):
     settings: dict[str, Any] = {}
 
 @app.post('/v1/render/jobs')
-def create_render(body: RenderBody, request: Request):
+def create_render(
+    body: RenderBody,
+    request: Request,
+    idempotency_key: str | None = Header(
+        default=None, alias='Idempotency-Key', max_length=128
+    ),
+):
     account = _request_account(request)
+    request_fingerprint = None
+    idempotency_scope = None
+    if idempotency_key is not None:
+        if (
+            not 8 <= len(idempotency_key) <= 128
+            or any(ord(character) < 33 or ord(character) > 126 for character in idempotency_key)
+        ):
+            raise HTTPException(400, 'Header Idempotency-Key non valido.')
+        try:
+            canonical_request = json.dumps(
+                {'project': body.project, 'settings': body.settings},
+                ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, 'Richiesta di rendering non valida.') from exc
+        request_fingerprint = hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+        scope_identity = account['userId'] if account is not None else 'local-development'
+        idempotency_scope = hashlib.sha256(
+            ('render:' + scope_identity).encode('utf-8')
+        ).hexdigest()
     # Bound project complexity before starting background FFmpeg work.
     tracks = body.project.get('tracks', [])
     if not isinstance(tracks, list) or len(tracks) > 64:
@@ -601,10 +627,30 @@ def create_render(body: RenderBody, request: Request):
     if account is not None:
         for asset_id in referenced_assets:
             _require_resource_owner(request, 'asset', asset_id)
-    job_id = uuid.uuid4().hex
-    _claim_resource(request, 'job', job_id)
     with lock:
-        jobs[job_id] = {'state':'queued','progress':0.0,'message':'In coda'}
+        if idempotency_key is not None:
+            for existing_id, existing_job in jobs.items():
+                if (
+                    existing_job.get('_idempotency_scope') == idempotency_scope
+                    and existing_job.get('_idempotency_key') == idempotency_key
+                ):
+                    if existing_job.get('_request_fingerprint') != request_fingerprint:
+                        raise HTTPException(
+                            409,
+                            'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
+                        )
+                    return {'jobId': existing_id}
+        job_id = uuid.uuid4().hex
+        _claim_resource(request, 'job', job_id)
+        job_record = {'state':'queued','progress':0.0,'message':'In coda'}
+        if idempotency_key is not None:
+            # Internal metadata is persisted with the job but never returned by the status API.
+            job_record.update({
+                '_idempotency_scope': idempotency_scope,
+                '_idempotency_key': idempotency_key,
+                '_request_fingerprint': request_fingerprint,
+            })
+        jobs[job_id] = job_record
         cancel_events[job_id] = threading.Event()
     threading.Thread(target=_render_job, args=(job_id, body.project, body.settings), daemon=True).start()
     return {'jobId': job_id}
@@ -831,7 +877,8 @@ def get_job(job_id: str, request: Request):
     _require_resource_owner(request, 'job', job_id)
     with lock: data=jobs.get(job_id)
     if not data: raise HTTPException(404,'Job non trovato')
-    return data
+    # Never expose internal idempotency scope, keys or request fingerprints.
+    return {key: value for key, value in data.items() if not key.startswith('_')}
 
 @app.delete('/v1/jobs/{job_id}')
 def cancel_job(job_id: str, request: Request):
