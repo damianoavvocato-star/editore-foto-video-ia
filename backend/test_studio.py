@@ -6,7 +6,7 @@ from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
 
 
 def test_studio_accepts_twenty_distinct_languages():
-    languages = [f"l{index:02d}" for index in range(20)]
+    languages = ["it", "en", "fr", "es", "ar", "de", "pt", "nl", "pl", "tr", "ru", "ja", "ko", "zh", "hi", "sv", "da", "fi", "no", "el"]
     request = StudioJobRequest(task="script_to_video", script="Hello", targetLanguages=languages)
     request.validate_policy()
     assert len(request.targetLanguages) == 20

@@ -12,6 +12,8 @@ import re
 import sqlite3
 import time
 import uuid
+from contextlib import contextmanager
+from typing import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -123,7 +125,7 @@ class StudioJobStore:
     def __init__(self, database: str | Path):
         self.database = Path(database)
         self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS studio_jobs (
                     job_id TEXT PRIMARY KEY,
@@ -148,6 +150,15 @@ class StudioJobStore:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _restrict_permissions(self) -> None:
         try:
@@ -209,7 +220,7 @@ class StudioJobStore:
         }
 
     def get(self, user_id: str, job_id: str) -> dict[str, Any] | None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM studio_jobs WHERE user_id=? AND job_id=?",
                 (user_id, job_id),
@@ -218,7 +229,7 @@ class StudioJobStore:
 
     def list_for_user(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
         limit = max(1, min(100, limit))
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 "SELECT * FROM studio_jobs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
                 (user_id, limit),
@@ -226,7 +237,7 @@ class StudioJobStore:
         return [self._row_to_dict(row) for row in rows]
 
     def delete_draft(self, user_id: str, job_id: str) -> bool:
-        with self._connect() as connection:
+        with self._connection() as connection:
             cursor = connection.execute(
                 "DELETE FROM studio_jobs WHERE user_id=? AND job_id=? AND state='draft'",
                 (user_id, job_id),
