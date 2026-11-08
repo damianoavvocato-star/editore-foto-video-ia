@@ -34,6 +34,47 @@ class SecurityConfigurationError(RuntimeError):
     """Required external security configuration is missing or invalid."""
 
 
+
+def _audit_hash(previous_hash: str | None, event_id: int, actor_user_id: str | None,
+                action: str, target_user_id: str | None, details_json: str,
+                created_at: int, algorithm: str) -> str:
+    payload = json.dumps(
+        [previous_hash, event_id, actor_user_id, action, target_user_id, details_json, created_at],
+        ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+    key = os.getenv("MEDIA_AUDIT_HMAC_KEY", "").encode("utf-8")
+    if algorithm == "hmac-sha256":
+        if not key:
+            raise SecurityConfigurationError("MEDIA_AUDIT_HMAC_KEY is required to verify this audit chain.")
+        return hmac.new(key, payload, hashlib.sha256).hexdigest()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _append_audit_event(db: sqlite3.Connection, actor_user_id: str | None,
+                        action: str, target_user_id: str | None,
+                        details: dict[str, Any] | None = None,
+                        created_at: int | None = None) -> int:
+    serialized = json.dumps(details or {}, ensure_ascii=False, separators=(",", ":"))
+    timestamp = int(time.time()) if created_at is None else int(created_at)
+    previous = db.execute(
+        "SELECT event_hash FROM account_audit_events ORDER BY event_id DESC LIMIT 1"
+    ).fetchone()
+    previous_hash = previous["event_hash"] if previous else None
+    algorithm = "hmac-sha256" if os.getenv("MEDIA_AUDIT_HMAC_KEY", "") else "sha256"
+    cursor = db.execute(
+        """INSERT INTO account_audit_events
+           (actor_user_id,action,target_user_id,details_json,created_at,prev_hash,event_hash,hash_algorithm)
+           VALUES(?,?,?,?,?,?,NULL,?)""",
+        (actor_user_id, action, target_user_id, serialized, timestamp, previous_hash, algorithm),
+    )
+    event_id = int(cursor.lastrowid)
+    digest = _audit_hash(previous_hash, event_id, actor_user_id, action,
+                         target_user_id, serialized, timestamp, algorithm)
+    db.execute("UPDATE account_audit_events SET event_hash=? WHERE event_id=?",
+               (digest, event_id))
+    return event_id
+
+
 class AccountStore:
     def __init__(self, database: str | Path | None = None):
         configured = database or os.getenv("MEDIA_AUTH_DB", "./media_data/accounts.sqlite3")
@@ -105,6 +146,32 @@ class AccountStore:
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_created_idx ON account_audit_events(created_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_actor_idx ON account_audit_events(actor_user_id, created_at DESC)")
+            audit_columns = {row["name"] for row in db.execute("PRAGMA table_info(account_audit_events)").fetchall()}
+            for column, declaration in (
+                ("prev_hash", "TEXT"),
+                ("event_hash", "TEXT"),
+                ("hash_algorithm", "TEXT"),
+            ):
+                if column not in audit_columns:
+                    db.execute(f"ALTER TABLE account_audit_events ADD COLUMN {column} {declaration}")
+            # Backfill legacy audit rows once, preserving their original event order.
+            if db.execute("SELECT 1 FROM account_audit_events WHERE event_hash IS NULL LIMIT 1").fetchone():
+                previous_hash = None
+                rows = db.execute(
+                    "SELECT event_id,actor_user_id,action,target_user_id,details_json,created_at "
+                    "FROM account_audit_events ORDER BY event_id"
+                ).fetchall()
+                algorithm = "hmac-sha256" if os.getenv("MEDIA_AUDIT_HMAC_KEY", "") else "sha256"
+                for row in rows:
+                    digest = _audit_hash(
+                        previous_hash, row["event_id"], row["actor_user_id"], row["action"],
+                        row["target_user_id"], row["details_json"], row["created_at"], algorithm,
+                    )
+                    db.execute(
+                        "UPDATE account_audit_events SET prev_hash=?,event_hash=?,hash_algorithm=? WHERE event_id=?",
+                        (previous_hash, digest, algorithm, row["event_id"]),
+                    )
+                    previous_hash = digest
             db.execute("""CREATE TABLE IF NOT EXISTS support_tickets (
                 ticket_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
                 subject TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('open','waiting_user','resolved','escalated')),
@@ -1115,13 +1182,7 @@ class AccountStore:
         if len(serialized.encode("utf-8")) > 4096:
             raise AccountError("Dettagli audit troppo grandi.")
         with self._connect() as db:
-            cursor = db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (actor_user_id, action, target_user_id, serialized, int(time.time())),
-            )
-            return int(cursor.lastrowid)
+            return _append_audit_event(db, actor_user_id, action, target_user_id, details, int(time.time()))
 
     def list_audit_events(
         self,
