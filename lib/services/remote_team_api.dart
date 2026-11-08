@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import 'account_api.dart';
 
 /// Typed access layer for the account-scoped TeamStudio REST endpoints.
