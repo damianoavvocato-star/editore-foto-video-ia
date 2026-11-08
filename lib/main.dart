@@ -1033,18 +1033,32 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          children: [
-            _toolButton(Icons.auto_awesome, t('effects'), () => _message('Libreria effetti: in sviluppo.')),
-            _toolButton(Icons.title, t('text'), () => _message('Editor testo: in sviluppo.')),
-            _toolButton(Icons.music_note, t('audio'), () => _message('Traccia audio: in sviluppo.')),
-            FilledButton.icon(
-              onPressed: _openExportDialog,
-              icon: const Icon(Icons.file_upload_outlined),
-              label: Text(t('export')),
+        Card(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: () => setState(() => selectedTab = 2),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('MagicIAedit'),
+                ),
+                const SizedBox(width: 8),
+                _toolButton(Icons.auto_awesome_outlined, t('effects'), () => _message('Libreria effetti: in sviluppo.')),
+                const SizedBox(width: 6),
+                _toolButton(Icons.title, t('text'), () => _message('Editor testo: in sviluppo.')),
+                const SizedBox(width: 6),
+                _toolButton(Icons.music_note, t('audio'), () => _message('Traccia audio: in sviluppo.')),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _openExportDialog,
+                  icon: const Icon(Icons.file_upload_outlined),
+                  label: Text(t('export')),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -1221,11 +1235,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _toolButton(IconData icon, String label, VoidCallback onPressed) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: label,
-        child: IconButton(onPressed: onPressed, icon: Icon(icon)),
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFFD9D2FF),
+        side: const BorderSide(color: Color(0x443D3B50)),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
