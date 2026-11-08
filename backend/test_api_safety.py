@@ -795,3 +795,29 @@ def test_support_ticket_requires_auth_and_valid_input(tmp_path, monkeypatch):
     assert client.get("/v1/support/tickets", headers=headers).status_code == 200
     assert client.get("/v1/support/tickets").status_code == 401
     assert client.post("/v1/support/tickets", headers=headers, json={"subject": "x", "message": "y"}).status_code == 422
+
+
+def test_owner_audit_integrity_endpoint_is_owner_only(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("audit_chain_owner", "owner password long enough")
+    user = store.register("audit_chain_user", "user password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    store.record_audit_event(owner["userId"], "account.created", user["userId"], {"role": "user"})
+    client = TestClient(server.app)
+
+    owner_token, _ = store.issue_session(owner["userId"])
+    user_token, _ = store.issue_session(user["userId"])
+    owner_response = client.get(
+        "/v1/owner/audit/integrity",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_response.status_code == 200
+    assert owner_response.json()["valid"] is True
+
+    denied = client.get(
+        "/v1/owner/audit/integrity",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert denied.status_code == 403
