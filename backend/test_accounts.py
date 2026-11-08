@@ -305,3 +305,12 @@ def test_owner_totp_pending_enrollment_expires_after_ten_minutes(tmp_path, monke
     with pytest.raises(AccountError, match="scaduta"):
         store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
     assert store.totp_enabled(owner["userId"]) is False
+
+
+def test_account_search_is_bounded_and_matches_username_or_id(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    first = store.register("search_alpha", "search alpha password long")
+    store.register("search_beta", "search beta password long")
+    assert [item["username"] for item in store.list_accounts(100, "ALPHA")] == ["search_alpha"]
+    assert [item["userId"] for item in store.list_accounts(100, first["userId"])] == [first["userId"]]
+    assert len(store.list_accounts(1, "")) == 1
