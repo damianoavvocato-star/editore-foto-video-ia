@@ -15,6 +15,7 @@ import 'editor/session_timeline_editor.dart';
 import 'editor/magiciaedit_panel.dart';
 import 'editor/remote_export_panel.dart';
 import 'studio/synthesia_studio_screen.dart';
+import 'team/team_studio_screen.dart';
 
 void main() => runApp(const EditoreApp());
 
@@ -860,7 +861,11 @@ class _HomePageState extends State<HomePage> {
                         ? const SynthesiaStudioScreen(
                             apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
                           )
-                        : _buildEditor(context);
+                        : selectedTab == 8
+                            ? const TeamStudioScreen(
+                                apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
+                              )
+                            : _buildEditor(context);
             final sidebar = _buildSidebar(context);
             return Padding(
               padding: const EdgeInsets.all(16),
@@ -893,6 +898,7 @@ class _HomePageState extends State<HomePage> {
       (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
       (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
       (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
+      (tab: 8, icon: Icons.groups_outlined, label: 'Team'),
       (tab: 6, icon: Icons.admin_panel_settings_outlined, label: 'Pannelli'),
     ];
     final selectedIndex = destinations.indexWhere((item) => item.tab == selectedTab);
@@ -1290,6 +1296,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           _sideItem(Icons.video_camera_front_outlined, 'Synthesia Studio IA', 7),
+          _sideItem(Icons.groups_outlined, 'TeamStudio', 8),
           const Divider(),
           _sideItem(Icons.settings, t('settings'), 6),
           if (selectedTab == 2)
