@@ -74,6 +74,9 @@ def test_individual_field_mutations_are_persisted(tmp_path):
 
     jobs["f" * 32]["progress"] = 0.5
     jobs["f" * 32]["message"] = "Elaborazione"
+    # Queued jobs are intentionally marked interrupted on restart. Move this
+    # record to a terminal state to isolate field-mutation persistence.
+    jobs["f" * 32]["state"] = "succeeded"
 
     restored = JobRegistry(database)
     assert restored["f" * 32]["progress"] == 0.5

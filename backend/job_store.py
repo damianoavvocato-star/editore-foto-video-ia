@@ -26,14 +26,6 @@ class _PersistentJob(dict):
         super().update(*args, **kwargs)
         self._registry._save(self._job_id, self)
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        super().__setitem__(key, value)
-        self._registry._save(self._job_id, self)
-
-    def __delitem__(self, key: str) -> None:
-        super().__delitem__(key)
-        self._registry._save(self._job_id, self)
-
 
 class JobRegistry(dict[str, dict[str, Any]]):
     """Dict-compatible registry that persists every job state transition."""
