@@ -665,6 +665,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             title: Text('Premium · ${account['username']}'),
             content: SizedBox(
               width: 520,
+              height: 440,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
