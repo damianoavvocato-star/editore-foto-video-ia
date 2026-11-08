@@ -169,6 +169,20 @@ jobs:
           cache-key: flutter-android-preflight-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
       - name: Generate Android platform project
         run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+      - name: Add Google Maven Central mirror for Gradle dependencies
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          settings = Path("android/settings.gradle.kts")
+          content = settings.read_text()
+          mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+          if mirror not in content:
+              if "mavenCentral()" not in content:
+                  raise SystemExit("Expected Maven Central repository declaration was not found.")
+              content = content.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+              settings.write_text(content)
+          print("Google-hosted Maven Central mirror configured before Maven Central fallback.")
+          PY
       - name: Resolve Flutter dependencies
         run: flutter pub get
       - name: Set Android compile SDK to 36
@@ -241,6 +255,20 @@ jobs:
 
       - name: Generate Android platform project
         run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+      - name: Add Google Maven Central mirror for Gradle dependencies
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          settings = Path("android/settings.gradle.kts")
+          content = settings.read_text()
+          mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+          if mirror not in content:
+              if "mavenCentral()" not in content:
+                  raise SystemExit("Expected Maven Central repository declaration was not found.")
+              content = content.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+              settings.write_text(content)
+          print("Google-hosted Maven Central mirror configured before Maven Central fallback.")
+          PY
 
       - name: Resolve dependencies
         run: flutter pub get
