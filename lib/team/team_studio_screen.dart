@@ -135,6 +135,18 @@ class _TeamStudioScreenState extends State<TeamStudioScreen> {
     }
   }
 
+  Future<void> _selectProject(String? value) async {
+    if (value == null || value == _selectedProjectId) return;
+    setState(() {
+      _selectedProjectId = value;
+      _members = [];
+      _comments = [];
+      _approvals = [];
+    });
+    await _loadProjectDetails();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _loadProjectDetails() async {
     final api = _teamApi;
     final id = _selectedProjectId;
@@ -419,10 +431,8 @@ class _TeamStudioScreenState extends State<TeamStudioScreen> {
             groupValue: _selectedProjectId,
             onChanged: _busy
                 ? null
-                : (value) async {
-                    setState(() => _selectedProjectId = value);
-                    await _loadProjectDetails();
-                    if (mounted) setState(() {});
+                : (value) {
+                    _selectProject(value);
                   },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
