@@ -12,7 +12,7 @@ MEDIA_API_TOKEN='inserire-un-segreto-lungo' uvicorn backend.server:app --host 12
 MEDIA_ALLOW_INSECURE_LOCAL=true uvicorn backend.server:app --host 127.0.0.1 --port 8080
 ```
 
-Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` e `FFPROBE_PATH` permettono di indicare i binari; `MEDIA_DATA_DIR` indica la directory persistente per asset, lavori e output. `/health` è pubblico e segnala `aiProvider: true` solo quando sono configurate tutte le variabili cloud richieste.
+Installare FFmpeg e ffprobe sul server. `FFMPEG_PATH` e `FFPROBE_PATH` permettono di indicare i binari; `MEDIA_DATA_DIR` indica la directory persistente per asset, lavori e output. All'avvio, il backend elimina soltanto upload `.part` e cartelle di lavoro orfane più vecchi di `MEDIA_TEMP_RETENTION_HOURS` (default 24, intervallo ammesso 1–720 ore); i job attivi sono esclusi. Asset originali e output esportati non vengono mai eliminati da questa pulizia. `/health` è pubblico e segnala `aiProvider: true` solo quando sono configurate tutte le variabili cloud richieste.
 
 ### MagicIAedit cloud
 
@@ -41,7 +41,7 @@ Per impostazione predefinita, se `MEDIA_API_TOKEN` non è configurato, tutte le 
 
 ## Limiti e requisiti prima della produzione
 
-Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider cloud MagicIAedit è predisposto ma non è attivo finché le credenziali e il modello non vengono configurati sul server. Gli asset sono salvati su disco e associati a un account; le autorizzazioni per asset, job e output sono verificate lato server. Lo stato dei job e gli eventi di cancellazione sono invece conservati in memoria del processo: un riavvio del server perde lo stato dei job e non esiste ancora una coda durevole o un ripristino automatico. Prima dell'esposizione pubblica servono ancora coda persistente e recupero dei job, quote e rate limiting per account, scansione/validazione dei contenuti, retention e pulizia automatica, monitoraggio operativo e test di carico.
+Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider cloud MagicIAedit è predisposto ma non è attivo finché le credenziali e il modello non vengono configurati sul server. Gli asset sono salvati su disco e associati a un account; le autorizzazioni per asset, job e output sono verificate lato server. Lo stato dei job e gli eventi di cancellazione sono invece conservati in memoria del processo: un riavvio del server perde lo stato dei job e non esiste ancora una coda durevole o un ripristino automatico. Prima dell'esposizione pubblica servono ancora coda persistente e recupero dei job, quote e rate limiting per account, scansione/validazione dei contenuti, una retention configurabile per asset e output esportati, monitoraggio operativo e test di carico.
 
 ## Test
 

@@ -17,6 +17,7 @@ from backend.authorization import PermissionError as PolicyError, PermissionPoli
 from backend.entitlements import EntitlementError, EntitlementStore
 from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
+from backend.media_cleanup import cleanup_stale_media
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -63,6 +64,24 @@ def _valid_id(value: str) -> bool:
     return len(value) == 32 and all(ch in '0123456789abcdef' for ch in value.lower())
 jobs: dict[str, dict[str, Any]] = JobRegistry(ROOT / 'jobs.sqlite3')
 cancel_events: dict[str, threading.Event] = {}
+try:
+    _retention_hours = int(os.getenv('MEDIA_TEMP_RETENTION_HOURS', '24'))
+except ValueError:
+    _retention_hours = 24
+if not 1 <= _retention_hours <= 720:
+    _retention_hours = 24
+_cleanup_result = cleanup_stale_media(
+    ASSETS,
+    ROOT / 'work',
+    active_job_ids={
+        job_id for job_id, job in jobs.items()
+        if job.get('state') in JobRegistry.ACTIVE_STATES
+    },
+    older_than_seconds=_retention_hours * 60 * 60,
+)
+if _cleanup_result['removed_files'] or _cleanup_result['removed_directories']:
+    logging.info('Removed stale media temp files: %s', _cleanup_result)
+
 lock = threading.Lock()
 
 @app.middleware('http')
