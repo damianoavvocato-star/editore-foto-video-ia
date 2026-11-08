@@ -733,7 +733,8 @@ def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypa
     assert client.get("/v1/admin/dashboard", headers=headers(owner["userId"])).status_code == 403
     assert client.get("/v1/admin/dashboard", headers=headers(support["userId"])).status_code == 403
     assert client.get("/v1/admin/dashboard", headers=headers(user["userId"])).status_code == 403
-    assert client.get("/v1/admin/dashboard").status_code == 401
+    # Protected staff routes use 403 for callers without an authenticated staff identity.
+    assert client.get("/v1/admin/dashboard").status_code == 403
 
 
 def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypatch):
