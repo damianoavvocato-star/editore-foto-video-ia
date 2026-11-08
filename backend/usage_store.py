@@ -46,6 +46,33 @@ class UsageStore:
         timestamp = time.time() if now is None else now
         return time.strftime("%Y-%m", time.gmtime(timestamp))
 
+    def release(
+        self, user_id: str, job_id: str, period: str
+    ) -> bool:
+        """Release a reservation when a job could not be accepted by the job store."""
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            raise ValueError("Invalid account identifier.")
+        if not isinstance(job_id, str) or not job_id or len(job_id) > 64:
+            raise ValueError("Invalid job identifier.")
+        if not isinstance(period, str) or len(period) != 7 or period[4] != "-":
+            raise ValueError("Invalid usage period.")
+        db = sqlite3.connect(self.database, timeout=10)
+        try:
+            db.execute("PRAGMA busy_timeout = 10000")
+            db.execute("BEGIN IMMEDIATE")
+            cursor = db.execute(
+                """DELETE FROM ai_usage_reservations
+                   WHERE user_id=? AND period=? AND job_id=?""",
+                (user_id, period, job_id),
+            )
+            db.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     def reserve(
         self, user_id: str, job_id: str, limit: int, now: int | float | None = None
     ) -> dict[str, Any]:

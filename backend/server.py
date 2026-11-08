@@ -602,7 +602,17 @@ def create_render(body: RenderBody, request: Request):
         for asset_id in referenced_assets:
             _require_resource_owner(request, 'asset', asset_id)
     job_id = uuid.uuid4().hex
-    _claim_resource(request, 'job', job_id)
+    try:
+        _claim_resource(request, 'job', job_id)
+    except Exception:
+        # Do not charge a monthly AI request if account ownership could not
+        # be recorded and the job therefore cannot be accepted.
+        if account is not None and usage is not None:
+            try:
+                _usage_store().release(account['userId'], job_id, usage['period'])
+            except Exception:
+                logging.exception('Unable to release MagicIAedit quota reservation')
+        raise
     with lock:
         jobs[job_id] = {'state':'queued','progress':0.0,'message':'In coda'}
         cancel_events[job_id] = threading.Event()

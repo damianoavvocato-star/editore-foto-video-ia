@@ -67,3 +67,25 @@ def test_usage_database_is_private(tmp_path):
     database = tmp_path / "usage.sqlite3"
     UsageStore(database)
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_failed_job_acceptance_can_release_exact_quota_reservation(tmp_path):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    reservation = store.reserve("user-a", "job-1", 1, now=1_800_000_000)
+
+    assert store.release("user-a", "job-1", reservation["period"]) is True
+    assert store.release("user-a", "job-1", reservation["period"]) is False
+
+    next_job = store.reserve("user-a", "job-2", 1, now=1_800_000_000)
+    assert next_job["used"] == 1
+    assert next_job["remaining"] == 0
+
+
+def test_quota_release_is_scoped_to_account_and_period(tmp_path):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    first = store.reserve("user-a", "job-1", 2, now=1_800_000_000)
+    store.reserve("user-b", "job-1", 2, now=1_800_000_000)
+
+    assert store.release("user-a", "job-1", first["period"]) is True
+    assert store.reserve("user-a", "job-2", 2, now=1_800_000_000)["used"] == 1
+    assert store.reserve("user-b", "job-2", 2, now=1_800_000_000)["used"] == 2
