@@ -141,3 +141,28 @@ def test_bootstrapped_owner_is_not_forced_to_rotate_password(tmp_path):
     assert logged_in["role"] == "owner"
     assert logged_in["mustChangePassword"] is False
     assert store.resolve_session(token)["mustChangePassword"] is False
+
+
+def test_totp_replay_counter_is_monotonic_and_rejects_replays(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    account = store.register("totp_user", "totp account password long")
+    user_id = account["userId"]
+
+    assert store.consume_totp_counter(user_id, 100) is True
+    assert store.consume_totp_counter(user_id, 100) is False
+    assert store.consume_totp_counter(user_id, 99) is False
+    assert store.consume_totp_counter(user_id, 101) is True
+    assert store.consume_totp_counter(user_id, 102) is True
+
+
+def test_totp_replay_counter_rejects_invalid_or_disabled_accounts(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    account = store.register("totp_user", "totp account password long")
+    user_id = account["userId"]
+
+    assert store.consume_totp_counter(user_id, -1) is False
+    assert store.consume_totp_counter(user_id, True) is False
+    assert store.consume_totp_counter("", 1) is False
+    with store._connect() as db:
+        db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (user_id,))
+    assert store.consume_totp_counter(user_id, 1) is False
