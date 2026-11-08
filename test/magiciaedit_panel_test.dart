@@ -5,7 +5,7 @@ import 'package:editore_foto_video_ia/editor/magiciaedit_panel.dart';
 import 'package:editore_foto_video_ia/models/editor_project.dart';
 
 void main() {
-  testWidgets('MagicIAedit uses the protected account session, not a manual token field',
+  testWidgets('MagicIAedit does not expose a manually editable access token',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -21,15 +21,14 @@ void main() {
     );
 
     expect(find.text('Token di accesso del server (facoltativo)'), findsNothing);
-
-    final serverField = find.byWidgetPredicate(
-      (widget) =>
-          widget is TextField &&
-          widget.decoration?.labelText == 'Indirizzo del server MagicIAedit',
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText ==
+                'Token di accesso del server (facoltativo)',
+      ),
+      findsNothing,
     );
-    expect(serverField, findsOneWidget);
-    await tester.ensureVisible(serverField);
-    await tester.pumpAndSettle();
-    expect(serverField, findsOneWidget);
   });
 }
