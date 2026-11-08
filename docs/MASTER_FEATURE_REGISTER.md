@@ -1,0 +1,110 @@
+# Registro maestro delle funzionalità — MagicIAedit
+
+> Registro operativo del branch `feature/magiciaedit-cloud-foundation`. Aggiornato dopo l'audit statico dell'8 novembre 2026. Gli stati descrivono evidenze nel repository, non certificazioni su dispositivi o servizi esterni.
+>
+> **Regole di completamento:** una voce passa a `done` solo quando implementazione, test automatici, gestione errori, sicurezza/ownership, documentazione e verifica CI sono dimostrati. `partial` non significa disponibile per gli utenti. APK e release sono esclusi fino alla fase 6.
+
+## Legenda
+
+- `done`: implementazione e test verificati nel perimetro dichiarato.
+- `partial`: base presente, flusso incompleto o verifica mancante.
+- `missing`: non trovato nel codice esaminato.
+- `blocked`: richiede credenziali/provider, decisione esterna o test su dispositivi reali.
+- Priorità: **P0** sicurezza e pannelli operativi; **P1** account, Premium ed editor; **P2** pipeline IA, lingue e media avanzati; **P3** team, marketing e piattaforme.
+- Owner = Proprietario; Admin = Amministratore; Support = Assistenza; Collab = Collaboratore; User = utente.
+
+## P0 — Sicurezza e console operative
+
+| ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
+|---|---|---|---|---|---|---|
+| P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs | — | Ogni voce ha ID, stato, criteri | partial |
+| P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
+| P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
+| P0-04 | Console autonoma Amministratore | Admin | dashboard separata | permessi server-side dedicati | admin non può creare/modificare owner né promuoversi | missing |
+| P0-05 | Console Assistenza e ticket | Support | inbox, dettaglio, risposta, escalation | ticket con ownership e audit | accesso minimo, nessun accesso privato senza consenso | missing |
+| P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
+| P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
+| P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
+| P0-09 | Scadenza credenziali temporanee | Owner, Admin autorizzato, User | messaggio rinnovo/reset | expiry persistente, blocco dopo scadenza | scadenza, migrazione, reset e cambio password testati | partial |
+| P0-10 | 2FA per Admin e Support | Admin, Support | setup, recovery, enforcement | policy MFA e recovery | accesso negato senza secondo fattore | partial |
+| P0-11 | Backup, restore e retention | Owner | console backup | snapshot cifrati, restore verificato | ripristino in ambiente isolato | missing |
+| P0-12 | Ripresa job dopo riavvio | Owner, User | stato e retry | lease, retry idempotente, recovery | crash simulato e ripresa senza duplicati | partial |
+| P0-13 | Isolamento account end-to-end | Tutti | indicatori accesso | asset, progetti, export, storage e download ACL | test cross-account su ogni risorsa | partial |
+| P0-14 | Storage privato e cancellazione dati | Owner, User | gestione file/cestino | storage integrato, delete e retention | accesso negato a URL non autorizzati | partial |
+
+## P1 — Account, Premium e funzioni editor
+
+| ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
+|---|---|---|---|---|---|---|
+| P1-01 | Schermata Premium collegata alla navigazione | User | AccountPremiumScreen e route | entitlement API | raggiungibile da tutte le piattaforme target | partial |
+| P1-02 | Concessione/revoca/estensione Premium | Owner | console grant | grant API e audit | scadenze, revoca e audit verificati | partial |
+| P1-03 | Pagamenti reali e store billing | User, Owner | acquisto, restore, ricevute | store validation, webhook, entitlement sync | sandbox Apple/Google/web | missing |
+| P1-04 | Matrice Free/Premium e quote | Owner, User | paywall e consumi | policy e contatori per feature | enforcement server-side e trasparenza quote | missing |
+| P1-05 | Referral bilaterale 1 mese | User | invito, riscatto, storico | attribuzione, antifrode, maturazione e grant | inviter e invitee premiati una sola volta | partial |
+| P1-06 | Premium famiglia | Owner, User | gestione membri e posti | inviti e membership di base | UI completa, limiti posti, revoca | partial |
+| P1-07 | Gestione crediti IA e costi | Owner, User | saldo e consumi | ledger, limiti, idempotenza | nessun saldo negativo o doppio addebito | missing |
+| P1-08 | Timeline ed editing manuale | User | strumenti e anteprima | modello/render base | test gesture, playback e salvataggio su device | partial |
+| P1-09 | Effetti, testo, audio completi | User | pannelli operativi | renderer e asset | nessun pulsante placeholder; export testato | partial |
+| P1-10 | Keyframe, curve velocità, maschere e tracking | User | editor avanzato | renderer/engine | progetto riapribile e output coerente | missing |
+| P1-11 | Color grading, LUT, HDR, stabilizzazione | User | controlli avanzati | pipeline media | file campione e device reali | missing |
+| P1-12 | Player professionale e zoom post-export | User | player e gesture | streaming/file output | pinch zoom durante playback, non solo anteprima | partial |
+| P1-13 | Libreria media e scorciatoia ultime 2 foto | User | recenti + galleria completa | import e permessi | scorciatoia senza limitare selezione completa | missing |
+| P1-14 | Formati export e preset | User | preset e compatibilità | FFmpeg codec map | MP4/MOV/AVI/WebM validati con file reali | partial |
+| P1-15 | Font, RTL e gestione risorse mancanti | User | fallback e layout | renderer font shaping | arabo corretto e fallback testati | missing |
+
+## P2 — MagicIAedit, Studio IA, lingue e strumenti media
+
+| ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
+|---|---|---|---|---|---|---|
+| P2-01 | MagicIAedit analisi, piano e revisione | User | flusso dedicato | piano JSON e apply | test già presenti; completare casi media | partial |
+| P2-02 | MagicIAedit trasversale nell'app | User | entry point contestuali | orchestrazione condivisa | accessibile da schermate e selezioni rilevanti | missing |
+| P2-03 | Provider IA MagicIAedit reale | Owner, User | stato provider e costi | config server-side e routing | chiamata sandbox/produzione verificata | blocked |
+| P2-04 | Generazione da prompt senza media | User | prompt studio | generazione contenuti reale | prompt aperti, non template statico | partial |
+| P2-05 | Miniserie completa multi-episodio | User | storyboard e revisione episodi | script, scene, personaggi, voce e render | 10 episodi completi, almeno 1 minuto ciascuno | missing |
+| P2-06 | AI Director / MagicIA Brain | User | brief, controllo creativo | planner multi-step e memoria progetto | piano verificabile, modificabile e ripetibile | missing |
+| P2-07 | Generazione immagini/video e varianti | User | prompt, varianti e timeline | provider immagini/video | output reali, costi e cancellazione | blocked |
+| P2-08 | Universal Studio: script/documenti/slide/avatar | User | bozze e revisione presenti | draft/queue presenti, provider assente | ogni tipo produce un risultato reale | partial |
+| P2-09 | Trascrizione ASR e timestamp | User | editor trascrizione | provider ASR | precisione, diarizzazione e retry misurati | missing |
+| P2-10 | Traduzione con glossario | User | lingue e glossario | provider traduzione | segmenti sincronizzati e revisione | missing |
+| P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
+| P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
+| P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
+| P2-14 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
+| P2-15 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
+| P2-16 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
+| P2-17 | Miglioramento video | User | denoise, upscale, frame interpolation, scene detect | pipeline media/provider | benchmark qualità e tempi | missing |
+| P2-18 | Generazione copertine, titoli e descrizioni | User | editor metadata | AI metadata | revisione prima della pubblicazione | missing |
+
+## P3 — collaborazione, marketing, pubblicazione e multipiattaforma
+
+| ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
+|---|---|---|---|---|---|---|
+| P3-01 | TeamStudio condiviso | Collab, Owner | team, progetti e commenti | ACL, versioni, inviti e audit | approvazione e revoca verificate | missing |
+| P3-02 | AdCreator e materiali promozionali | User, Owner | template e brand kit | rendering e asset | esportazione formati social | missing |
+| P3-03 | MultiSocial e pubblicazione | User | canali, anteprima e calendario | OAuth e API social | token sicuri, consenso e retry | missing |
+| P3-04 | Analytics con consenso | Owner, User | dashboard e opt-out | eventi minimizzati | privacy e cancellazione | missing |
+| P3-05 | Player incorporabile e condivisione | User | link/player | delivery e permessi | scadenza link e privacy | partial |
+| P3-06 | E-commerce content e personalizzazione bulk | User | template e CSV | pipeline batch | isolamento dati e output verificati | missing |
+| P3-07 | LMS/SCORM e contenuti formativi | User | esportazione pacchetti | generazione SCORM | test con LMS compatibili | missing |
+| P3-08 | Build e test iOS | Release | UI iOS | pipeline signing | build e installazione su device | missing |
+| P3-09 | Build e test desktop | Release | Windows/macOS/Linux | pipeline per target | installazione e smoke test | missing |
+| P3-10 | Android installabile e APK finale | Release | app completa | signing/build | solo fase 6, dopo gate approvato | blocked |
+
+## Gate di rilascio e regole
+
+1. Non modificare `main` e non unire la PR senza autorizzazione esplicita.
+2. Tutto il lavoro ordinario resta su `feature/magiciaedit-cloud-foundation`.
+3. Non generare APK fino alla fase 6 e al gate finale esplicito.
+4. Nessun provider cloud va dichiarato operativo senza credenziali server-side e chiamata di prova.
+5. Nessuna schermata è “completa” se usa dati fittizi o controlli non collegati.
+6. Ogni modifica backend deve includere test di autorizzazione, isolamento, input non valido e percorso positivo.
+7. Ogni modifica Flutter deve includere test widget/unit e verifica `flutter analyze`.
+8. Ogni batch termina con CI verificata e aggiornamento di questo registro.
+
+## Prossimo ordine di lavoro
+
+1. Chiudere P0-09: scadenza delle password temporanee, compatibile con i database esistenti.
+2. Collegare la UI Proprietario alle API Premium e audit già presenti.
+3. Rendere il registro audit filtrabile e paginato, mantenendo l'accesso Owner-only.
+4. Separare davvero le console Admin, Support e Collaboratore con permessi server-side.
+5. Procedere con ticket, team access e hardening di storage/job recovery.
