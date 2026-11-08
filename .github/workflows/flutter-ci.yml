@@ -26,76 +26,17 @@ concurrency:
 
 jobs:
   changes:
+    # Full validation on every feature-branch update. This avoids relying on
+    # webhook before-SHA metadata and prevents checks from being silently skipped.
     runs-on: ubuntu-latest
     outputs:
-      force_full: ${{ steps.filter.outputs.force_full }}
-      flutter: ${{ steps.filter.outputs.flutter }}
-      backend: ${{ steps.filter.outputs.backend }}
-      android: ${{ steps.filter.outputs.android }}
+      force_full: 'true'
+      flutter: 'true'
+      backend: 'true'
+      android: 'true'
     steps:
-      - name: Checkout repository with history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Classify changed paths
-        id: filter
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          INPUT_FORCE_FULL: ${{ github.event.inputs.force_full }}
-        run: |
-          set -euo pipefail
-          force_full=false
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_FORCE_FULL" == "true" ]]; then
-            force_full=true
-          fi
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            git diff --name-only "$PR_BASE_SHA...$HEAD_SHA" > changed-files.txt
-          elif [[ "$EVENT_NAME" == "push" ]]; then
-            # The commit API may push a single commit without a complete before
-            # range in webhook metadata. Classify the actual pushed commit.
-            git show --pretty="" --name-only "$HEAD_SHA" > changed-files.txt
-            if [[ ! -s changed-files.txt ]]; then
-              echo "No changed paths were detected; running the full validation set."
-              force_full=true
-            fi
-          else
-            : > changed-files.txt
-          fi
-          # Validate the workflow itself with one full run whenever CI YAML changes.
-          if grep -Eq '^\.github/workflows/' changed-files.txt; then force_full=true; fi
-          flutter=false
-          backend=false
-          android=false
-          while IFS= read -r file; do
-            [[ -n "$file" ]] || continue
-            case "$file" in
-              lib/*|test/*|integration_test/*|pubspec.yaml|pubspec.lock|analysis_options.yaml) flutter=true ;;
-            esac
-            case "$file" in
-              backend/*|requirements*.txt|pyproject.toml|pytest.ini|setup.cfg) backend=true ;;
-            esac
-            case "$file" in
-              android/*|gradle/*|settings.gradle|settings.gradle.kts|build.gradle|build.gradle.kts|gradle.properties|pubspec.yaml|pubspec.lock) android=true ;;
-            esac
-          done < changed-files.txt
-          if [[ "$force_full" == "true" ]]; then
-            flutter=true
-            backend=true
-            android=true
-          fi
-          {
-            echo "force_full=$force_full"
-            echo "flutter=$flutter"
-            echo "backend=$backend"
-            echo "android=$android"
-          } >> "$GITHUB_OUTPUT"
-          echo "Changed paths:"
-          cat changed-files.txt
-          echo "Selected checks: flutter=$flutter backend=$backend android=$android force_full=$force_full"
+      - name: Select complete validation set
+        run: echo "Running Flutter, backend and Android preflight checks."
 
   flutter-test:
     needs: [changes]
