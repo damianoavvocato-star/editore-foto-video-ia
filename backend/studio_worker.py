@@ -112,6 +112,16 @@ class StudioWorker:
         if not getattr(self.provider, "configured", False):
             return self._fail(job_id, "provider_not_configured")
 
+        # The adapter factory also enforces this, but the worker repeats the
+        # gate so a directly constructed provider cannot accidentally enable
+        # billable generation without both explicit environment switches.
+        if not getattr(self.provider, "test_mode", True):
+            if (
+                os.getenv("SYNTHESIA_TEST_MODE", "true").strip().lower() != "false"
+                or os.getenv("SYNTHESIA_ALLOW_PAID_GENERATION", "").strip().lower() != "true"
+            ):
+                return self._fail(job_id, "paid_provider_mode_disabled")
+
         # These tasks are not implemented by the current Synthesia adapter.
         if request.task not in {"script_to_video", "avatar_video", "bulk_personalization"}:
             return self._fail(job_id, "provider_task_unsupported")

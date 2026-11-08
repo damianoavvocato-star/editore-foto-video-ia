@@ -106,3 +106,18 @@ def test_worker_never_retries_ambiguous_provider_submission(tmp_path):
     assert result["lastErrorCode"] == "submission_outcome_unknown"
     assert queue.claim_next("second-worker") is None
     assert len(provider.calls) == 1
+
+
+def test_worker_requires_both_explicit_switches_for_paid_provider_mode(tmp_path, monkeypatch):
+    provider = FakeProvider()
+    provider.test_mode = False
+    monkeypatch.delenv("SYNTHESIA_TEST_MODE", raising=False)
+    monkeypatch.setenv("SYNTHESIA_ALLOW_PAID_GENERATION", "true")
+    worker, queue, queued = _worker(
+        tmp_path, StudioJobRequest(task="script_to_video", script="Reviewed script"),
+        provider=provider,
+    )
+    result = worker.process_once()
+    assert result["state"] == "failed"
+    assert result["lastErrorCode"] == "paid_provider_mode_disabled"
+    assert provider.calls == []
