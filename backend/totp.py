@@ -31,22 +31,42 @@ def code_at(secret: str, timestamp: int | float, digits: int = 6, period: int = 
     return str(binary % (10 ** digits)).zfill(digits)
 
 
+def matching_counter(
+    secret: str, supplied: str, timestamp: int | float | None = None,
+    window: int = 1, digits: int = 6, period: int = 30,
+) -> int | None:
+    """Return the matched moving counter so callers can atomically prevent replay.
+
+    Every permitted counter is checked. If an extremely unlikely numeric collision
+    occurs in the accepted window, the greatest matching counter is returned.
+    """
+    if (not isinstance(supplied, str) or not supplied.isdigit()
+            or len(supplied) != digits or digits not in (6, 8)):
+        return None
+    if not isinstance(window, int) or isinstance(window, bool) or not 0 <= window <= 2:
+        return None
+    if not isinstance(period, int) or isinstance(period, bool) or not 15 <= period <= 120:
+        return None
+    now = time.time() if timestamp is None else timestamp
+    try:
+        center = int(now // period)
+        matched = None
+        for offset in range(-window, window + 1):
+            counter = center + offset
+            if counter < 0:
+                candidate = "!" * digits
+            else:
+                candidate = code_at(secret, counter * period, digits, period)
+            equal = hmac.compare_digest(candidate, supplied)
+            if equal:
+                matched = counter if matched is None else max(matched, counter)
+        return matched
+    except (TypeError, ValueError, OverflowError, struct.error):
+        return None
+
+
 def verify_code(
     secret: str, supplied: str, timestamp: int | float | None = None,
     window: int = 1, digits: int = 6, period: int = 30,
 ) -> bool:
-    if not isinstance(supplied, str) or not supplied.isdigit() or len(supplied) != digits:
-        return False
-    if not isinstance(window, int) or not 0 <= window <= 2:
-        return False
-    now = time.time() if timestamp is None else timestamp
-    try:
-        # Compare every permitted time-step instead of returning on the first
-        # match. This avoids leaking which window matched through short-circuit timing.
-        matched = False
-        for offset in range(-window, window + 1):
-            candidate = code_at(secret, now + offset * period, digits, period)
-            matched = hmac.compare_digest(candidate, supplied) | matched
-        return matched
-    except (TypeError, ValueError, OverflowError):
-        return False
+    return matching_counter(secret, supplied, timestamp, window, digits, period) is not None
