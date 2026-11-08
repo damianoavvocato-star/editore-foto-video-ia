@@ -419,7 +419,21 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   SelectableText(effective.isEmpty ? 'Nessuno' : effective),
                   const SizedBox(height: 12),
                   const Text('Override', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ...overrides.map((item) => Text('${item['permission']}: ${item['effect']}')),
+                  ...overrides.map((item) => Row(
+                    children: [
+                      Expanded(child: Text('${item['permission']}: ${item['effect']}')),
+                      IconButton(
+                        tooltip: 'Rimuovi override',
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _removePermissionOverride(
+                            account, item['permission']?.toString() ?? '',
+                          );
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  )),
                 ],
               ),
             ),
@@ -436,6 +450,23 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
           ],
         ),
       );
+    } catch (error) {
+      _notify(error.toString());
+    }
+  }
+
+  Future<void> _removePermissionOverride(
+    Map<String, dynamic> account, String permission
+  ) async {
+    final api = _api;
+    if (api == null || !_isOwner || permission.isEmpty) return;
+    try {
+      await api.request(
+        'DELETE',
+        '/v1/owner/accounts/${Uri.encodeComponent(account['userId'].toString())}/permissions/${Uri.encodeComponent(permission)}',
+      );
+      _notify('Override rimosso: torna ai permessi predefiniti.');
+      await _showPermissions(account);
     } catch (error) {
       _notify(error.toString());
     }
