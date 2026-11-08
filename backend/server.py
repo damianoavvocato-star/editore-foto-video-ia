@@ -17,6 +17,7 @@ from backend.authorization import PermissionError as PolicyError, PermissionPoli
 from backend.entitlements import EntitlementError, EntitlementStore
 from backend.referrals import ReferralError, ReferralStore
 from backend.credits import CreditError, CreditStore
+from backend.backups import BackupError, BackupStore
 from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
@@ -1727,6 +1728,13 @@ def _credit_store() -> CreditStore:
     return CreditStore(_account_store().database)
 
 
+def _backup_store() -> BackupStore:
+    return BackupStore(
+        _account_store().database,
+        os.getenv('MEDIA_BACKUP_DIR', str(ROOT / 'backups')),
+    )
+
+
 def _usage_store() -> UsageStore:
     return UsageStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
@@ -1913,6 +1921,30 @@ def account_referral_history(request: Request):
     try:
         return _referral_store().history(account['userId'])
     except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/backups')
+def owner_create_backup(request: Request):
+    _require_owner(request)
+    try:
+        return _backup_store().create()
+    except BackupError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get('/v1/owner/backups')
+def owner_list_backups(request: Request, limit: int = 50):
+    _require_owner(request)
+    return {'backups': _backup_store().list_backups(limit)}
+
+
+@app.post('/v1/owner/backups/{backup_id}/verify')
+def owner_verify_backup(backup_id: str, request: Request):
+    _require_owner(request)
+    try:
+        return _backup_store().verify(backup_id)
+    except BackupError as exc:
         raise HTTPException(422, str(exc)) from exc
 
 
