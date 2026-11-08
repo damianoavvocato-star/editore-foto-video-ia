@@ -23,20 +23,26 @@ fails closed with HTTP 503 rather than silently accepting password-only login.
 Do not rotate this key by simply replacing the environment value. The
 repository includes an atomic offline rotation utility. Back up the account
 database and both keys, stop the backend or put it in maintenance mode, then
-inject the old and new keys into a protected operator environment and run:
+inject the old and new keys into a protected operator environment using the
+deployment secret manager (preferred). For a one-off interactive maintenance
+shell, collect key values with hidden input rather than writing them into a
+shell command:
 
 ```sh
 export MEDIA_AUTH_DB=/secure/path/accounts.sqlite3
-export MEDIA_TOTP_OLD_ENCRYPTION_KEY='(old key from secret manager)'
-export MEDIA_TOTP_NEW_ENCRYPTION_KEY='(new key generated above)'
+read -r -s -p "Old TOTP key: " MEDIA_TOTP_OLD_ENCRYPTION_KEY; echo
+read -r -s -p "New TOTP key: " MEDIA_TOTP_NEW_ENCRYPTION_KEY; echo
+export MEDIA_TOTP_OLD_ENCRYPTION_KEY MEDIA_TOTP_NEW_ENCRYPTION_KEY
 python -m backend.security_key_rotation
+unset MEDIA_TOTP_OLD_ENCRYPTION_KEY MEDIA_TOTP_NEW_ENCRYPTION_KEY
 ```
 
 The utility re-encrypts active and pending TOTP seeds in one SQLite transaction,
 rolls back if any seed cannot be decrypted, and prints only the number of
 updated records. Update the deployment's `MEDIA_TOTP_ENCRYPTION_KEY` to the
-new key before restarting the backend. Never place the values in shell history,
-source control, command-line arguments, or logs.
+new key before restarting the backend. Never place secret values in shell
+history, source control, command-line arguments, logs, screenshots, or build
+artifacts.
 
 ## Mobile account session and media API
 
@@ -135,6 +141,8 @@ files with restrictive filesystem permissions.
 ## Deployment checklist
 
 - [ ] Inject `MEDIA_TOTP_ENCRYPTION_KEY` through the backend secret manager.
+- [ ] Configure `MEDIA_API_URL` for the app's target environment; use HTTPS in production.
+- [ ] If external alerts are required, inject both webhook variables through the backend secret manager and test delivery.
 - [ ] Back up the key separately from the encrypted account database.
 - [ ] Verify HTTPS termination and ensure reverse-proxy client IP handling is trusted.
 - [ ] Enroll the owner and securely save the one-time recovery codes.
