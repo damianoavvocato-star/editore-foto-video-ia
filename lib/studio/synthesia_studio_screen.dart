@@ -23,6 +23,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
   final List<String> _sourceNames = [];
   Map<String, dynamic> _capabilities = const {};
   List<StudioJobDraft> _drafts = const [];
+  List<Map<String, dynamic>> _queuedJobs = const [];
   StudioTask _task = StudioTask.scriptToVideo;
   String _avatarMode = 'none';
   String _voiceMode = 'synthetic';
@@ -54,8 +55,9 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
       final mediaApi = RemoteMediaApi(baseUri: base, bearerToken: token);
       final capabilities = await studio.capabilities();
       final drafts = await studio.listDrafts();
+      final queuedJobs = await studio.listQueue();
       if (!mounted) { studio.close(); mediaApi.close(); return; }
-      setState(() { _studio = studio; _mediaApi = mediaApi; _capabilities = capabilities; _drafts = drafts; _message = null; });
+      setState(() { _studio = studio; _mediaApi = mediaApi; _capabilities = capabilities; _drafts = drafts; _queuedJobs = queuedJobs; _message = null; });
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());
     }
@@ -143,9 +145,9 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Conferma progetto'),
         content: Text(
-          'Vuoi confermare “${draft.request['title'] ?? 'Video IA'}” e inserirlo nella coda? '
-          'Questa operazione salva la richiesta, ma non genera ancora il video: '
-          'il provider video non è collegato.',
+          'Vuoi confermare “${draft.request['title'] ?? 'Video IA'}” e inserirlo nella coda di elaborazione? '
+          'La richiesta verrà salvata in modo sicuro e potrai seguirne lo stato. '
+          'L’invio a un provider video esterno resta disattivato finché non viene configurato.',
         ),
         actions: [
           TextButton(
@@ -163,10 +165,14 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
     setState(() { _busy = true; _message = null; });
     try {
       final result = await studio.enqueueDraft(draft.jobId);
+      final queuedJobs = await studio.listQueue();
+      final drafts = await studio.listDrafts();
       if (!mounted) return;
       setState(() {
+        _queuedJobs = queuedJobs;
+        _drafts = drafts;
         _message = result['message']?.toString() ??
-            'Richiesta salvata nella coda. La generazione video non è stata avviata.';
+            'Richiesta inserita nella coda. L’invio al provider esterno è disattivato.';
       });
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());
@@ -260,6 +266,24 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
         onPressed: _busy || _studio == null ? null : _createDraft,
         icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined),
         label: const Text('Salva bozza privata')),
+      const SizedBox(height: 20),
+      Text('Coda di elaborazione', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      if (_queuedJobs.isEmpty)
+        const Text('Nessun progetto in coda.')
+      else
+        ..._queuedJobs.map((job) => Card(
+          child: ListTile(
+            leading: const Icon(Icons.pending_actions),
+            title: Text(job['request'] is Map
+                ? (job['request']['title']?.toString() ?? 'Video IA')
+                : 'Video IA'),
+            subtitle: Text(
+              'Stato: ${job['state'] ?? 'sconosciuto'} · '
+              'Tentativi: ${job['attempts'] ?? 0}/${job['maxAttempts'] ?? 0}',
+            ),
+          ),
+        )),
       const SizedBox(height: 20),
       Text('Le tue bozze', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 8),
