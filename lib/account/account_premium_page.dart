@@ -23,7 +23,7 @@ class AccountPremiumPage extends StatefulWidget {
 }
 
 class _AccountPremiumPageState extends State<AccountPremiumPage> {
-  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode})> _load;
+  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})> _load;
 
   @override
   void initState() {
@@ -34,7 +34,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
   Future<({String? userId, UserEntitlement? entitlement, String? referralCode})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
-    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null);
+    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
@@ -76,13 +76,19 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
         source: source,
       );
       String? referralCode;
+      Map<String, dynamic>? usageSummary;
+      try {
+        usageSummary = await api.request('GET', '/v1/account/usage');
+      } on AccountApiException {
+        // Do not block Premium status if quota telemetry is temporarily unavailable.
+      }
       try {
         final referral = await api.request('GET', '/v1/account/referrals');
         referralCode = referral['code'] as String?;
       } on AccountApiException {
         // Entitlement remains usable if the referral endpoint is temporarily unavailable.
       }
-      return (userId: userId, entitlement: entitlement, referralCode: referralCode);
+      return (userId: userId, entitlement: entitlement, referralCode: referralCode, usageSummary: usageSummary);
     } finally {
       api.close();
     }
@@ -177,6 +183,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
           userId: data.userId,
           entitlement: data.entitlement,
           referralCode: data.referralCode,
+          usageSummary: data.usageSummary,
           onSignIn: widget.onSignIn,
           onUpgrade: () => _notice(
             'Acquisti Premium non ancora attivi: il sistema di pagamento '
