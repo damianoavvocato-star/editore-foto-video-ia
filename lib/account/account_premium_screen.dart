@@ -15,6 +15,7 @@ class AccountPremiumScreen extends StatelessWidget {
     required this.onRestore,
     required this.onShareReferral,
     required this.onRedeemReferral,
+    this.usageSummary,
   });
 
   final String? userId;
@@ -25,6 +26,7 @@ class AccountPremiumScreen extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onShareReferral;
   final ValueChanged<String> onRedeemReferral;
+  final Map<String, dynamic>? usageSummary;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +59,10 @@ class AccountPremiumScreen extends StatelessWidget {
                   : FilledButton(onPressed: onSignIn, child: const Text('Accedi')),
             ),
           ),
+          if (signedIn && usageSummary != null) ...[
+            const SizedBox(height: 12),
+            _UsageSummaryCard(summary: usageSummary!),
+          ],
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -169,4 +175,43 @@ class _ReferralRedeemState extends State<_ReferralRedeem> {
           ),
         ],
       );
+}
+
+
+class _UsageSummaryCard extends StatelessWidget {
+  const _UsageSummaryCard({required this.summary});
+
+  final Map<String, dynamic> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final used = summary['used'];
+    final limit = summary['limit'];
+    final remaining = summary['remaining'];
+    final period = summary['period'];
+    if (used is! int || limit is! int || remaining is! int || period is! String) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Utilizzo IA mensile',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text('$used di $limit elaborazioni · $remaining rimanenti'),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: limit == 0 ? 0 : (used / limit).clamp(0.0, 1.0),
+            ),
+            const SizedBox(height: 6),
+            Text('Periodo: $period',
+                style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
 }
