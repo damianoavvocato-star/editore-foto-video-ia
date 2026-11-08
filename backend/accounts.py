@@ -621,6 +621,24 @@ class AccountStore:
         except sqlite3.IntegrityError as exc:
             raise AccountError("Risorsa già associata a un account.") from exc
 
+    def release_media_resource(
+        self, resource_type: str, resource_id: str, owner_user_id: str
+    ) -> bool:
+        """Release a resource claim only for the account that owns it."""
+        if resource_type not in {"asset", "job"}:
+            return False
+        if (not isinstance(resource_id, str)
+                or not re.fullmatch(r"[0-9a-f]{32}", resource_id)
+                or not isinstance(owner_user_id, str)
+                or not owner_user_id or len(owner_user_id) > 128):
+            return False
+        with self._connect() as db:
+            result = db.execute(
+                "DELETE FROM media_ownership WHERE resource_type=? AND resource_id=? AND owner_user_id=?",
+                (resource_type, resource_id, owner_user_id),
+            )
+        return result.rowcount == 1
+
     def owns_media_resource(self, resource_type: str, resource_id: str, owner_user_id: str) -> bool:
         if resource_type not in {"asset", "job"}:
             return False

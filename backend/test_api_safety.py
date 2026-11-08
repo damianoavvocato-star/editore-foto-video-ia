@@ -545,3 +545,56 @@ def test_render_api_retries_same_idempotent_request_after_restart(tmp_path, monk
     assert retry_job_id != first_job_id
     assert restored_registry[first_job_id]["state"] == "failed"
     assert restored_registry[retry_job_id]["state"] == "queued"
+
+
+
+def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    from backend.usage_store import UsageStore
+    from types import SimpleNamespace
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("magic_owner", "magic owner password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "a" * 32
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"test-image")
+    store.claim_media_resource("asset", asset_id, user["userId"])
+    usage = UsageStore(tmp_path / "usage.sqlite3")
+
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: SimpleNamespace(
+        has_premium=lambda _user_id: False
+    ))
+    monkeypatch.setattr(server, "_ai_monthly_limit", lambda _premium: 3)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "jobs", {})
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    class FailingThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated thread startup failure")
+
+    monkeypatch.setattr(server.threading, "Thread", FailingThread)
+    response = TestClient(server.app).post(
+        "/v1/ai/jobs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+
+    assert response.status_code == 503
+    assert store.owns_media_resource("job", "b" * 32, user["userId"]) is False
+    with usage._connect() as db:
+        reservations = db.execute(
+            "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    assert reservations == 0
+    assert server.jobs == {}
+    assert server.cancel_events == {}

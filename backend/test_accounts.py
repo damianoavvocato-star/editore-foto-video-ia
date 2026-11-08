@@ -401,3 +401,18 @@ def test_owner_sessions_have_shorter_lifetime_than_standard_accounts(tmp_path):
     assert user_expiry > owner_expiry
     assert store.resolve_session(owner_token)["userId"] == owner["userId"]
     assert store.resolve_session(user_token)["userId"] == user["userId"]
+
+
+def test_media_resource_claim_can_only_be_released_by_its_owner(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.register("media_owner", "media owner password long")
+    other = store.register("media_other", "media other password long")
+    resource_id = "a" * 32
+    store.claim_media_resource("job", resource_id, owner["userId"])
+
+    assert store.release_media_resource("job", resource_id, other["userId"]) is False
+    assert store.owns_media_resource("job", resource_id, owner["userId"]) is True
+    assert store.release_media_resource("job", resource_id, owner["userId"]) is True
+    assert store.release_media_resource("job", resource_id, owner["userId"]) is False
+    assert store.release_media_resource("invalid", resource_id, owner["userId"]) is False
+    assert store.release_media_resource("job", "../outside", owner["userId"]) is False

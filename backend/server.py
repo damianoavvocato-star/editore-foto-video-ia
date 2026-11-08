@@ -1101,9 +1101,30 @@ def create_ai_job(body: dict[str, Any], request: Request):
     with lock:
         jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
         cancel_events[job_id] = threading.Event()
-    threading.Thread(
-        target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
-    ).start()
+    try:
+        worker = threading.Thread(
+            target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
+        )
+        worker.start()
+    except Exception as exc:
+        # A failed worker launch must not leave a ghost queued job, an orphaned
+        # ownership claim, or a consumed monthly AI reservation.
+        with lock:
+            jobs.pop(job_id, None)
+            cancel_events.pop(job_id, None)
+        if account is not None:
+            try:
+                _account_store().release_media_resource('job', job_id, account['userId'])
+            except Exception:
+                logging.exception('Unable to release MagicIAedit job ownership after worker startup failure')
+            if usage is not None:
+                try:
+                    _usage_store().release(account['userId'], job_id, usage['period'])
+                except Exception:
+                    logging.exception('Unable to release MagicIAedit quota after worker startup failure')
+        raise HTTPException(
+            503, 'Impossibile avviare il processo MagicIAedit. Riprova più tardi.'
+        ) from exc
     response = {'jobId': job_id}
     if usage is not None:
         response['usage'] = usage
