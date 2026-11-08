@@ -2,6 +2,8 @@ from fastapi.testclient import TestClient
 
 from backend import server
 from backend.accounts import AccountStore
+from backend.entitlements import EntitlementStore
+from backend.usage_store import UsageStore
 
 
 def test_referral_api_requires_session_and_claims_code_once(tmp_path, monkeypatch):
@@ -61,3 +63,25 @@ def test_referral_api_requires_session_and_claims_code_once(tmp_path, monkeypatc
         json={"code": "NOTREAL123"},
     )
     assert invalid.status_code == 422
+
+
+
+def test_account_usage_endpoint_requires_auth_and_returns_server_quota(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    store = AccountStore(database)
+    user = store.register("quota_user", "quota password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: EntitlementStore(database))
+    monkeypatch.setattr(server, "_usage_store", lambda: UsageStore(database))
+    client = TestClient(server.app)
+
+    assert client.get("/v1/account/usage").status_code == 401
+    token, _ = store.issue_session(user["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    summary = client.get("/v1/account/usage", headers=headers)
+    assert summary.status_code == 200
+    data = summary.json()
+    assert data["limit"] == server._ai_monthly_limit(False)
+    assert data["used"] == 0
+    assert data["remaining"] == data["limit"]
+    assert data["exhausted"] is False
