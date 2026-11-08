@@ -683,13 +683,13 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             if (action == 'permissions') _showPermissions(account);
           },
           itemBuilder: (context) => [
-            if (_canReset && role != 'owner')
+            if (_canReset && role != 'owner' && (_isOwner || role != 'admin'))
               const PopupMenuItem(value: 'reset', child: Text('Reimposta password')),
-            if (_canManage && role != 'owner')
+            if (_canManage && role != 'owner' && (_isOwner || role != 'admin'))
               const PopupMenuItem(value: 'role', child: Text('Modifica ruolo')),
-            if (_canManage && role != 'owner' && !disabled)
+            if (_canManage && role != 'owner' && (_isOwner || role != 'admin') && !disabled)
               const PopupMenuItem(value: 'disable', child: Text('Sospendi account')),
-            if (_canManage && role != 'owner' && disabled)
+            if (_canManage && role != 'owner' && (_isOwner || role != 'admin') && disabled)
               const PopupMenuItem(value: 'enable', child: Text('Riattiva account')),
             if (_isOwner)
               const PopupMenuItem(value: 'permissions', child: Text('Permessi effettivi')),
