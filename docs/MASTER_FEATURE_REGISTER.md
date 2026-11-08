@@ -43,7 +43,7 @@
 | P1-03 | Pagamenti reali e store billing | User, Owner | acquisto, restore, ricevute | store validation, webhook, entitlement sync | sandbox Apple/Google/web | missing |
 | P1-04 | Matrice Free/Premium e quote | Owner, User | riepilogo account con richieste IA usate, limite, residuo e periodo | quota mensile Free/Premium configurabile e riservazioni atomiche già applicate ai job; endpoint /v1/account/usage | test conteggio, isolamento, esaurimento e API autenticata; matrice per singola feature/paywall ancora da completare | partial |
 | P1-05 | Referral bilaterale 1 mese | User | codice personale, copia/condivisione, riscatto e storico | claim univoco per invitato, blocco auto-invito, account attivi, maturazione 7 giorni e grant atomico di 30 giorni a entrambi | test duplicati, account disabilitati, maturazione, idempotenza e API; controlli antifrode avanzati e monitoraggio account multipli ancora da completare | partial |
-| P1-06 | Premium famiglia | Owner, User | gestione membri e posti | inviti e membership di base | UI completa, limiti posti, revoca | partial |
+| P1-06 | Premium famiglia | Owner, User | schermata Account Premium con roster, posti, creazione/copia invito, accettazione, revoca inviti, rimozione membri e uscita | inviti monouso a scadenza, limiti posti, membership e API account | test backend già coprono invito monouso, permessi Owner, revoca, rimozione e uscita; nuova UI collegata, da verificare con test widget e CI | partial |
 | P1-07 | Gestione crediti IA e costi | Owner, User | saldo crediti visibile nell'account | ledger SQLite atomico, grant Owner-only, consumo, rimborso limitato al consumo originale, chiavi idempotenti e storico | test saldo non negativo, doppio addebito, rimborso, isolamento e API; collegamento al costo reale dei job/provider ancora da completare | partial |
 | P1-08 | Timeline ed editing manuale | User | strumenti e anteprima | modello/render base | test gesture, playback e salvataggio su device | partial |
 | P1-09 | Effetti, testo, audio completi | User | pannelli operativi | renderer e asset | nessun pulsante placeholder; export testato | partial |
@@ -220,3 +220,10 @@
 - Il registro copre 57 funzionalità con identificativo univoco, priorità, ruoli, stato e criteri di accettazione.
 - La mappa generale documenta le decisioni approvate, le piattaforme, il prodotto creativo, i pannelli, la monetizzazione, la sicurezza e le sei fasi.
 - P0-01 è quindi considerato completato come deliverable documentale. Il completamento del registro non implica che le 57 funzionalità software siano completate.
+
+
+## Aggiornamento Premium famiglia — 8 novembre 2026
+
+- Collegata alla schermata Account e Premium una sezione famiglia autenticata: mostra i membri e i posti occupati, permette al titolare di creare un invito monouso e copiarlo, consultare gli inviti, revocare quelli pendenti e rimuovere membri; il membro può accettare un codice o lasciare il gruppo.
+- Le operazioni usano le API backend esistenti e rispettano i controlli server-side; i token invito vengono mostrati solo al momento della creazione e non vengono recuperati dallo storico.
+- La UI resta `partial` fino a test Flutter dedicati, verifica CI e prova su dispositivo. Il piano famiglia richiede ancora pagamenti reali/store billing e verifica del flusso acquisto.
