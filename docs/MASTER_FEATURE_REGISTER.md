@@ -19,7 +19,7 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs | — | Ogni voce ha ID, stato, criteri | partial |
+| P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs/MASTER_PROJECT_MAP.md e docs/MASTER_FEATURE_REGISTER.md | 57 voci distribuite in P0–P3 con requisiti, ruoli, frontend/backend e criteri di accettazione | Mappa decisioni e roadmap presenti; ogni voce ha ID, stato e criteri di verifica; aggiornamento per ogni batch | done |
 | P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
@@ -213,3 +213,10 @@
 - **P0-11 Backup:** creato servizio di snapshot SQLite online, cifrato con Fernet e verificabile con controllo `PRAGMA quick_check`; API Owner-only per creare, elencare e verificare. Richiede `MEDIA_BACKUP_ENCRYPTION_KEY`; senza chiave fallisce in modo esplicito. Non include ancora media assets, ripristino, retention automatica o replica remota.
 - **P1-13 Media:** aggiunta scorciatoia nell'AppBar per selezionare e importare al massimo due immagini nella pipeline esistente. Il pulsante normale di importazione mantiene la selezione completa di foto/video/audio. L'ordinamento automatico delle due immagini più recenti non è ancora garantito dal provider di selezione.
 - **P1-15 Lingue:** riconosciuto il supporto già presente per lingua araba e direzione RTL a livello app. Font shaping, fallback tipografici e test su testi arabi lunghi restano da fare.
+
+
+### Verifica del registro maestro
+
+- Il registro copre 57 funzionalità con identificativo univoco, priorità, ruoli, stato e criteri di accettazione.
+- La mappa generale documenta le decisioni approvate, le piattaforme, il prodotto creativo, i pannelli, la monetizzazione, la sicurezza e le sei fasi.
+- P0-01 è quindi considerato completato come deliverable documentale. Il completamento del registro non implica che le 57 funzionalità software siano completate.
