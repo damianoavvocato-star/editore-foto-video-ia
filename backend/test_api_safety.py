@@ -270,3 +270,104 @@ def test_owner_totp_login_fails_closed_when_encryption_key_is_missing(tmp_path, 
     )
     assert response.status_code == 503
     assert "accessToken" not in response.json()
+
+
+def test_account_management_routes_apply_role_permissions(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("perm_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "perm_admin", "admin password long enough", "admin"
+    )
+    support = store.create_managed_account(
+        owner["userId"], "perm_support", "support password long enough", "support"
+    )
+    regular = store.register("perm_user", "regular password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/v1/owner/accounts", headers=headers(admin["userId"])).status_code == 200
+    assert client.get("/v1/owner/accounts", headers=headers(support["userId"])).status_code == 200
+    assert client.get("/v1/owner/accounts", headers=headers(regular["userId"])).status_code == 403
+
+    created = client.post(
+        "/v1/owner/accounts",
+        headers=headers(admin["userId"]),
+        json={
+            "username": "created_user",
+            "temporaryPassword": "temporary password long",
+            "role": "user",
+        },
+    )
+    assert created.status_code == 200
+    elevated = client.post(
+        "/v1/owner/accounts",
+        headers=headers(admin["userId"]),
+        json={
+            "username": "created_admin",
+            "temporaryPassword": "temporary password long",
+            "role": "admin",
+        },
+    )
+    assert elevated.status_code == 422
+
+    reset = client.post(
+        f"/v1/owner/accounts/{regular['userId']}/reset-password",
+        headers=headers(support["userId"]),
+    )
+    assert reset.status_code == 200
+    assert reset.json()["temporaryPassword"]
+
+    # A support account cannot reset an administrator's password.
+    admin_reset = client.post(
+        f"/v1/owner/accounts/{admin['userId']}/reset-password",
+        headers=headers(support["userId"]),
+    )
+    assert admin_reset.status_code == 403
+
+    assert client.get("/v1/owner/audit", headers=headers(admin["userId"])).status_code == 200
+    assert client.get(
+        "/v1/owner/security/totp", headers=headers(admin["userId"])
+    ).status_code == 403
+
+
+def test_owner_permission_override_is_enforced_by_api(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("perm_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "perm_admin", "admin password long enough", "admin"
+    )
+    target = store.register("premium_target", "target password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    owner_token, _ = store.issue_session(owner["userId"])
+    admin_token, _ = store.issue_session(admin["userId"])
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    denied = client.get(
+        f"/v1/owner/accounts/{target['userId']}/premium-grants",
+        headers=admin_headers,
+    )
+    assert denied.status_code == 200  # billing.read is a default admin permission
+
+    override = client.put(
+        f"/v1/owner/accounts/{admin['userId']}/permissions",
+        headers=owner_headers,
+        json={"permission": "billing.grant", "effect": "deny"},
+    )
+    assert override.status_code == 200
+    denied_after_override = client.post(
+        f"/v1/owner/accounts/{target['userId']}/premium-grants",
+        headers=admin_headers,
+        json={"plan": "premium", "reason": "test"},
+    )
+    assert denied_after_override.status_code == 403
