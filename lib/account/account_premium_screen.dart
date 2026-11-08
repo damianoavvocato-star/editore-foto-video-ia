@@ -113,7 +113,7 @@ class AccountPremiumScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _FamilyManagementCard(
               apiBaseUrl: apiBaseUrl,
-              widget.canCreateFamily: entitlement?.plan == 'family',
+              canCreateFamily: entitlement?.plan == 'family',
             ),
           ],
           const SizedBox(height: 12),
@@ -242,9 +242,9 @@ class _UsageSummaryCard extends StatelessWidget {
 
 
 class _FamilyManagementCard extends StatefulWidget {
-  const _FamilyManagementCard({required this.apiBaseUrl, required this.widget.canCreateFamily});
+  const _FamilyManagementCard({required this.apiBaseUrl, required this.canCreateFamily});
   final String apiBaseUrl;
-  final bool widget.canCreateFamily;
+  final bool canCreateFamily;
   @override
   State<_FamilyManagementCard> createState() => _FamilyManagementCardState();
 }
