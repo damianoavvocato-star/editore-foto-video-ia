@@ -179,7 +179,7 @@ jobs:
           if mirror not in content:
               if "mavenCentral()" not in content:
                   raise SystemExit("Expected Maven Central repository declaration was not found.")
-              content = content.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+              content = content.replace("mavenCentral()", mirror + "\n            mavenCentral()")
               settings.write_text(content)
           print("Google-hosted Maven Central mirror configured before Maven Central fallback.")
           PY
@@ -265,7 +265,7 @@ jobs:
           if mirror not in content:
               if "mavenCentral()" not in content:
                   raise SystemExit("Expected Maven Central repository declaration was not found.")
-              content = content.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+              content = content.replace("mavenCentral()", mirror + "\n            mavenCentral()")
               settings.write_text(content)
           print("Google-hosted Maven Central mirror configured before Maven Central fallback.")
           PY
