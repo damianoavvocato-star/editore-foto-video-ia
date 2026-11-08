@@ -111,7 +111,10 @@ class AccountPremiumScreen extends StatelessWidget {
           ),
           if (signedIn) ...[
             const SizedBox(height: 12),
-            _FamilyManagementCard(apiBaseUrl: apiBaseUrl),
+            _FamilyManagementCard(
+              apiBaseUrl: apiBaseUrl,
+              canCreateFamily: entitlement?.plan == 'family',
+            ),
           ],
           const SizedBox(height: 12),
           Card(
@@ -239,8 +242,9 @@ class _UsageSummaryCard extends StatelessWidget {
 
 
 class _FamilyManagementCard extends StatefulWidget {
-  const _FamilyManagementCard({required this.apiBaseUrl});
+  const _FamilyManagementCard({required this.apiBaseUrl, required this.canCreateFamily});
   final String apiBaseUrl;
+  final bool canCreateFamily;
   @override
   State<_FamilyManagementCard> createState() => _FamilyManagementCardState();
 }
@@ -251,6 +255,7 @@ class _FamilyManagementCardState extends State<_FamilyManagementCard> {
   String? _createdToken;
   String? _error;
   bool _busy = false;
+  bool _loading = true;
   Future<T> _api<T>(Future<T> Function(RemoteAccountApi api) run) async {
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty || widget.apiBaseUrl.trim().isEmpty) {
@@ -271,9 +276,9 @@ class _FamilyManagementCardState extends State<_FamilyManagementCard> {
         final result = await _api((api) => api.request('GET', '/v1/account/family/invitations'));
         invitations = result['invitations'] is List ? result['invitations'] as List : [];
       }
-      if (mounted) setState(() { _family = family; _invitations = invitations; });
+      if (mounted) setState(() { _family = family; _invitations = invitations; _loading = false; });
     } catch (e) {
-      if (mounted) setState(() => _error = e is AccountApiException ? e.message : 'Famiglia non disponibile.');
+      if (mounted) setState(() { _error = e is AccountApiException ? e.message : 'Famiglia non disponibile.'; _loading = false; });
     }
   }
   Future<void> _action(Future<void> Function() run) async {
@@ -295,7 +300,23 @@ class _FamilyManagementCardState extends State<_FamilyManagementCard> {
         const SizedBox(height: 6),
         const Text('Invita familiari, controlla i posti e gestisci gli accessi condivisi.'),
         if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        if (!hasFamily) const Text('Non fai ancora parte di una famiglia Premium. Per crearla serve un piano famiglia attivo.'),
+        if (_loading) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator())),
+        if (!_loading && !hasFamily) ...[
+          Text(canCreateFamily
+              ? 'Il tuo piano famiglia è attivo. Crea il gruppo e genera il primo invito.'
+              : 'Non fai ancora parte di una famiglia Premium. Per crearla serve un piano famiglia attivo.'),
+          if (canCreateFamily) ...[
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _busy ? null : () => _action(() async {
+                final result = await _api((api) => api.request('POST', '/v1/account/family/invitations'));
+                if (mounted) setState(() => _createdToken = result['token'] as String?);
+              }),
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Crea famiglia e primo invito'),
+            ),
+          ],
+        ],
         if (hasFamily) ...[
           Text(members.length.toString() + ' di ' + (family?['seatLimit'] ?? '?').toString() + ' posti occupati'),
           ...members.map((m) {
