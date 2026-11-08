@@ -23,6 +23,7 @@ _USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 _ROLES = {"owner", "admin", "support", "collaborator", "user"}
 _SESSION_SECONDS = 60 * 60 * 24 * 30
 _OWNER_SESSION_SECONDS = 60 * 60 * 12
+_TEMP_PASSWORD_SECONDS = 60 * 60 * 24
 
 
 class AccountError(ValueError):
@@ -114,6 +115,8 @@ class AccountStore:
             account_columns = {row["name"] for row in db.execute("PRAGMA table_info(accounts)").fetchall()}
             if "must_change_password" not in account_columns:
                 db.execute("ALTER TABLE accounts ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            if "temporary_password_expires_at" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN temporary_password_expires_at INTEGER")
             if "totp_secret_enc" not in account_columns:
                 db.execute("ALTER TABLE accounts ADD COLUMN totp_secret_enc BLOB")
             if "totp_pending_secret_enc" not in account_columns:
@@ -174,6 +177,8 @@ class AccountStore:
             "role": row["role"],
             "createdAt": row["created_at"],
             "mustChangePassword": bool(row["must_change_password"]),
+            "temporaryPasswordExpiresAt": row["temporary_password_expires_at"]
+                if "temporary_password_expires_at" in row.keys() else None,
         }
 
     def _create(self, username: str, password: str, role: str) -> dict[str, Any]:
@@ -308,6 +313,12 @@ class AccountStore:
         actual = self._password(password if isinstance(password, str) else "", salt)
         if row is None or row["disabled_at"] is not None or not hmac.compare_digest(actual, expected):
             raise AccountError("Credenziali non valide.")
+        if (
+            row["must_change_password"]
+            and row["temporary_password_expires_at"] is not None
+            and row["temporary_password_expires_at"] <= int(time.time())
+        ):
+            raise AccountError("Password temporanea scaduta. Richiedi un nuovo reset all'assistenza.")
         return self._public(row)
 
     def login(
@@ -737,9 +748,11 @@ class AccountStore:
                     raise AccountError("Solo il proprietario può creare account admin o support.")
                 db.execute(
                     """INSERT INTO accounts
-                       (user_id,username,password_salt,password_hash,role,created_at,must_change_password)
-                       VALUES(?,?,?,?,?,?,1)""",
-                    (user_id, username, salt, digest, role, now),
+                       (user_id,username,password_salt,password_hash,role,created_at,
+                        must_change_password,temporary_password_expires_at)
+                       VALUES(?,?,?,?,?,?,1,?)""",
+                    (user_id, username, salt, digest, role, now,
+                     now + _TEMP_PASSWORD_SECONDS),
                 )
                 db.execute(
                     """INSERT INTO account_audit_events
@@ -749,7 +762,8 @@ class AccountStore:
                      json.dumps({"role": role}, separators=(",", ":")), now),
                 )
                 row = db.execute(
-                    "SELECT user_id,username,role,created_at,must_change_password FROM accounts WHERE user_id=?",
+                    """SELECT user_id,username,role,created_at,must_change_password,
+                              temporary_password_expires_at FROM accounts WHERE user_id=?""",
                     (user_id,),
                 ).fetchone()
         except sqlite3.IntegrityError as exc:
@@ -777,8 +791,11 @@ class AccountStore:
             if actor_role != "owner" and target["role"] == "admin":
                 raise AccountError("Solo il proprietario può reimpostare le credenziali di un amministratore.")
             db.execute(
-                "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=1 WHERE user_id=?",
-                (salt, digest, target_user_id),
+                """UPDATE accounts
+                   SET password_salt=?,password_hash=?,must_change_password=1,
+                       temporary_password_expires_at=?
+                   WHERE user_id=?""",
+                (salt, digest, now + _TEMP_PASSWORD_SECONDS, target_user_id),
             )
             db.execute(
                 "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
@@ -802,17 +819,27 @@ class AccountStore:
         now = int(time.time())
         with self._connect() as db:
             row = db.execute(
-                "SELECT password_salt,password_hash,must_change_password,disabled_at FROM accounts WHERE user_id=?",
+                """SELECT password_salt,password_hash,must_change_password,
+                          temporary_password_expires_at,disabled_at
+                   FROM accounts WHERE user_id=?""",
                 (user_id,),
             ).fetchone()
             if row is None or row["disabled_at"] is not None:
                 raise AccountError("Account non disponibile.")
+            if (
+                row["must_change_password"]
+                and row["temporary_password_expires_at"] is not None
+                and row["temporary_password_expires_at"] <= now
+            ):
+                raise AccountError("Password temporanea scaduta. Richiedi un nuovo reset all'assistenza.")
             if not row["must_change_password"]:
                 actual = self._password(current_password or "", row["password_salt"])
                 if not hmac.compare_digest(actual, row["password_hash"]):
                     raise AccountError("Password attuale non valida.")
             db.execute(
-                "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=0 WHERE user_id=?",
+                """UPDATE accounts SET password_salt=?,password_hash=?,
+                       must_change_password=0,temporary_password_expires_at=NULL
+                   WHERE user_id=?""",
                 (salt, digest, user_id),
             )
             db.execute(
