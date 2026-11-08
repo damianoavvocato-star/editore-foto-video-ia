@@ -465,3 +465,35 @@ def test_managed_and_reset_temporary_passwords_expire_after_24_hours(tmp_path, m
     assert row["must_change_password"] == 0
     assert row["temporary_password_expires_at"] is None
     store.login("expiry_user", "new permanent password long enough")
+
+
+def test_audit_hash_chain_verifies_and_detects_event_tampering(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    actor = store.register("chain_actor", "chain actor password long")
+    store.record_audit_event(actor["userId"], "account.created", details={"role": "user"})
+    store.record_audit_event(actor["userId"], "account.updated", details={"status": "active"})
+
+    result = store.verify_audit_chain()
+    assert result["valid"] is True
+    assert result["count"] == 2
+    with store._connect() as db:
+        db.execute(
+            "UPDATE account_audit_events SET details_json=? WHERE event_id=1",
+            ('{"role":"owner"}',),
+        )
+    corrupted = store.verify_audit_chain()
+    assert corrupted["valid"] is False
+    assert corrupted["firstInvalidEventId"] == 1
+
+
+def test_audit_hmac_chain_requires_same_server_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEDIA_AUDIT_HMAC_KEY", "test-only-key-with-sufficient-entropy")
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    actor = store.register("hmac_actor", "hmac actor password long")
+    store.record_audit_event(actor["userId"], "account.created", details={"role": "user"})
+    assert store.verify_audit_chain()["valid"] is True
+
+    monkeypatch.delenv("MEDIA_AUDIT_HMAC_KEY")
+    result = store.verify_audit_chain()
+    assert result["valid"] is False
+    assert result["keyAvailable"] is False
