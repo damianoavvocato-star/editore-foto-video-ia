@@ -29,8 +29,10 @@ def rotate_totp_encryption_key(
     if old_raw == new_raw:
         raise SecurityConfigurationError("La nuova chiave deve essere diversa da quella attuale.")
 
-    path = str(Path(database).expanduser().resolve())
-    db = sqlite3.connect(path, timeout=30)
+    resolved = Path(database).expanduser().resolve()
+    if not resolved.is_file():
+        raise SecurityConfigurationError("Database account non trovato.")
+    db = sqlite3.connect(str(resolved), timeout=30)
     try:
         db.row_factory = sqlite3.Row
         db.execute("BEGIN IMMEDIATE")
@@ -73,7 +75,8 @@ def rotate_totp_encryption_key(
 
 
 def main() -> int:
-    database = os.getenv("MEDIA_AUTH_DB", "./media_data/accounts.sqlite3")
+    data_root = Path(os.getenv("MEDIA_DATA_DIR", "./media_data")).expanduser().resolve()
+    database = os.getenv("MEDIA_AUTH_DB", str(data_root / "accounts.sqlite3"))
     old_key = os.getenv("MEDIA_TOTP_OLD_ENCRYPTION_KEY", "")
     new_key = os.getenv("MEDIA_TOTP_NEW_ENCRYPTION_KEY", "")
     if not old_key or not new_key:
