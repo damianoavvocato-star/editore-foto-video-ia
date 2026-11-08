@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
-from backend.accounts import AccountError, AccountStore
+from backend.accounts import AccountError, AccountStore, SecurityConfigurationError
 from backend.authorization import PermissionError as PolicyError, PermissionPolicy
 from backend.entitlements import EntitlementError, EntitlementStore
 
@@ -101,6 +101,20 @@ class AuthPasswordChange(BaseModel):
 class AuthCredentials(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=1024)
+    totpCode: str | None = Field(default=None, min_length=6, max_length=64)
+
+
+class OwnerTotpSetupStart(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class OwnerTotpCode(BaseModel):
+    code: str = Field(min_length=6, max_length=64)
+
+
+class OwnerTotpDisable(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+    code: str = Field(min_length=6, max_length=64)
 
 
 def _account_store() -> AccountStore:
@@ -169,9 +183,20 @@ def login_account(body: AuthCredentials, request: Request):
     if not store.login_allowed(client_ip, body.username):
         raise HTTPException(429, 'Troppi tentativi. Riprova più tardi.')
     try:
-        account, token, expires = store.login(body.username, body.password)
+        account, token, expires = store.login(
+            body.username, body.password, body.totpCode
+        )
+    except SecurityConfigurationError as exc:
+        # Never issue a password-only session when 2FA cannot be decrypted.
+        raise HTTPException(503, 'Autenticazione a due fattori temporaneamente non disponibile.') from exc
     except AccountError as exc:
         store.record_login_failure(client_ip, body.username)
+        if str(exc) == "Secondo fattore non valido o richiesto." and not body.totpCode:
+            raise HTTPException(
+                401,
+                detail={"code": "two_factor_required",
+                        "message": "Inserisci il codice dell'app di autenticazione o un codice di recupero."},
+            ) from exc
         raise HTTPException(401, 'Credenziali non valide.') from exc
     store.clear_login_failures(client_ip, body.username)
     return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
@@ -244,6 +269,57 @@ def _require_owner(request: Request) -> dict[str, Any]:
     if account is None or account.get('role') != 'owner':
         raise HTTPException(403, 'Operazione riservata al proprietario.')
     return account
+
+
+@app.get('/v1/owner/security/totp')
+def owner_totp_status(request: Request):
+    owner = _require_owner(request)
+    return {"enabled": _account_store().totp_enabled(owner["userId"])}
+
+
+@app.post('/v1/owner/security/totp/setup')
+def owner_totp_setup_start(body: OwnerTotpSetupStart, request: Request):
+    owner = _require_owner(request)
+    try:
+        secret = _account_store().begin_totp_setup(owner["userId"], body.password)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        raise HTTPException(403 if 'proprietario' in str(exc) else 422, str(exc)) from exc
+    from urllib.parse import quote
+    issuer = "EditoreFotoVideoIA"
+    label = quote(f"{issuer}:{owner['username']}")
+    uri = (
+        f"otpauth://totp/{label}?secret={secret}&issuer={issuer}"
+        "&algorithm=SHA1&digits=6&period=30"
+    )
+    # This is the only response that reveals the pending seed. Do not log or persist it in audit.
+    return {"secret": secret, "otpauthUri": uri, "algorithm": "SHA1", "digits": 6, "period": 30}
+
+
+@app.post('/v1/owner/security/totp/setup/confirm')
+def owner_totp_setup_confirm(body: OwnerTotpCode, request: Request):
+    owner = _require_owner(request)
+    try:
+        recovery_codes = _account_store().confirm_totp_setup(owner["userId"], body.code)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    # Recovery codes are displayed once; only their hashes remain on the server.
+    return {"enabled": True, "recoveryCodes": recovery_codes}
+
+
+@app.delete('/v1/owner/security/totp')
+def owner_totp_disable(body: OwnerTotpDisable, request: Request):
+    owner = _require_owner(request)
+    try:
+        _account_store().disable_totp(owner["userId"], body.password, body.code)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"enabled": False, "sessionsRevoked": True}
 
 
 @app.get('/v1/owner/accounts')
