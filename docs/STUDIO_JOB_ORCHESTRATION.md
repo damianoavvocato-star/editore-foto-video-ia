@@ -43,3 +43,25 @@ provider-neutral and does not expose a public submit endpoint or call Synthesia.
 
 This module is infrastructure groundwork, not a claim that asynchronous video
 generation is already available in the app.
+
+
+## Authenticated API boundary
+
+A reviewed Studio draft can now be explicitly placed into the durable queue with
+`POST /v1/studio/jobs/{draft_id}/enqueue`. The endpoint rechecks the account-owned
+draft and its media ownership, then derives a stable idempotency key from the
+draft ID so repeated taps or network retries cannot create duplicate queue rows.
+Queue status is account-scoped through `GET /v1/studio/queue` and
+`GET /v1/studio/queue/{queue_job_id}`.
+
+This API operation only persists the request. It does not start a worker, call
+Synthesia, reserve paid credits, or claim that a video is rendering. The response
+explicitly sets `providerSubmissionEnabled=false`. Provider submission remains
+disabled until the entitlement/consent/quota checks and a supervised worker are
+implemented.
+
+Workers with longer provider requests can renew an active lease. Retry updates
+now include lease owner, state, and expiry in the atomic SQL predicate so an
+expired worker cannot resurrect a job after reconciliation. SQLite uses FULL
+synchronous mode, and database/WAL/SHM files are restricted to owner-only
+permissions where the operating system supports POSIX modes.

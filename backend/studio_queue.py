@@ -72,6 +72,7 @@ class StudioJobQueue:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = FULL")
         return connection
 
     @contextmanager
@@ -82,10 +83,17 @@ class StudioJobQueue:
                 yield connection
         finally:
             connection.close()
+            self._restrict_permissions()
 
     def _restrict_permissions(self) -> None:
+        # SQLite WAL/SHM files can contain the same private scripts as the DB.
+        for path in (self.database, Path(str(self.database) + "-wal"), Path(str(self.database) + "-shm")):
+            try:
+                if path.exists():
+                    os.chmod(path, 0o600)
+            except OSError:
+                pass
         try:
-            os.chmod(self.database, 0o600)
             os.chmod(self.database.parent, 0o700)
         except OSError:
             pass
@@ -167,7 +175,7 @@ class StudioJobQueue:
             raise
         finally:
             connection.close()
-        self._restrict_permissions()
+            self._restrict_permissions()
         return {
             "jobId": job_id, "state": "queued", "request": payload,
             "attempts": 0, "maxAttempts": max_attempts,
@@ -223,6 +231,29 @@ class StudioJobQueue:
             raise
         finally:
             connection.close()
+
+    def renew_lease(
+        self, worker_id: str, job_id: str, now: float | None = None
+    ) -> dict[str, Any]:
+        """Extend an active submission lease without changing its attempt count."""
+        if not worker_id or len(worker_id) > 128:
+            raise StudioQueueError("Identificativo worker non valido.")
+        timestamp = time.time() if now is None else float(now)
+        expires = timestamp + self.lease_seconds
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE studio_queue_jobs
+                   SET lease_expires_at=?, updated_at=?
+                   WHERE job_id=? AND state='submitting' AND lease_owner=?
+                     AND lease_expires_at > ?""",
+                (expires, timestamp, job_id, worker_id, timestamp),
+            )
+            if cursor.rowcount != 1:
+                raise StudioQueueError("Lease scaduta o job non assegnato a questo worker.")
+            row = connection.execute(
+                "SELECT * FROM studio_queue_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+        return self._serialize(row)
 
     def mark_submitted(
         self,
@@ -307,17 +338,20 @@ class StudioJobQueue:
             if row is None or row["lease_expires_at"] is None or row["lease_expires_at"] <= timestamp:
                 raise StudioQueueError("Lease scaduta o job non assegnato a questo worker.")
             retry = row["attempts"] < row["max_attempts"]
-            connection.execute(
+            cursor = connection.execute(
                 """UPDATE studio_queue_jobs
                    SET state=?, next_retry_at=?, last_error_code=?,
                        lease_owner=NULL, lease_expires_at=NULL, updated_at=?
-                   WHERE job_id=?""",
+                   WHERE job_id=? AND state='submitting' AND lease_owner=?
+                     AND lease_expires_at > ?""",
                 (
                     "queued" if retry else "failed",
                     timestamp + delay if retry else timestamp,
-                    error_code, timestamp, job_id,
+                    error_code, timestamp, job_id, worker_id, timestamp,
                 ),
             )
+            if cursor.rowcount != 1:
+                raise StudioQueueError("Lease scaduta o job non assegnato a questo worker.")
             updated = connection.execute(
                 "SELECT * FROM studio_queue_jobs WHERE job_id=?", (job_id,)
             ).fetchone()

@@ -111,3 +111,40 @@ def test_enqueue_requires_valid_account_and_retry_limit(tmp_path):
         queue.enqueue("", _request())
     with pytest.raises(StudioQueueError):
         queue.enqueue("user-a", _request(), max_attempts=9)
+
+
+
+def test_worker_can_renew_only_an_active_lease(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3", lease_seconds=30)
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    claimed = queue.claim_next("worker-a", now=101)
+    renewed = queue.renew_lease("worker-a", job["jobId"], now=120)
+    assert renewed["leaseExpiresAt"] == 150
+    assert renewed["attempts"] == claimed["attempts"] == 1
+    with pytest.raises(StudioQueueError, match="Lease"):
+        queue.renew_lease("worker-b", job["jobId"], now=121)
+    with pytest.raises(StudioQueueError, match="Lease"):
+        queue.renew_lease("worker-a", job["jobId"], now=150)
+
+
+def test_retry_cannot_resurrect_a_submission_after_expiry_reconciliation(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3", lease_seconds=15)
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("worker-a", now=101)
+    # The next claimant reconciles an expired submission to terminal/ambiguous.
+    assert queue.claim_next("worker-b", now=117) is None
+    with pytest.raises(StudioQueueError, match="Lease"):
+        queue.schedule_retry("worker-a", job["jobId"], "temporary", now=118)
+    assert queue.get("user-a", job["jobId"])["state"] == "failed"
+
+
+def test_database_permissions_are_private_on_posix(tmp_path):
+    import os
+    import stat
+    import pytest
+    if os.name != "posix":
+        pytest.skip("POSIX permission bits are not portable")
+    database = tmp_path / "private" / "queue.sqlite3"
+    StudioJobQueue(database).enqueue("user-a", _request(), now=100)
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+    assert stat.S_IMODE(database.parent.stat().st_mode) == 0o700

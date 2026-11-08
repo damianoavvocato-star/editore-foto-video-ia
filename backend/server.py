@@ -19,6 +19,7 @@ from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
 from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
+from backend.studio_queue import StudioJobQueue, StudioQueueError
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -41,6 +42,10 @@ def _studio_store() -> StudioJobStore:
     return StudioJobStore(os.getenv('MEDIA_STUDIO_DB', str(ROOT / 'studio.sqlite3')))
 
 
+def _studio_queue() -> StudioJobQueue:
+    return StudioJobQueue(os.getenv('MEDIA_STUDIO_QUEUE_DB', str(ROOT / 'studio_queue.sqlite3')))
+
+
 def _studio_user(request: Request) -> dict[str, Any]:
     account = _request_account(request)
     if account is None:
@@ -53,6 +58,7 @@ def studio_capabilities(request: Request):
     _studio_user(request)
     return {
         'studioDrafts': True,
+        'reviewedJobQueue': True,
         'scriptToVideo': 'planned',
         'documentToVideo': 'planned',
         'slidesToVideo': 'planned',
@@ -97,6 +103,61 @@ def studio_create_job(body: StudioJobRequest, request: Request):
 def studio_list_jobs(request: Request, limit: int = Query(default=50, ge=1, le=100)):
     account = _studio_user(request)
     return {'jobs': _studio_store().list_for_user(account['userId'], limit)}
+
+
+@app.post('/v1/studio/jobs/{job_id}/enqueue')
+def studio_enqueue_job(job_id: str, request: Request):
+    """Persist an explicitly reviewed draft in the durable queue; never calls a provider."""
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    draft = _studio_store().get(account['userId'], job_id)
+    if draft is None:
+        raise HTTPException(404, 'Progetto Studio non trovato.')
+    try:
+        body = StudioJobRequest.model_validate(draft['request'])
+        body.validate_policy()
+    except (StudioRequestError, ValueError) as exc:
+        raise HTTPException(422, 'La bozza non supera la validazione prima dell’accodamento.') from exc
+    for asset_id in body.sourceAssetIds:
+        _require_resource_owner(request, 'asset', asset_id)
+        if not any(
+            path.is_file() and path.resolve().parent == ASSETS.resolve()
+            for path in ASSETS.glob(asset_id + '.*')
+        ):
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+    try:
+        queued, created = _studio_queue().enqueue(
+            account['userId'], body, idempotency_key=f'studio-draft:{job_id}'
+        )
+    except StudioRequestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except StudioQueueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {
+        **queued,
+        'created': created,
+        'sourceDraftId': job_id,
+        'providerSubmissionEnabled': False,
+        'message': 'Richiesta salvata nella coda; nessuna chiamata al provider è stata avviata.',
+    }
+
+
+@app.get('/v1/studio/queue')
+def studio_list_queue(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    account = _studio_user(request)
+    return {'jobs': _studio_queue().list_for_user(account['userId'], limit)}
+
+
+@app.get('/v1/studio/queue/{queue_job_id}')
+def studio_get_queued_job(queue_job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(queue_job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    queued = _studio_queue().get(account['userId'], queue_job_id)
+    if queued is None:
+        raise HTTPException(404, 'Lavoro in coda non trovato.')
+    return queued
 
 
 @app.get('/v1/studio/jobs/{job_id}')
