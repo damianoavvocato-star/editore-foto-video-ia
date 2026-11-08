@@ -112,3 +112,27 @@ are rejected before contacting the model. The Flutter panel now exposes style, p
 aspect ratio and duration controls and sends the device locale as the output-language
 hint. These preferences guide the proposal; actual crop/render adaptation and soundtrack
 generation remain separate implementation tasks.
+
+
+## Speech transcription, translation and subtitle foundation
+
+The backend now includes a provider-neutral speech pipeline contract in
+`backend/speech_pipeline.py`. It is deliberately separate from the vision-based
+MagicIAedit planner:
+
+- Transcription responses are validated for supported language codes, unique
+  segment IDs, non-empty text, ordered timestamps and media-duration bounds.
+- Translation is matched by stable segment ID. Source timing and speaker
+  attribution remain authoritative; a translation provider cannot silently
+  shift or omit subtitle intervals.
+- SRT and WebVTT export is deterministic and escapes markup-like text.
+- A provider adapter is injected server-side. With no adapter configured, speech
+  operations fail closed; no network request, paid call, synthetic voice or
+  voice clone is attempted by this foundation.
+
+This is a tested backend foundation, not yet an enabled transcription/dubbing
+product feature. The next integration step is to connect an approved speech
+provider to authenticated media jobs, add audio extraction and review UI, then
+add TTS/dubbing and per-language render jobs. Voice cloning must remain disabled
+unless the speaker has explicitly provided informed consent. Provider credentials
+must stay in the server secret manager.
