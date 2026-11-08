@@ -344,9 +344,11 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
 
 
 @app.get('/v1/owner/accounts')
-def owner_list_accounts(request: Request, limit: int = 100):
+def owner_list_accounts(
+    request: Request, limit: int = 100, q: str | None = Field(default=None, max_length=64)
+):
     _require_permission(request, "accounts.read")
-    return {'accounts': _account_store().list_accounts(limit)}
+    return {'accounts': _account_store().list_accounts(limit, q)}
 
 
 @app.post('/v1/owner/accounts')
