@@ -195,6 +195,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
           referralCode: data.referralCode,
           usageSummary: data.usageSummary,
           creditBalance: data.creditBalance,
+          apiBaseUrl: widget.apiBaseUrl,
           onSignIn: widget.onSignIn,
           onUpgrade: () => _notice(
             'Acquisti Premium non ancora attivi: il sistema di pagamento '
