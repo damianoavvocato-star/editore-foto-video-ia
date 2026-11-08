@@ -16,6 +16,7 @@ class AccountPremiumScreen extends StatelessWidget {
     required this.onShareReferral,
     required this.onRedeemReferral,
     this.usageSummary,
+    this.creditBalance,
   });
 
   final String? userId;
@@ -27,6 +28,7 @@ class AccountPremiumScreen extends StatelessWidget {
   final VoidCallback onShareReferral;
   final ValueChanged<String> onRedeemReferral;
   final Map<String, dynamic>? usageSummary;
+  final int? creditBalance;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +61,17 @@ class AccountPremiumScreen extends StatelessWidget {
                   : FilledButton(onPressed: onSignIn, child: const Text('Accedi')),
             ),
           ),
+          if (signedIn && creditBalance != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.toll_outlined),
+                title: const Text('Crediti IA'),
+                subtitle: const Text('Saldo disponibile nel portafoglio account'),
+                trailing: Text('$creditBalance', style: Theme.of(context).textTheme.titleLarge),
+              ),
+            ),
+          ],
           if (signedIn && usageSummary != null) ...[
             const SizedBox(height: 12),
             _UsageSummaryCard(summary: usageSummary!),
