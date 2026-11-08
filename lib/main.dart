@@ -850,7 +850,6 @@ class _HomePageState extends State<HomePage> {
                     project: project,
                     onProjectChanged: _applyMagicIAeditProject,
                     onMessage: _message,
-                    onImportMedia: importMedia,
                   )
                 : selectedTab == 6
                     ? const AccountSecurityScreen(
