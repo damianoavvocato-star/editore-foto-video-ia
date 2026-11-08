@@ -41,8 +41,12 @@ def verify_code(
         return False
     now = time.time() if timestamp is None else timestamp
     try:
-        candidates = (code_at(secret, now + offset * period, digits, period)
-                      for offset in range(-window, window + 1))
-        return any(hmac.compare_digest(candidate, supplied) for candidate in candidates)
+        # Compare every permitted time-step instead of returning on the first
+        # match. This avoids leaking which window matched through short-circuit timing.
+        matched = False
+        for offset in range(-window, window + 1):
+            candidate = code_at(secret, now + offset * period, digits, period)
+            matched = hmac.compare_digest(candidate, supplied) | matched
+        return matched
     except (TypeError, ValueError, OverflowError):
         return False
