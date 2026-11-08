@@ -21,7 +21,10 @@ void main() {
     );
 
     expect(find.text('Token di accesso del server (facoltativo)'), findsNothing);
-    await tester.ensureVisible(find.text('Indirizzo del server MagicIAedit'));
+    await tester.scrollUntilVisible(
+      find.text('Indirizzo del server MagicIAedit'),
+      400,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Indirizzo del server MagicIAedit'), findsOneWidget);
   });
