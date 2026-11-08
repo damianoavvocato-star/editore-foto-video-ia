@@ -560,7 +560,7 @@ class AccountStore:
     ) -> dict[str, Any]:
         """Allow the owner to create non-owner accounts; never create another owner."""
         if role not in {"admin", "support", "collaborator", "user"}:
-            raise AccountError("Il proprietario può creare solo account non-owner.")
+            raise AccountError("Ruolo non valido o riservato.")
         if not isinstance(username, str) or not _USERNAME.fullmatch(username):
             raise AccountError("Nome utente non valido: usa 3-32 caratteri alfanumerici, punto, trattino o underscore.")
         if not isinstance(password, str) or len(password) < 12 or len(password) > 1024:
@@ -575,8 +575,10 @@ class AccountStore:
                     "SELECT role,disabled_at FROM accounts WHERE user_id=?",
                     (actor_user_id,),
                 ).fetchone()
-                if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
-                    raise AccountError("Operazione riservata al proprietario.")
+                if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+                    raise AccountError("Permesso di creazione account insufficiente.")
+                if actor["role"] == "admin" and role not in {"user", "collaborator"}:
+                    raise AccountError("Un amministratore può creare solo account user o collaborator.")
                 db.execute(
                     """INSERT INTO accounts
                        (user_id,username,password_salt,password_hash,role,created_at,must_change_password)
@@ -609,8 +611,8 @@ class AccountStore:
             actor = db.execute(
                 "SELECT role,disabled_at FROM accounts WHERE user_id=?", (actor_user_id,)
             ).fetchone()
-            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
-                raise AccountError("Operazione riservata al proprietario.")
+            if actor is None or actor["role"] not in {"owner", "admin", "support"} or actor["disabled_at"] is not None:
+                raise AccountError("Permesso di reset password insufficiente.")
             target = db.execute(
                 "SELECT role FROM accounts WHERE user_id=?", (target_user_id,)
             ).fetchone()
@@ -618,6 +620,10 @@ class AccountStore:
                 raise AccountError("Account non trovato.")
             if target["role"] == "owner":
                 raise AccountError("Il reset dell'account proprietario richiede la procedura dedicata.")
+            if actor["role"] == "admin" and target["role"] not in {"support", "collaborator", "user"}:
+                raise AccountError("L'amministratore non può reimpostare le credenziali di un altro amministratore.")
+            if actor["role"] == "support" and target["role"] not in {"collaborator", "user"}:
+                raise AccountError("Il supporto può reimpostare solo account user o collaborator.")
             db.execute(
                 "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=1 WHERE user_id=?",
                 (salt, digest, target_user_id),
@@ -680,8 +686,10 @@ class AccountStore:
                 "SELECT role,disabled_at FROM accounts WHERE user_id=?",
                 (actor_user_id,),
             ).fetchone()
-            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
-                raise AccountError("Operazione riservata al proprietario.")
+            if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+                raise AccountError("Permesso di modifica ruolo insufficiente.")
+            if actor["role"] == "admin" and role == "admin":
+                raise AccountError("Un amministratore non può assegnare il ruolo admin.")
             target = db.execute(
                 "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
                 (target_user_id,),
@@ -723,8 +731,8 @@ class AccountStore:
                 "SELECT role,disabled_at FROM accounts WHERE user_id=?",
                 (actor_user_id,),
             ).fetchone()
-            if actor is None or actor["role"] != "owner" or actor["disabled_at"] is not None:
-                raise AccountError("Operazione riservata al proprietario.")
+            if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+                raise AccountError("Permesso di sospensione account insufficiente.")
             target = db.execute(
                 "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
                 (target_user_id,),
@@ -733,6 +741,8 @@ class AccountStore:
                 raise AccountError("Account non trovato.")
             if target["role"] == "owner":
                 raise AccountError("L'account proprietario non può essere sospeso o modificato.")
+            if actor["role"] == "admin" and target["role"] == "admin":
+                raise AccountError("Un amministratore non può sospendere un altro amministratore.")
             disabled_at = now if disabled else None
             db.execute(
                 "UPDATE accounts SET disabled_at=? WHERE user_id=?",
