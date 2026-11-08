@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'models/editor_project.dart';
 import 'account/account_security_screen.dart';
+import 'account/account_premium_page.dart';
 import 'services/project_store.dart';
 import 'services/smart_shield_manager.dart';
 import 'editor/session_timeline_editor.dart';
@@ -865,7 +866,12 @@ class _HomePageState extends State<HomePage> {
                             ? const TeamStudioScreen(
                                 apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
                               )
-                            : _buildEditor(context);
+                            : selectedTab == 9
+                                ? AccountPremiumPage(
+                                    apiBaseUrl: const String.fromEnvironment('MEDIA_API_URL'),
+                                    onSignIn: () => setState(() => selectedTab = 6),
+                                  )
+                                : _buildEditor(context);
             final sidebar = _buildSidebar(context);
             return Padding(
               padding: const EdgeInsets.all(16),
@@ -900,6 +906,7 @@ class _HomePageState extends State<HomePage> {
       (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
       (tab: 8, icon: Icons.groups_outlined, label: 'Team'),
       (tab: 6, icon: Icons.admin_panel_settings_outlined, label: 'Pannelli'),
+      (tab: 9, icon: Icons.workspace_premium_outlined, label: 'Premium'),
     ];
     final selectedIndex = destinations.indexWhere((item) => item.tab == selectedTab);
     return NavigationBar(
@@ -1297,6 +1304,7 @@ class _HomePageState extends State<HomePage> {
             ),
           _sideItem(Icons.video_camera_front_outlined, 'Synthesia Studio IA', 7),
           _sideItem(Icons.groups_outlined, 'TeamStudio', 8),
+          _sideItem(Icons.workspace_premium_outlined, t('premium'), 9),
           const Divider(),
           _sideItem(Icons.settings, t('settings'), 6),
           if (selectedTab == 2)
