@@ -38,7 +38,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
-      return (userId: null, entitlement: null, referralCode: null, usageSummary: null);
+      return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null);
     }
 
     final api = RemoteAccountApi(
