@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/editor_project.dart';
 import '../models/export_settings.dart';
 import '../services/export_coordinator.dart';
+import '../services/account_api.dart';
 import '../services/remote_media_api.dart';
 import 'export_settings_panel.dart';
 
@@ -31,7 +32,6 @@ class RemoteExportPanel extends StatefulWidget {
 
 class _RemoteExportPanelState extends State<RemoteExportPanel> {
   final _endpointController = TextEditingController();
-  final _tokenController = TextEditingController();
   ExportSettings _settings = const ExportSettings();
   ExportCoordinator? _coordinator;
   RemoteMediaApi? _api;
@@ -41,7 +41,6 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
   double _progress = 0;
   bool _busy = false;
   bool _completed = false;
-  bool _showToken = false;
 
   Uri? _validatedEndpoint() {
     final uri = Uri.tryParse(_endpointController.text.trim());
@@ -70,14 +69,13 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
           'Inserisci un indirizzo API HTTPS valido. HTTP è consentito solo per localhost o 10.0.2.2.');
       return;
     }
-    final localDevelopmentEndpoint = endpoint.scheme == 'http' &&
-        {'localhost', '127.0.0.1', '10.0.2.2', '::1'}.contains(endpoint.host);
-    if (!localDevelopmentEndpoint && _tokenController.text.trim().isEmpty) {
-      setState(() => _error =
-          'Per i server remoti HTTPS è obbligatorio il token condiviso configurato sul server.');
-      return;
-    }
     try {
+      final sessionToken = await const AccountSessionStore().readToken();
+      if (sessionToken == null || sessionToken.isEmpty) {
+        setState(() => _error =
+            'Accedi prima dalla sezione Impostazioni: il server richiede una sessione personale.');
+        return;
+      }
       final directory = await getApplicationDocumentsDirectory();
       if (!mounted) return;
       final extension = _settings.container.name;
@@ -85,9 +83,7 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
       final output = '${directory.path}/${_safeFileName(widget.project.name)}_$stamp.$extension';
       final api = RemoteMediaApi(
         baseUri: endpoint,
-        bearerToken: _tokenController.text.trim().isEmpty
-            ? null
-            : _tokenController.text.trim(),
+        bearerToken: sessionToken,
       );
       final coordinator = ExportCoordinator(RemoteRenderBackend(api));
       setState(() {
@@ -175,7 +171,6 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
     }
     // The active export closes its HTTP client in _startExport's finally block.
     _endpointController.dispose();
-    _tokenController.dispose();
     super.dispose();
   }
 
@@ -214,20 +209,10 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _tokenController,
-            enabled: !_busy,
-            obscureText: !_showToken,
-            decoration: InputDecoration(
-              labelText: 'Token condiviso del server (obbligatorio per HTTPS remoto)',
-              helperText: 'È una credenziale condivisa del server, non un account personale.',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                onPressed: () => setState(() => _showToken = !_showToken),
-                icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
-              ),
-            ),
+          const SizedBox(height: 8),
+          const Text(
+            'L’esportazione usa la sessione personale salvata in modo protetto dopo l’accesso. I token condivisi non sono accettati.',
+            style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 12),
           ExportSettingsPanel(
