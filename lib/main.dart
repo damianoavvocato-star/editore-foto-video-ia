@@ -47,7 +47,7 @@ class _EditoreAppState extends State<EditoreApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Editore Foto e Video IA',
+      title: 'MagicIAedit – AI Photo & Video Studio',
       locale: Locale(language.name),
       supportedLocales: const [
         Locale('it'),
@@ -131,7 +131,7 @@ class _EditoreAppState extends State<EditoreApp> {
 class Copy {
   static const Map<AppLanguage, Map<String, String>> strings = {
     AppLanguage.it: {
-      'app': 'Editore Foto e Video IA',
+      'app': 'MagicIAedit',
       'subtitle': 'Il tuo studio creativo',
       'newProject': 'Nuovo progetto',
       'import': 'Importa foto o video',
@@ -171,7 +171,7 @@ class Copy {
       'save': 'Salva',
     },
     AppLanguage.en: {
-      'app': 'AI Photo & Video Editor',
+      'app': 'MagicIAedit',
       'subtitle': 'Your creative studio',
       'newProject': 'New project',
       'import': 'Import photo or video',
@@ -211,7 +211,7 @@ class Copy {
       'save': 'Save',
     },
     AppLanguage.fr: {
-      'app': 'Éditeur photo et vidéo IA',
+      'app': 'MagicIAedit',
       'subtitle': 'Votre studio créatif',
       'newProject': 'Nouveau projet',
       'import': 'Importer photo ou vidéo',
@@ -251,7 +251,7 @@ class Copy {
       'save': 'Enregistrer',
     },
     AppLanguage.es: {
-      'app': 'Editor de foto y vídeo IA',
+      'app': 'MagicIAedit',
       'subtitle': 'Tu estudio creativo',
       'newProject': 'Nuevo proyecto',
       'import': 'Importar foto o vídeo',
@@ -291,7 +291,7 @@ class Copy {
       'save': 'Guardar',
     },
     AppLanguage.ar: {
-      'app': 'محرر الصور والفيديو بالذكاء الاصطناعي',
+      'app': 'MagicIAedit',
       'subtitle': 'استوديو الإبداع الخاص بك',
       'newProject': 'مشروع جديد',
       'import': 'استيراد صورة أو فيديو',
@@ -990,8 +990,35 @@ class _HomePageState extends State<HomePage> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.movie_creation_outlined, color: Colors.white70, size: 52),
-                                const SizedBox(height: 12),
+                                Container(
+                                  width: 116,
+                                  height: 116,
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0x332C1D63),
+                                    boxShadow: const [
+                                      BoxShadow(color: Color(0x557B45E8), blurRadius: 34, spreadRadius: 2),
+                                    ],
+                                    border: Border.all(color: const Color(0x557F6BE0)),
+                                  ),
+                                  child: SvgPicture.asset(
+                                    'assets/branding/magiciaedit_mark.svg',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                const Text(
+                                  'MagicIAedit',
+                                  style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, letterSpacing: .4, color: Color(0xFFF0E9FF)),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'CREA. TRASFORMA. STUPISCI.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w700, color: Color(0xFFB9A8FF)),
+                                ),
+                                const SizedBox(height: 14),
                                 Text(t('noMedia'), textAlign: TextAlign.center,
                                     style: const TextStyle(color: Colors.white70)),
                                 const SizedBox(height: 16),
@@ -1170,8 +1197,39 @@ class _HomePageState extends State<HomePage> {
       child: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          Text(t('subtitle'), style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF24134F), Color(0xFF102B55), Color(0xFF24133F)],
+              ),
+              border: Border.all(color: const Color(0x557D65D8)),
+            ),
+            child: Row(
+              children: [
+                SvgPicture.asset(
+                  'assets/branding/magiciaedit_mark.svg',
+                  width: 48,
+                  height: 48,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('MagicIAedit', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: .2)),
+                      SizedBox(height: 3),
+                      Text('CREATIVE AI STUDIO', style: TextStyle(fontSize: 9, letterSpacing: 1.4, color: Color(0xFFBDB3F7), fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: importMedia,
             icon: const Icon(Icons.add),
