@@ -158,3 +158,96 @@ Da un master produrre varianti per lingua e piattaforma: verticale/quadrato/oriz
 9. Collaborazione e campagne avanzate.
 
 Le nuove attività ampliano il lavoro residuo e non aumentano automaticamente la percentuale completata. Mantenere branch della PR draft; non modificare `main`, non unire la PR e non creare l'APK prima della fase 6.
+
+
+## 10. Matrice di confronto competitiva e copertura effettiva
+
+La matrice seguente confronta categorie funzionali documentate nei prodotti concorrenti (CapCut, Adobe Premiere, DaVinci Resolve e strumenti specializzati di editing/repurposing). È una guida di prodotto, non una certificazione delle versioni o dei piani: disponibilità, limiti e nomi cambiano per piattaforma, regione e abbonamento. Le fonti consultate includono confronti aggiornati nel 2026 e documentazione dei produttori. Le voci del nostro prodotto sono valutate rispetto all'audit del codice del branch, non rispetto a questa roadmap.
+
+Legenda:
+- **Presente (base)**: esiste una parte utilizzabile nel codice attuale.
+- **Parziale**: esiste solo una parte del flusso o manca una verifica end-to-end.
+- **Assente / pianificato**: non risulta implementato nell'audit.
+- **Da verificare**: non è possibile dichiarare copertura senza test dedicati.
+
+| Area funzionale | Presenza nei concorrenti (esempi) | Stato nel progetto secondo audit | Requisito di completamento |
+|---|---|---|---|
+| Timeline multitraccia e taglio/split/riordino clip | CapCut, Premiere, Resolve | **Presente (base)** | Test UI e round-trip progetto su Android/iOS/desktop; undo/redo e grandi timeline |
+| Keyframe per posizione, scala, opacità, audio ed effetti | CapCut, Premiere, Resolve | **Da verificare / pianificato** | Editor keyframe con interpolazione, easing, persistenza e test frame-accurate |
+| Speed ramp / curve di velocità | CapCut, Premiere, Resolve | **Parziale / da verificare** | Curve per clip, audio pitch policy, preview e rendering coerente |
+| Transizioni ed effetti | Tutti | **Presente (base)** | Catalogo, parametri, preset, compatibilità e test render per transizione |
+| Chroma key e rimozione sfondo | CapCut, Premiere, Resolve | **Assente / pianificato** | Keying controllabile, edge refinement, spill suppression e fallback |
+| Maschere e tracking oggetti/volti | Premiere, Resolve, CapCut (strumenti variabili per piattaforma) | **Assente / pianificato** | Mask editor, tracking temporale, perdita target e correzione manuale |
+| Stabilizzazione video | Premiere, Resolve e app mobile | **Assente / pianificato** | Analisi movimento, crop configurabile, confronto prima/dopo e test rolling shutter |
+| Rilevamento scene e clip automatiche | Premiere, Resolve e strumenti AI | **Assente / pianificato** | Scene boundary, soglie configurabili e falsi positivi misurati |
+| Editing basato su trascrizione e rimozione silenzi | Descript, Premiere/Resolve con funzioni specifiche | **Assente / pianificato** | ASR con parole/timestamp, selezione testo→timeline, undo e gestione diarizzazione |
+| Sottotitoli automatici, traduzione e stili | CapCut, Premiere, Descript e altri | **Assente nel flusso completo** | ASR, editor sottotitoli, traduzione, SRT/VTT/ASS, RTL e controllo sincronizzazione |
+| Doppiaggio, TTS, isolamento voce e pulizia rumore | CapCut, Premiere, Resolve, Descript | **Assente / pianificato** | Pipeline ASR/TTS, separazione sorgenti, denoise, consenso e confronto qualità |
+| Rilevamento beat e sincronizzazione musica | CapCut, Resolve e strumenti social | **Assente / pianificato** | Beat markers, snap clip, gestione licenze e test su generi/tempi differenti |
+| Color grading avanzato, LUT e HDR | Premiere, Resolve | **Parziale / da verificare** | Ruote/curve, LUT, scopes, color management, HDR export verificato |
+| Auto Reframe e safe area multi-formato | CapCut, Premiere, altri social editor | **Assente / pianificato** | Tracking soggetto, keyframe override, 9:16/1:1/16:9 e safe-area overlay |
+| Ricerca semantica in libreria media | Premiere, Resolve e strumenti AI | **Assente / pianificato** | Indici locali/opt-in, ricerca per oggetti/scene/parole e cancellazione indice |
+| Estensione generativa di clip e generazione video | Premiere/Firefly e servizi generativi | **Assente / pianificato** | Provider configurabile, provenienza output, costo stimato e revisione umana |
+| Multicam e sincronizzazione sorgenti | Premiere, Resolve | **Assente / pianificato** | Sync audio/timecode, switching, fallback manuale e test drift |
+| Proxy e gestione media pesanti | Premiere, Resolve | **Assente / da verificare** | Generazione proxy, relink affidabile, cache e test storage insufficiente |
+| Backup/sync cloud e collaborazione | Premiere/Frame.io, Resolve cloud, strumenti team | **Parziale** | Isolamento account, sync conflitti, versioni, inviti, commenti e revoca |
+| Export MP4/MOV/AVI/WebM e pipeline server | Editor desktop e servizi online | **Presente lato backend (base)** | Test codec/container reali, compatibilità player, profili e round-trip su device |
+| Export 4K/HDR/codec professionali | Premiere, Resolve e alcuni editor social | **Da verificare** | Matrice codec/device, memoria, fps, HDR metadata e test file risultanti |
+| Template, asset, brand kit e contenuti social | CapCut, Adobe e piattaforme marketing | **Parziale / pianificato** | Libreria licenze, brand kit, preset localizzati e aggiornamento senza rompere progetti |
+| Collaborazione con commenti timecode e approvazioni | Frame.io e piattaforme team | **Pianificato** | TeamStudio dopo isolamento utenti; permessi, audit e test concorrenza |
+| Video da testo, avatar e presentatori virtuali | Vidnoz e servizi AI video | **Assente / pianificato** | Script/storyboard, avatar autorizzati, voce, sottotitoli e disclosure sintetico |
+
+### 10.1 Cinque direzioni distintive del prodotto
+
+Non si può garantire che un'idea non sia mai stata realizzata da nessuno. Queste sono proposte di differenziazione attraverso combinazioni e workflow integrati, da validare con utenti e prototipi:
+
+1. **Regista IA con piano spiegabile**: analizza obiettivo, durata, pubblico e media; presenta storyboard, motivazioni dei tagli e piano modificabile prima di applicarlo. Deve mostrare alternative e consentire di bloccare clip o momenti.
+2. **VideoDoctor preventivo e riparazione guidata**: controlla qualità tecnica e narrativa prima dell'export; propone interventi con impatto stimato, senza alterare l'originale e con report verificabile.
+3. **MultiSocial Universe**: da una timeline master crea versioni per piattaforma, lingua, aspect ratio e durata; mantiene un collegamento tra versioni e segnala cosa è stato adattato.
+4. **Privacy Director**: prima di esportare o condividere individua volti, targhe, documenti, coordinate e dati personali; propone blur/redaction e rimozione metadati, con revisione frame-by-frame. Non sostituisce SafeMedia: aggiunge una verifica contestuale del contenuto.
+5. **CreativeMemory + Universal Voice**: memorizza solo preferenze creative autorizzate e consente di impartire comandi vocali/testuali per montare, tradurre, correggere e riutilizzare stili; ogni modifica è anteprimabile e annullabile.
+
+### 10.2 Funzioni da esplicitare e non lasciare implicite
+
+- **SmartCamera Director**: assistente alla ripresa, distinto dall'editor. Guida in tempo reale (quando i sistemi lo consentono) su inquadratura, luce, stabilità, orientamento, spazio audio e durata; fornisce checklist e suggerimenti, non registra né carica senza consenso.
+- **Privacy Director**: estensione di SafeMedia con rilevamento contestuale e redazione nel video, non solo rimozione metadati.
+- **Universal Voice**: ampliare VoiceStudio a input vocale, doppiaggio multi-speaker, dizionario di pronuncia, glossari, voice-over e comandi di editing. Clonazione solo con consenso verificabile e policy anti-impersonificazione.
+- **MultiTraduzione batch**: un job per lingua collegato a un job gruppo; file distinti per lingua, ZIP, retry/cancel per singola lingua, glossario, revisione e stato indipendente.
+- **Text-based editing**, **beat detection**, **stabilizzazione**, **tracking/mask**, **keyframe/speed curves**, **proxy**, **multicam**, **semantic search** e **LUT/HDR** devono avere ticket e criteri propri, non essere considerati coperti da un generico “editor IA”.
+
+### 10.3 Criteri di accettazione trasversali
+
+Una funzione entra nello stato “completata” solo se:
+- è raggiungibile da un flusso UI reale e non solo da un modello/API isolato;
+- gestisce input invalidi, annullamento, timeout, rete assente e ripresa quando prevista;
+- salva stato e risultati in modo coerente, senza perdere l'originale;
+- applica autorizzazioni lato server e isolamento account per ogni asset/job/output cloud;
+- espone limiti, stima costi e consenso prima dell'elaborazione remota;
+- ha unit, integration, security e regression test automatizzati;
+- è verificata su piattaforme dichiarate supportate e con media di test rappresentativi;
+- documenta provider, licenze, lingue, limiti e qualità attesa.
+
+### 10.4 Priorità operative e gate
+
+**P0 — prima di ampliare i servizi cloud**
+- autenticazione individuale e isolamento account end-to-end;
+- storage/job ownership, quote, idempotenza, cancellazione e recovery;
+- configurazione provider server-side, secret management, audit e rate limiting;
+- coda durevole con resume/retry e pulizia dei file temporanei.
+
+**P1 — valore immediato e rischio controllabile**
+- SmartCamera Director (prima versione come guida/checklist);
+- VideoDoctor base e Privacy Director;
+- sottotitoli/trascrizione e MultiTraduzione batch con provider selezionabile;
+- Auto Reframe e preset MultiSocial.
+
+**P2 — editor creativo avanzato**
+- keyframe e speed curves, maschere/tracking, stabilizzazione, beat detection;
+- editing da trascrizione, pulizia audio e semantic media search;
+- proxy e multicam.
+
+**P3 — elaborazioni generative e collaborazione**
+- avatar/presentatori, text/document-to-video, PhotoMotion, ReLight IA e MemoryRestorer;
+- TeamStudio e AdCreator dopo i gate di sicurezza, licenze e costi.
+
+I livelli indicano priorità, non date o completamento. Una funzione cloud ad alto costo non va attivata in produzione finché preventivo, quote, cancellazione, privacy e provider fallback non superano i test.
