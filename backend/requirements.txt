@@ -5,3 +5,4 @@ Pillow>=10.0,<13
 httpx
 cryptography>=42,<47
 pydantic>=2.6,<3
+boto3>=1.34,<2

@@ -130,3 +130,17 @@ overwrite a newer reconciler's state. Transient provider read failures release
 the lease for a later supervised attempt. Expired leases can be reclaimed.
 The migration adds the lease columns to existing queue databases without
 dropping or rewriting existing jobs.
+
+
+
+## Private completed-video storage foundation
+
+A provider-neutral S3-compatible adapter is now available in `backend/studio_storage.py`:
+
+- Stores completed video bytes under an account- and job-scoped object key.
+- Accepts only MP4, WebM, MOV and AVI content types and enforces a configurable size limit.
+- Uses server-side AES256 encryption and never requests a public ACL. The deployment must separately enable bucket-level Block Public Access, deny non-TLS requests, and configure retention/lifecycle policies.
+- Creates HTTPS presigned GET links only after an ownership-scoped object existence check; link lifetime is limited to 60–900 seconds.
+- Credentials and bucket configuration are read only from backend environment variables. No storage URL or credential is returned by this adapter's public data model.
+
+This is an infrastructure adapter, not yet an end-to-end delivery feature: the supervised worker does not yet fetch provider output into this storage, no public download route is enabled, and no presigned URL is persisted in SQLite. A production rollout still requires provider-download host allowlisting/redirect controls, streamed size and MIME verification, malware/media validation, object lifecycle rules, deletion propagation, and authenticated download integration.
