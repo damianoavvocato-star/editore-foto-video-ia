@@ -74,9 +74,29 @@ class JobRegistry(dict[str, dict[str, Any]]):
                 )
                 """
             )
-            rows = connection.execute(
-                "SELECT job_id, payload FROM media_jobs"
+            legacy_rows = connection.execute(
+                "SELECT job_id, payload, updated_at FROM media_jobs ORDER BY updated_at"
             ).fetchall()
+            # Migrate keys written by the earlier process-local implementation
+            # so deployment does not forget previously accepted requests.
+            for legacy_job_id, legacy_payload, updated_at in legacy_rows:
+                try:
+                    legacy_values = json.loads(legacy_payload)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(legacy_values, dict):
+                    continue
+                scope = legacy_values.get("_idempotency_scope")
+                key = legacy_values.get("_idempotency_key")
+                fingerprint = legacy_values.get("_request_fingerprint")
+                if all(isinstance(value, str) and value for value in (scope, key, fingerprint)):
+                    connection.execute(
+                        """INSERT OR IGNORE INTO render_idempotency(
+                               scope, idempotency_key, fingerprint, job_id, created_at
+                           ) VALUES (?, ?, ?, ?, ?)""",
+                        (scope, key, fingerprint, legacy_job_id, updated_at),
+                    )
+            rows = [(job_id, payload) for job_id, payload, _ in legacy_rows]
         # SQLite creates the database using the process umask, which may be
         # more permissive than this service's private-media policy. Restrict it
         # immediately, including on first startup before any job is written.

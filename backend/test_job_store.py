@@ -187,3 +187,44 @@ def test_registry_get_refreshes_state_written_by_another_instance(tmp_path):
     writer[job_id].update(state="completed", progress=1.0)
     assert reader.get(job_id)["state"] == "completed"
     assert reader.get(job_id)["progress"] == 1.0
+
+
+
+def test_legacy_idempotency_metadata_is_migrated_on_registry_startup(tmp_path):
+    import json
+    import sqlite3
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    job_id = uuid.uuid4().hex
+    legacy_values = {
+        "state": "succeeded",
+        "progress": 1.0,
+        "_idempotency_scope": "account-scope",
+        "_idempotency_key": "legacy-key",
+        "_request_fingerprint": "legacy-fingerprint",
+    }
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE media_jobs (
+                job_id TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )"""
+        )
+        connection.execute(
+            "INSERT INTO media_jobs(job_id,payload,updated_at) VALUES(?,?,?)",
+            (job_id, json.dumps(legacy_values), 123.0),
+        )
+
+    restored = JobRegistry(database)
+    replayed_id, created = restored.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "legacy-key",
+        "legacy-fingerprint",
+    )
+
+    assert created is False
+    assert replayed_id == job_id
