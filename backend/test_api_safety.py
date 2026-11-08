@@ -172,6 +172,8 @@ def test_render_failure_does_not_expose_server_traceback(tmp_path, monkeypatch):
 
 def test_owner_totp_api_requires_second_factor_before_session(tmp_path, monkeypatch):
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
     from cryptography.fernet import Fernet
     from backend.accounts import AccountStore
     from backend.totp import code_at
@@ -314,7 +316,7 @@ def test_account_management_routes_apply_role_permissions(tmp_path, monkeypatch)
             "role": "admin",
         },
     )
-    assert elevated.status_code == 422
+    assert elevated.status_code == 403
 
     reset = client.post(
         f"/v1/owner/accounts/{regular['userId']}/reset-password",
