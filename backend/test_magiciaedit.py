@@ -238,3 +238,17 @@ def test_ai_job_can_be_cancelled_before_provider_finishes(monkeypatch, tmp_path)
             break
         time.sleep(0.01)
     assert status["state"] == "cancelled"
+
+
+def test_plan_rejects_non_numeric_timeline_values_cleanly():
+    asset_id = "d" * 32
+    for invalid_value in (None, "not-a-number", float("inf")):
+        try:
+            magiciaedit._normalise_plan(
+                {"clips": [{"assetId": asset_id, "durationMs": invalid_value}]},
+                {asset_id},
+            )
+        except magiciaedit.MagicIAError as exc:
+            assert "tempi non validi" in str(exc)
+        else:
+            raise AssertionError("Malformed timeline values must be rejected")
