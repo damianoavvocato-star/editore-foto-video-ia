@@ -91,6 +91,8 @@ class CreditStore:
                 (user_id, kind, reference_id),
             ).fetchone()
             if existing:
+                if existing["amount"] != amount:
+                    raise CreditError("Riferimento già utilizzato con una quantità diversa.")
                 row = db.execute(
                     "SELECT balance FROM ai_credit_balances WHERE user_id=?",
                     (user_id,),
