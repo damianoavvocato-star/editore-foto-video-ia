@@ -697,3 +697,40 @@ def test_upload_rejects_fake_pdf_extension(tmp_path, monkeypatch):
     )
     assert response.status_code == 415
     assert list(tmp_path.iterdir()) == []
+
+
+def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("dashboard_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "dashboard_admin", "admin password long enough", "admin"
+    )
+    support = store.create_managed_account(
+        owner["userId"], "dashboard_support", "support password long enough", "support"
+    )
+    user = store.register("dashboard_user", "user password long enough")
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/v1/admin/dashboard", headers=headers(admin["userId"]))
+    assert response.status_code == 200
+    dashboard = response.json()["dashboard"]
+    assert dashboard["totalAccounts"] == 4
+    assert dashboard["activeAccounts"] == 4
+    assert dashboard["disabledAccounts"] == 0
+    assert dashboard["accountsByRole"]["admin"] == 1
+    assert dashboard["createdLast30Days"] == 4
+    assert "username" not in dashboard
+
+    assert client.get("/v1/admin/dashboard", headers=headers(owner["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(support["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(user["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard").status_code == 401
