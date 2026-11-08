@@ -675,3 +675,25 @@ def test_render_worker_start_failure_releases_claim_and_allows_idempotent_retry(
         ).fetchone()[0]
     assert job_claims == 0
     assert store.owns_media_resource("asset", asset_id, user["userId"]) is True
+
+
+
+def test_upload_accepts_pdf_document(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+    response = TestClient(server.app).post(
+        '/v1/assets',
+        files={'file': ('brief.pdf', io.BytesIO(b'%PDF-1.7\\nexample'), 'application/pdf')},
+    )
+    assert response.status_code == 200
+    asset_id = response.json()['assetId']
+    assert (tmp_path / f'{asset_id}.pdf').read_bytes().startswith(b'%PDF-')
+
+
+def test_upload_rejects_fake_pdf_extension(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+    response = TestClient(server.app).post(
+        '/v1/assets',
+        files={'file': ('fake.pdf', io.BytesIO(b'not a pdf'), 'application/pdf')},
+    )
+    assert response.status_code == 415
+    assert list(tmp_path.iterdir()) == []

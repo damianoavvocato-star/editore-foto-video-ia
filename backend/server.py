@@ -682,7 +682,7 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
     _request_account(request)
     # Never trust a client filename; retain only a small allow-list of media extensions.
     suffix = Path(file.filename or '').suffix.lower()
-    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v', '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac'}
+    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v', '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.pdf', '.docx', '.pptx', '.txt', '.md', '.rtf'}
     if suffix not in allowed:
         raise HTTPException(415, 'Formato file non supportato')
     asset_id = uuid.uuid4().hex
@@ -695,11 +695,28 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
         with partial.open('xb') as out:
             while chunk := await file.read(1024*1024):
                 size += len(chunk)
-                if size > 400*1024*1024:
-                    raise HTTPException(413, 'File superiore a 400 MB')
+                max_size = 50 * 1024 * 1024 if suffix in {'.pdf', '.docx', '.pptx', '.txt', '.md', '.rtf'} else 400 * 1024 * 1024
+                if size > max_size:
+                    raise HTTPException(413, 'Documento superiore a 50 MB' if max_size < 400 * 1024 * 1024 else 'File superiore a 400 MB')
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, 'File vuoto')
+        if suffix == '.pdf':
+            valid_document = partial.open('rb').read(5) == b'%PDF-'
+        elif suffix in {'.docx', '.pptx'}:
+            valid_document = partial.open('rb').read(4) == bytes((80, 75, 3, 4))
+        elif suffix == '.rtf':
+            valid_document = partial.open('rb').read(5).lower() == b'{\\rtf'
+        elif suffix in {'.txt', '.md'}:
+            try:
+                partial.read_bytes()[:65536].decode('utf-8-sig')
+                valid_document = True
+            except UnicodeDecodeError:
+                valid_document = False
+        else:
+            valid_document = True
+        if not valid_document:
+            raise HTTPException(415, 'Il contenuto del documento non corrisponde al formato dichiarato')
         os.chmod(partial, 0o600)
         os.replace(partial, destination)
     except Exception:
