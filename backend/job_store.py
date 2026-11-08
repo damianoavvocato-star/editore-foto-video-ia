@@ -208,24 +208,54 @@ class JobRegistry(dict[str, dict[str, Any]]):
                 (scope, idempotency_key),
             ).fetchone()
             if existing is not None:
-                connection.rollback()
                 existing_job_id, existing_fingerprint = existing
                 if existing_fingerprint != fingerprint:
+                    connection.rollback()
                     raise IdempotencyConflict(
                         "Idempotency key was reused with a different request."
                     )
-                return existing_job_id, False
-            connection.execute(
-                """INSERT INTO media_jobs(job_id, payload, updated_at)
-                   VALUES (?, ?, ?)""",
-                (job_id, payload, time.time()),
-            )
-            connection.execute(
-                """INSERT INTO render_idempotency(
-                       scope, idempotency_key, fingerprint, job_id, created_at
-                   ) VALUES (?, ?, ?, ?, ?)""",
-                (scope, idempotency_key, fingerprint, job_id, time.time()),
-            )
+                existing_row = connection.execute(
+                    "SELECT payload FROM media_jobs WHERE job_id = ?",
+                    (existing_job_id,),
+                ).fetchone()
+                try:
+                    existing_values = json.loads(existing_row[0]) if existing_row else {}
+                except (TypeError, ValueError):
+                    existing_values = {}
+                # A worker cannot survive a process restart. Permit exactly one
+                # atomic retry only for that explicit interruption marker; all
+                # other terminal and active jobs keep normal idempotent replay.
+                if (
+                    isinstance(existing_values, dict)
+                    and existing_values.get("state") == "failed"
+                    and existing_values.get("error") == "worker_interrupted"
+                ):
+                    connection.execute(
+                        """INSERT INTO media_jobs(job_id, payload, updated_at)
+                           VALUES (?, ?, ?)""",
+                        (job_id, payload, time.time()),
+                    )
+                    connection.execute(
+                        """UPDATE render_idempotency
+                           SET job_id = ?, created_at = ?
+                           WHERE scope = ? AND idempotency_key = ?""",
+                        (job_id, time.time(), scope, idempotency_key),
+                    )
+                else:
+                    connection.rollback()
+                    return existing_job_id, False
+            else:
+                connection.execute(
+                    """INSERT INTO media_jobs(job_id, payload, updated_at)
+                       VALUES (?, ?, ?)""",
+                    (job_id, payload, time.time()),
+                )
+                connection.execute(
+                    """INSERT INTO render_idempotency(
+                           scope, idempotency_key, fingerprint, job_id, created_at
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    (scope, idempotency_key, fingerprint, job_id, time.time()),
+                )
             connection.commit()
         except Exception:
             connection.rollback()

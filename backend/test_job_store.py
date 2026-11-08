@@ -228,3 +228,111 @@ def test_legacy_idempotency_metadata_is_migrated_on_registry_startup(tmp_path):
 
     assert created is False
     assert replayed_id == job_id
+
+
+
+def test_interrupted_idempotent_job_can_be_retried_once_after_restart(tmp_path):
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    first = JobRegistry(database)
+    old_job_id, created = first.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "rendering", "progress": 0.4},
+        "account-scope",
+        "retry-render-key",
+        "same-fingerprint",
+    )
+    assert created is True
+
+    restored = JobRegistry(database)
+    assert restored[old_job_id]["error"] == "worker_interrupted"
+
+    new_job_id, retried = restored.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "retry-render-key",
+        "same-fingerprint",
+    )
+    assert retried is True
+    assert new_job_id != old_job_id
+    assert restored[old_job_id]["state"] == "failed"
+    assert restored[new_job_id]["state"] == "queued"
+
+    replayed_id, replayed_created = restored.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "retry-render-key",
+        "same-fingerprint",
+    )
+    assert replayed_created is False
+    assert replayed_id == new_job_id
+
+
+def test_idempotent_job_retry_does_not_replace_regular_failure(tmp_path):
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    registry = JobRegistry(database)
+    original_id, _ = registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "failed", "error": "ffmpeg_failed"},
+        "account-scope",
+        "stable-failure-key",
+        "same-fingerprint",
+    )
+
+    replayed_id, created = registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "stable-failure-key",
+        "same-fingerprint",
+    )
+    assert created is False
+    assert replayed_id == original_id
+
+
+def test_concurrent_retries_share_one_new_job_after_interruption(tmp_path):
+    import threading
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    original = JobRegistry(database)
+    original.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "rendering", "progress": 0.2},
+        "account-scope",
+        "concurrent-retry-key",
+        "same-fingerprint",
+    )
+    first = JobRegistry(database)
+    second = JobRegistry(database)
+    barrier = threading.Barrier(2)
+    results = []
+
+    def retry(registry):
+        barrier.wait()
+        results.append(registry.create_idempotent_job(
+            uuid.uuid4().hex,
+            {"state": "queued", "progress": 0.0},
+            "account-scope",
+            "concurrent-retry-key",
+            "same-fingerprint",
+        ))
+
+    workers = [
+        threading.Thread(target=retry, args=(first,)),
+        threading.Thread(target=retry, args=(second,)),
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=5)
+
+    assert all(not worker.is_alive() for worker in workers)
+    assert len(results) == 2
+    assert results[0][0] == results[1][0]
+    assert sorted(created for _, created in results) == [False, True]
