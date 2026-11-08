@@ -17,6 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from cryptography.fernet import Fernet, InvalidToken
+
 _USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 _ROLES = {"owner", "admin", "support", "collaborator", "user"}
 _SESSION_SECONDS = 60 * 60 * 24 * 30
@@ -24,6 +26,10 @@ _SESSION_SECONDS = 60 * 60 * 24 * 30
 
 class AccountError(ValueError):
     """Safe account operation error."""
+
+
+class SecurityConfigurationError(RuntimeError):
+    """Required external security configuration is missing or invalid."""
 
 
 class AccountStore:
@@ -100,6 +106,20 @@ class AccountStore:
             account_columns = {row["name"] for row in db.execute("PRAGMA table_info(accounts)").fetchall()}
             if "must_change_password" not in account_columns:
                 db.execute("ALTER TABLE accounts ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            if "totp_secret_enc" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN totp_secret_enc BLOB")
+            if "totp_pending_secret_enc" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN totp_pending_secret_enc BLOB")
+            if "totp_enabled_at" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN totp_enabled_at INTEGER")
+            db.execute("""CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+                recovery_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                code_hash TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL,
+                used_at INTEGER
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS totp_recovery_user_idx ON totp_recovery_codes(user_id, used_at)")
 
     @staticmethod
     def _password(password: str, salt: bytes) -> bytes:
@@ -203,7 +223,7 @@ class AccountStore:
             )
         return token, expires
 
-    def login(self, username: str, password: str) -> tuple[dict[str, Any], str, int]:
+    def authenticate_password(self, username: str, password: str) -> dict[str, Any]:
         with self._connect() as db:
             row = db.execute(
                 "SELECT * FROM accounts WHERE username=? COLLATE NOCASE", (username,)
@@ -214,8 +234,182 @@ class AccountStore:
         actual = self._password(password if isinstance(password, str) else "", salt)
         if row is None or row["disabled_at"] is not None or not hmac.compare_digest(actual, expected):
             raise AccountError("Credenziali non valide.")
-        token, expires = self.issue_session(row["user_id"])
-        return self._public(row), token, expires
+        return self._public(row)
+
+    def login(
+        self, username: str, password: str, totp_code: str | None = None
+    ) -> tuple[dict[str, Any], str, int]:
+        account = self.authenticate_password(username, password)
+        if account["role"] == "owner" and self.totp_enabled(account["userId"]):
+            if not isinstance(totp_code, str) or not self.verify_owner_second_factor(
+                account["userId"], totp_code
+            ):
+                raise AccountError("Secondo fattore non valido o richiesto.")
+        token, expires = self.issue_session(account["userId"])
+        return account, token, expires
+
+    @staticmethod
+    def _totp_fernet() -> Fernet:
+        configured = os.getenv("MEDIA_TOTP_ENCRYPTION_KEY", "").strip()
+        if not configured:
+            raise SecurityConfigurationError(
+                "MEDIA_TOTP_ENCRYPTION_KEY non configurata: autenticazione 2FA bloccata."
+            )
+        try:
+            return Fernet(configured.encode("ascii"))
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise SecurityConfigurationError(
+                "MEDIA_TOTP_ENCRYPTION_KEY non valida: autenticazione 2FA bloccata."
+            ) from exc
+
+    @staticmethod
+    def _recovery_hash(code: str) -> str:
+        return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
+
+    def totp_enabled(self, user_id: str) -> bool:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT role,totp_enabled_at,totp_secret_enc FROM accounts WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        return bool(
+            row and row["role"] == "owner" and row["totp_enabled_at"] is not None
+            and row["totp_secret_enc"]
+        )
+
+    def begin_totp_setup(self, user_id: str, password: str) -> str:
+        fernet = self._totp_fernet()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT role,password_salt,password_hash,disabled_at FROM accounts WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        if row is None or row["role"] != "owner" or row["disabled_at"] is not None:
+            raise AccountError("Operazione riservata al proprietario.")
+        actual = self._password(password if isinstance(password, str) else "", row["password_salt"])
+        if not hmac.compare_digest(actual, row["password_hash"]):
+            raise AccountError("Password non valida.")
+        if self.totp_enabled(user_id):
+            raise AccountError("La verifica in due passaggi è già attiva.")
+        from backend.totp import generate_secret
+        secret = generate_secret()
+        encrypted = fernet.encrypt(secret.encode("ascii"))
+        with self._connect() as db:
+            db.execute(
+                "UPDATE accounts SET totp_pending_secret_enc=? WHERE user_id=? AND role='owner'",
+                (encrypted, user_id),
+            )
+        return secret
+
+    def confirm_totp_setup(self, user_id: str, code: str) -> list[str]:
+        from backend.totp import matching_counter
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT role,totp_pending_secret_enc,disabled_at FROM accounts WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        if row is None or row["role"] != "owner" or row["disabled_at"] is not None:
+            raise AccountError("Operazione riservata al proprietario.")
+        if not row["totp_pending_secret_enc"]:
+            raise AccountError("Avvia prima la configurazione della verifica in due passaggi.")
+        try:
+            secret = self._totp_fernet().decrypt(row["totp_pending_secret_enc"]).decode("ascii")
+        except InvalidToken as exc:
+            raise SecurityConfigurationError("Segreto 2FA non decifrabile.") from exc
+        counter = matching_counter(secret, code, window=1)
+        if counter is None:
+            raise AccountError("Codice di verifica non valido.")
+        recovery_codes = [secrets.token_hex(5).upper() for _ in range(10)]
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT totp_pending_secret_enc,totp_enabled_at FROM accounts WHERE user_id=? AND role='owner'",
+                (user_id,),
+            ).fetchone()
+            if current is None or current["totp_enabled_at"] is not None or not hmac.compare_digest(
+                bytes(current["totp_pending_secret_enc"] or b""), bytes(row["totp_pending_secret_enc"])
+            ):
+                raise AccountError("Configurazione 2FA modificata; ripeti la procedura.")
+            db.execute(
+                """UPDATE accounts SET totp_secret_enc=?,totp_pending_secret_enc=NULL,
+                   totp_enabled_at=? WHERE user_id=?""",
+                (row["totp_pending_secret_enc"], now, user_id),
+            )
+            db.execute(
+                """INSERT INTO totp_replay_state(user_id,last_counter,updated_at) VALUES(?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET last_counter=excluded.last_counter,
+                   updated_at=excluded.updated_at""",
+                (user_id, counter, now),
+            )
+            db.execute("DELETE FROM totp_recovery_codes WHERE user_id=?", (user_id,))
+            db.executemany(
+                """INSERT INTO totp_recovery_codes(user_id,code_hash,created_at)
+                   VALUES(?,?,?)""",
+                [(user_id, self._recovery_hash(item), now) for item in recovery_codes],
+            )
+        self.record_audit_event(user_id, "security.totp_enabled", user_id, {"recovery_codes": len(recovery_codes)})
+        return recovery_codes
+
+    def verify_owner_second_factor(self, user_id: str, supplied: str) -> bool:
+        from backend.totp import matching_counter
+        if not isinstance(supplied, str) or not 6 <= len(supplied) <= 64:
+            return False
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT role,totp_secret_enc,totp_enabled_at,disabled_at
+                   FROM accounts WHERE user_id=?""",
+                (user_id,),
+            ).fetchone()
+        if (row is None or row["role"] != "owner" or row["disabled_at"] is not None
+                or row["totp_enabled_at"] is None or not row["totp_secret_enc"]):
+            return False
+        try:
+            secret = self._totp_fernet().decrypt(row["totp_secret_enc"]).decode("ascii")
+        except InvalidToken as exc:
+            raise SecurityConfigurationError("Segreto 2FA non decifrabile.") from exc
+        counter = matching_counter(secret, supplied, window=1)
+        if counter is not None and self.consume_totp_counter(user_id, counter):
+            return True
+        # Recovery codes are random, high-entropy, one-time values stored only as hashes.
+        code_hash = self._recovery_hash(supplied)
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            result = db.execute(
+                """UPDATE totp_recovery_codes SET used_at=?
+                   WHERE user_id=? AND code_hash=? AND used_at IS NULL""",
+                (now, user_id, code_hash),
+            )
+            return result.rowcount == 1
+
+    def disable_totp(self, user_id: str, password: str, code: str) -> None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT role,password_salt,password_hash,disabled_at FROM accounts WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        if row is None or row["role"] != "owner" or row["disabled_at"] is not None:
+            raise AccountError("Operazione riservata al proprietario.")
+        actual = self._password(password if isinstance(password, str) else "", row["password_salt"])
+        if not hmac.compare_digest(actual, row["password_hash"]):
+            raise AccountError("Password non valida.")
+        if not self.verify_owner_second_factor(user_id, code):
+            raise AccountError("Secondo fattore non valido.")
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute(
+                """UPDATE accounts SET totp_secret_enc=NULL,totp_pending_secret_enc=NULL,
+                   totp_enabled_at=NULL WHERE user_id=?""",
+                (user_id,),
+            )
+            db.execute("DELETE FROM totp_recovery_codes WHERE user_id=?", (user_id,))
+            db.execute("DELETE FROM totp_replay_state WHERE user_id=?", (user_id,))
+            db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+        self.record_audit_event(user_id, "security.totp_disabled", user_id, {})
 
     def resolve_session(self, token: str | None) -> dict[str, Any] | None:
         if not isinstance(token, str) or not token or len(token) > 512:
