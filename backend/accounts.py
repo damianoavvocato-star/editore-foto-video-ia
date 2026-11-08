@@ -210,19 +210,23 @@ class AccountStore:
             ).fetchall()
         return not any(row["blocked_until"] > now for row in rows)
 
-    def record_login_failure(self, ip_address: str, username: str) -> None:
+    def record_login_failure(self, ip_address: str, username: str) -> bool:
+        """Record a failed factor and return True only when a throttle is newly activated."""
         now = int(time.time())
         keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
+        newly_blocked = False
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             for key in keys:
                 row = db.execute(
-                    "SELECT attempts,window_started FROM auth_rate_limits WHERE key_hash=?", (key,)
+                    "SELECT attempts,window_started,blocked_until FROM auth_rate_limits WHERE key_hash=?", (key,)
                 ).fetchone()
                 if row is None or now - row["window_started"] >= 900:
                     attempts, started = 1, now
                 else:
                     attempts, started = row["attempts"] + 1, row["window_started"]
+                if attempts >= 10 and (row is None or row["blocked_until"] <= now):
+                    newly_blocked = True
                 blocked = now + 900 if attempts >= 10 else 0
                 db.execute("""
                     INSERT INTO auth_rate_limits(key_hash,attempts,window_started,blocked_until)
@@ -230,6 +234,34 @@ class AccountStore:
                     attempts=excluded.attempts,window_started=excluded.window_started,
                     blocked_until=excluded.blocked_until
                 """, (key, attempts, started, blocked))
+        return newly_blocked
+
+    def record_login_success(
+        self, user_id: str, role: str, ip_address: str
+    ) -> bool:
+        """Audit a new session with a one-way IP fingerprint; return whether IP is new."""
+        ip_hash = self._rate_key("ip", ip_address)
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT details_json FROM account_audit_events
+                   WHERE actor_user_id=? AND action='auth.login_success'
+                   ORDER BY event_id DESC LIMIT 100""",
+                (user_id,),
+            ).fetchall()
+        seen = False
+        for row in rows:
+            try:
+                if json.loads(row["details_json"]).get("ipHash") == ip_hash:
+                    seen = True
+                    break
+            except (TypeError, ValueError):
+                continue
+        new_ip = not seen
+        self.record_audit_event(
+            user_id, "auth.login_success", user_id,
+            {"role": role, "ipHash": ip_hash, "newIp": new_ip},
+        )
+        return new_ip
 
     def clear_login_failures(self, ip_address: str, username: str) -> None:
         keys = (self._rate_key("ip", ip_address), self._rate_key("user", username))
