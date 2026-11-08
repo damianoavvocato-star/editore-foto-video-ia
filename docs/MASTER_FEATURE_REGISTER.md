@@ -23,7 +23,7 @@
 | P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
-| P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta e stato | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
+| P0-05 | Console Assistenza e ticket | Support | apertura ticket, elenco, conversazione, risposta, stato e controlli assegnazione Owner/Admin | storage SQLite, ACL proprietario/staff, assegnazione operatori e audit | isolamento, assegnazione solo a Support attivo, revoca assegnazione e permessi verificati; restano notifiche e supporto media con consenso | partial |
 | P0-06 | Console Collaboratore / TeamStudio | Collab | inviti, incarichi, revisioni | membership, ACL e revoca | isolamento tra team e revoca immediata | missing |
 | P0-07 | Registro audit consultabile e filtrabile | Owner | filtri, pagine, dettaglio | query bounded e autorizzate | filtri data/azione/attore, limiti e 403 | partial |
 | P0-08 | Audit log antimanomissione | Owner | stato integrità | hash chain o firma, verifica periodica | alterazione/rimozione rilevata | missing |
@@ -144,3 +144,10 @@
 - L'assegnazione è restituita in elenco e dettaglio ticket e ogni modifica genera un evento audit senza esporre dati non necessari.
 - Test API aggiunti per ruolo non autorizzato, assegnatario non valido, assegnazione, revoca e lettura del valore aggiornato. La funzionalità resta `partial`: manca il controllo visuale nella console, oltre a notifiche e supporto media con consenso.
 - Modifiche sul branch `feature/magiciaedit-cloud-foundation`; attendere CI prima di considerarle verificate. Nessun APK generato.
+
+
+## Aggiornamento interfaccia Assistenza — 8 novembre 2026
+
+- La console Owner/Admin include ora un selettore degli operatori Support attivi e l'azione per assegnare o rimuovere l'assegnazione del ticket tramite endpoint protetto.
+- La lista ticket indica quando un ticket risulta assegnato.
+- La verifica CI successiva alle modifiche UI è in attesa; la modifica non viene conteggiata come completata finché i test non terminano.
