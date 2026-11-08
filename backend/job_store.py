@@ -10,6 +10,8 @@ import json
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
+from typing import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +40,7 @@ class JobRegistry(dict[str, dict[str, Any]]):
             os.chmod(self.database.parent, 0o700)
         except OSError:
             pass
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS media_jobs (
@@ -76,9 +78,18 @@ class JobRegistry(dict[str, dict[str, Any]]):
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def _save(self, job_id: str, values: dict[str, Any]) -> None:
         payload = json.dumps(values, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO media_jobs(job_id, payload, updated_at)
@@ -101,11 +112,11 @@ class JobRegistry(dict[str, dict[str, Any]]):
 
     def pop(self, job_id: str, *default: Any) -> Any:
         value = dict.pop(self, job_id, *default)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("DELETE FROM media_jobs WHERE job_id = ?", (job_id,))
         return value
 
     def clear(self) -> None:
         dict.clear(self)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("DELETE FROM media_jobs")
