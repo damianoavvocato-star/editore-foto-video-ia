@@ -581,20 +581,28 @@ def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_pat
         def start(self):
             raise RuntimeError("simulated thread startup failure")
 
-    monkeypatch.setattr(server.threading, "Thread", FailingThread)
-    response = TestClient(server.app).post(
-        "/v1/ai/jobs",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"task": "magicIAedit", "assetIds": [asset_id]},
-    )
+    client = TestClient(server.app)
+    with client:
+        # Start the TestClient portal before replacing Thread, so only the
+        # endpoint's worker launch is simulated as unavailable.
+        monkeypatch.setattr(server.threading, "Thread", FailingThread)
+        response = client.post(
+            "/v1/ai/jobs",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"task": "magicIAedit", "assetIds": [asset_id]},
+        )
 
     assert response.status_code == 503
-    assert store.owns_media_resource("job", "b" * 32, user["userId"]) is False
-    with usage._connect() as db:
+    with store._connect() as db:
+        job_claims = db.execute(
+            "SELECT COUNT(*) FROM media_ownership WHERE resource_type='job' AND owner_user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
         reservations = db.execute(
             "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
             (user["userId"],),
         ).fetchone()[0]
+    assert job_claims == 0
     assert reservations == 0
     assert server.jobs == {}
     assert server.cancel_events == {}
