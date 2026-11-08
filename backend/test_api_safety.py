@@ -598,6 +598,8 @@ def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_pat
             "SELECT COUNT(*) FROM media_ownership WHERE resource_type='job' AND owner_user_id=?",
             (user["userId"],),
         ).fetchone()[0]
+    import sqlite3
+    with sqlite3.connect(usage.database) as db:
         reservations = db.execute(
             "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
             (user["userId"],),
