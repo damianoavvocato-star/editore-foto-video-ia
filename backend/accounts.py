@@ -723,6 +723,32 @@ class AccountStore:
             "disabled": row["disabled_at"] is not None,
         } for row in rows]
 
+    def admin_dashboard_stats(self) -> dict[str, Any]:
+        """Return aggregate operational counters only; never expose account identities."""
+        now = int(time.time())
+        with self._connect() as db:
+            total = db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+            active = db.execute(
+                "SELECT COUNT(*) FROM accounts WHERE disabled_at IS NULL"
+            ).fetchone()[0]
+            disabled = db.execute(
+                "SELECT COUNT(*) FROM accounts WHERE disabled_at IS NOT NULL"
+            ).fetchone()[0]
+            rows = db.execute(
+                "SELECT role,COUNT(*) AS count FROM accounts GROUP BY role"
+            ).fetchall()
+            recent = db.execute(
+                "SELECT COUNT(*) FROM accounts WHERE created_at>=?",
+                (now - 30 * 86400,),
+            ).fetchone()[0]
+        return {
+            "totalAccounts": int(total),
+            "activeAccounts": int(active),
+            "disabledAccounts": int(disabled),
+            "createdLast30Days": int(recent),
+            "accountsByRole": {row["role"]: int(row["count"]) for row in rows},
+        }
+
     def create_managed_account(
         self, actor_user_id: str, username: str, password: str, role: str
     ) -> dict[str, Any]:
