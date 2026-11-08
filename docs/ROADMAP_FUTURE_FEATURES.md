@@ -375,3 +375,108 @@ Ogni incremento deve mantenere main intatto, lavorare sul branch feature e usare
 ### 11.11 Definizione di “completata”
 
 Una capability è “completata” solo quando esiste un flusso UI/API reale, il provider o il motore locale è effettivamente configurato, input/output sono verificati, autorizzazioni e consenso sono testati, cancellazione/timeout/fallback funzionano, test automatici passano, il risultato è collaudato su media rappresentativi e limiti/costi/licenze sono documentati. In caso contrario lo stato resta **pianificata**, **parziale**, **bloccata da provider/configurazione** o **non verificata**.
+
+
+## 12. Consolidamento requisiti emersi nelle conversazioni — 8 novembre 2026
+
+> **Stato: requisiti approvati/raccolti, da implementare o verificare.** Questa sezione rende espliciti i dettagli funzionali emersi nelle conversazioni e non modifica lo stato tecnico delle funzioni. Le voci già coperte nelle sezioni precedenti sono richiamate per tracciabilità, non costituiscono nuove implementazioni.
+
+### 12.1 Esperienza generale e piattaforme
+
+- Prodotto unico di editing foto e video per Android, iOS e computer, con capacità dichiarate separatamente per ciascuna piattaforma e nessuna promessa di parità prima dei test.
+- Flussi sia manuali sia assistiti dall'IA; l'IA deve essere un aiuto controllabile e non rendere obbligatoria l'automazione.
+- Interfaccia multilingue completa: italiano, inglese, francese, spagnolo, arabo e ulteriori lingue principali. La traduzione deve includere onboarding, schermate, menu, impostazioni, errori, notifiche, accessibilità, help e flussi Premium, non soltanto la timeline.
+- Supporto arabo end-to-end: RTL, shaping, punteggiatura, numeri, font, sottotitoli, overlay e testo renderizzato nei video.
+- Accessibilità per navigazione, contrasto, screen reader, sottotitoli, descrizione audio e controlli alternativi.
+- Modalità offline per le funzioni locali; indicazione chiara delle funzioni che richiedono rete o provider cloud e sincronizzazione differita senza perdita di modifiche.
+- Progetti portabili tra dispositivi, con media collegati, dipendenze, font e manifest; gestione esplicita dei file mancanti e delle licenze.
+
+### 12.2 MagicIAedit — comportamento trasversale richiesto
+
+- MagicIAedit deve essere raggiungibile nelle aree pertinenti dell'app e riutilizzabile quando l'utente importa, seleziona, sostituisce o cambia foto e video; non deve avviare elaborazioni cloud o consumare crediti senza consenso.
+- A ogni nuova selezione o modifica del gruppo di media, può analizzare i contenuti disponibili, proporre una selezione dei momenti/asset e costruire una bozza creativa coerente con obiettivo, durata e formato scelti.
+- L'utente deve poter confrontare la selezione IA con gli originali, escludere/bloccare media, cambiare stile, riordinare, modificare la timeline, rigenerare una parte e annullare.
+- Il risultato automatico è una proposta modificabile: nessuna pubblicazione, condivisione, sovrascrittura o acquisto di elaborazione senza approvazione esplicita.
+- Memorizzare le preferenze creative solo secondo le regole di CreativeMemory/Creative DNA e con controllo dell'utente.
+- Distinguere analisi, piano, applicazione alla timeline e rendering; indicare provider, limiti, stato e costo quando si usa il cloud.
+- Criteri di accettazione: selezione media ripetibile, rispetto degli asset bloccati, gestione di media misti e vuoti, fallback provider assente, undo/redo, cancellazione e test di regressione.
+
+### 12.3 Piano gratuito, Premium, crediti e referral
+
+- Definire una matrice pubblica e versionata Free/Premium per ogni capability, piattaforma e modalità locale/cloud. Le funzioni essenziali di editing manuale e gestione dei progetti devono rimanere utilizzabili gratuitamente secondo la politica prodotto approvata.
+- Premium può includere limiti maggiori, modelli/provider avanzati, batch, risoluzioni o velocità superiori e strumenti professionali; non deve essere descritto come illimitato quando esistono costi o limiti provider.
+- Separare entitlement/abbonamento, crediti/quote di elaborazione, limiti anti-abuso e costi effettivi infrastrutturali. Un Premium omaggio non azzera i costi cloud.
+- Esporre prima dell'avvio la stima o fascia di consumo, i limiti applicabili e le alternative locali/economiche; richiedere consenso quando si supera il budget impostato.
+- Referral bilaterale richiesto: quando un invito valido produce una registrazione idonea secondo condizioni antifrode pubblicate, invitante e invitato ricevono ciascuno un mese di Premium. Specificare eleggibilità, univocità dell'invito, scadenza, abuso, annullamenti, rinnovi e trattamento degli account già Premium.
+- Pannello utente: piano, scadenza, crediti/quote, storico consumi, inviti, premi maturati e stato dei pagamenti; nessuna promessa di premio prima della verifica server-side.
+- Pannello proprietario: concessione Premium gratuita per durata predefinita/personalizzata o senza scadenza, revoca/estensione con motivazione e audit; credenziali e password non devono mai essere leggibili dagli operatori.
+
+### 12.4 Importazione, allegati, libreria e gestione media
+
+- Importazione foto/video/audio/documenti dai percorsi consentiti dalle piattaforme e da sorgenti esterne autorizzate; supportare selezione multipla, anteprime, metadati tecnici e gestione dei permessi.
+- Regola UX approvata per la schermata di aggiunta rapida: mostrare/consentire la selezione delle due foto più recenti come scorciatoia iniziale; non interpretarla come limite globale alla libreria o ai media importabili nel progetto. L'utente deve poter accedere alla galleria completa e scegliere altri elementi.
+- Gestire duplicati, file mancanti, formati non supportati, importazioni interrotte, spazio insufficiente, rotazioni e metadati; preservare sempre gli originali.
+- Libreria con ricerca, filtri, raccolte, preferiti, raggruppamento per evento e ricerca semantica quando autorizzata; eliminazione degli indici su richiesta.
+- SafeMedia: cartella privata, blocco PIN/biometrico, cifratura e rimozione selettiva di metadati GPS prima della condivisione.
+- Supportare foto, video e audio di dimensioni/durate diverse con limiti espliciti e proxy quando necessari.
+
+### 12.5 Editing, anteprima, esportazione e condivisione
+
+- Editing manuale: taglio, divisione, unione, ritaglio, rotazione, livelli/tracce, transizioni, testo, overlay, velocità, keyframe, curve velocità, maschere, tracking, chroma key, stabilizzazione, color grading, LUT/HDR, proxy e multicamera; ogni voce deve avere ticket e test specifici.
+- Anteprima fluida e controlli di riproduzione; zoom/pinch-to-zoom anche durante la visualizzazione e riproduzione del video già esportato, senza alterare il file.
+- Esportazione configurabile per container, codec, risoluzione, frame rate, bitrate, audio, sottotitoli e metadati; MP4, MOV, AVI e WebM sono formati richiesti ma supporto e combinazioni vanno provati su file reali e device.
+- Preset per social, rapporti 9:16, 1:1, 16:9 e altri formati, safe area, copertine e versioni multiple.
+- Condivisione dei video e delle immagini con altre persone e verso i principali social tramite share sheet o API ufficiali; credenziali social non devono essere raccolte impropriamente. Ogni pubblicazione diretta richiede conferma esplicita.
+- Possibilità di salvare in locale, esportare pacchetti progetto e inviare file singoli o archivi con varianti linguistiche.
+
+### 12.6 Traduzione e localizzazione video — output e flusso richiesti
+
+- Un video sorgente deve poter generare più versioni linguistiche nella stessa richiesta; obiettivo funzionale minimo pianificato: selezione di almeno 20 lingue, subordinata a provider, costi e qualità verificati.
+- Ogni lingua deve produrre un file video autonomo e scaricabile, oltre a sottotitoli separati; download singolo e ZIP.
+- Stato, progressi, retry, cancellazione, costo e risultato indipendenti per lingua; il fallimento di una lingua non deve bloccare le altre.
+- Flusso: rilevamento/conferma lingua sorgente, ASR con timestamp, revisione trascrizione, diarizzazione, traduzione con glossario, TTS/doppiaggio, sincronizzazione, sottotitoli, OCR delle scritte, rendering e controllo qualità.
+- Conservare musica/ambiente quando tecnicamente possibile; offrire tracce audio separate e controllo del mix.
+- Generare SRT, VTT e ASS; sottotitoli modificabili e sincronizzati; traduzione delle scritte visibili con possibilità di correggere manualmente il risultato.
+- Clonazione vocale solo con consenso verificabile e diritti, disclosure della voce sintetica e protezioni anti-impersonificazione.
+- Il lip-sync è una capability separata e opzionale, mai promesso se il provider non lo supporta.
+
+### 12.7 Creazione di contenuti e promozione dell'app
+
+- Universal Video Studio IA include video da testo/script, immagini, presentazioni, PDF e documenti; corsi, tutorial, presentazioni aziendali e contenuti promozionali.
+- Avatar/presentatori virtuali e talking photo soltanto con diritti e consenso verificabili e disclosure del contenuto sintetico.
+- AdCreator crea campagne, spot, annunci, copy, storyboard, voice-over e adattamenti localizzati, con verifica delle affermazioni commerciali e delle licenze.
+- Requisito distinto: strumenti e materiali per promuovere **l'applicazione stessa** (video pubblicitari, immagini, demo, presentazioni, landing content, varianti per social e lingue). Non confondere questa esigenza con AdCreator destinato ai clienti.
+- E-commerce e cataloghi prodotto, mockup, immagini e video dimostrativi con tracciamento di marchi e diritti.
+
+### 12.8 Proprietario, amministratori, collaboratori e supporto
+
+- Un solo ruolo proprietario, distinto dagli amministratori; autenticazione forte, 2FA, sessioni revocabili e ri-autenticazione per operazioni sensibili.
+- Il proprietario può creare amministratori, assistenza e collaboratori con permessi granulari e temporanei; nessun ruolo subordinato può elevare i propri privilegi o modificare il proprietario.
+- Pannello gestione account, username, abbonamenti, quote, configurazioni IA, segnalazioni e diagnostica; operazioni amministrative sempre autorizzate lato server e registrate.
+- Recupero account tramite procedura verificata e reset sicuro; eventuale codice/password temporanea casuale, monouso, con scadenza e cambio obbligatorio; mai mostrare o recuperare la password attuale.
+- Il supporto non ottiene accesso silenzioso ai progetti privati; accesso assistito solo su autorizzazione esplicita, limitata e auditata.
+- Gestione inviti, revoche, accessi, ruoli e sessioni; test di escalation privilegi, IDOR e isolamento tenant.
+
+### 12.9 Sicurezza, privacy, copyright e affidabilità
+
+- Privacy Director per rilevare e oscurare selettivamente volti, targhe, documenti, indirizzi e dati personali prima dell'export o della condivisione.
+- Consenso esplicito per upload cloud, clonazione/imitazione vocale, avatar, talking photo e uso di immagini di persone; registrare solo le prove necessarie e prevedere revoca/cancellazione.
+- Verifica delle licenze di musica, effetti, font, template, modelli, immagini e contenuti commerciali; registro di provenienza senza segreti o dati non necessari.
+- Auto-save, versioni, cestino recuperabile, backup cifrati, ripristino, checkpoint dei job, ripresa dopo riavvio e protezione dalla sovrascrittura dell'unica copia valida.
+- SmartDevice/SmartShield per memoria, storage, codec, termiche quando disponibili, frame time e degradazione progressiva.
+- Rate limiting, quote atomiche, isolamento account, audit, segreti server-side, retention configurabile e cancellazione verificabile.
+
+### 12.10 Registro di tracciabilità e priorità di sviluppo
+
+Le richieste esplicitate in questo capitolo vanno trasformate in issue/ticket indipendenti con identificatore, owner tecnico, dipendenze, stato, test e criteri di accettazione. Non accorpare funzionalità distinte sotto etichette generiche come “editor completo” o “IA completa”.
+
+Ordine vincolante:
+1. P0 — stabilità CI, autenticazione/ownership, sicurezza account/media/job, quote, recovery durevole, cancellazione, segreti e audit.
+2. P1 — importazione e libreria, flussi UI di editing, anteprima/zoom, esportazione verificata, localizzazione completa e matrice Free/Premium/referral.
+3. P2 — MagicIAedit trasversale e verificabile, VideoDoctor, SafeMedia, AutoRescue, preset MultiSocial e accessibilità.
+4. P3 — capability registry, MagicIA Brain iniziale, provider reali ASR/traduzione/TTS/immagini/video, con test sandbox e budget.
+5. P4 — batch multilingue, avatar, OCR, lip-sync, generazione documenti/video, TeamStudio, AdCreator ed e-commerce.
+6. P5 — test end-to-end su Android/iOS/desktop, sicurezza, performance, licenze, costi e regressione.
+7. Fase 6 — esclusivamente dopo tutti i gate: APK release firmato, installazione e smoke test. Nessun APK prima.
+
+**Regola di rendicontazione:** la percentuale complessiva misura soltanto lavoro implementato e verificato rispetto all'ambito approvato; l'aggiunta di requisiti amplia il denominatore e non aumenta il numeratore. Riportare separatamente avanzamento tecnico, copertura requisiti e blocchi esterni. Se la cronologia dei rami non è integralmente recuperabile, dichiarare esplicitamente la copertura documentale e non affermare che ogni messaggio storico è stato acquisito.
