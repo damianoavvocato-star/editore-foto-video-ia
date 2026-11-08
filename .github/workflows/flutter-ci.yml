@@ -199,7 +199,9 @@ jobs:
           # genuine Gradle configuration errors.
           for attempt in 1 2 3 4 5; do
             echo "Gradle preflight attempt ${attempt}/5"
-            if ./gradlew --no-daemon help; then
+            # Bound each attempt: a stalled wrapper/download must not consume the
+            # entire job timeout and prevent the retry loop from running.
+            if timeout --signal=TERM --kill-after=20s 240s ./gradlew --no-daemon --console=plain help; then
               exit 0
             fi
             if [[ "${attempt}" -lt 5 ]]; then
