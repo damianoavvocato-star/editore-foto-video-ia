@@ -6,8 +6,8 @@ import '../models/account_entitlement.dart';
 import '../services/account_api.dart';
 
 /// Connects the Premium presentation to the authenticated server entitlement.
-/// Billing and referrals stay explicitly unavailable until their providers and
-/// server workflows are implemented; the client never grants Premium itself.
+/// Billing stays explicitly unavailable until a payment provider is integrated;
+/// referral rewards are issued only by the authenticated server.
 class AccountPremiumPage extends StatefulWidget {
   const AccountPremiumPage({
     super.key,
@@ -38,7 +38,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
-      return (userId: null, entitlement: null);
+      return (userId: null, entitlement: null, referralCode: null);
     }
 
     final api = RemoteAccountApi(
