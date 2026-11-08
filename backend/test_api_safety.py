@@ -242,6 +242,7 @@ def test_non_owner_cannot_manage_owner_totp(tmp_path, monkeypatch):
     admin = store.create_managed_account(
         owner["userId"], "api_admin", "admin password long enough", "admin"
     )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
     monkeypatch.setattr(server, "_account_store", lambda: store)
     token, _ = store.issue_session(admin["userId"])
     response = TestClient(server.app).get(
@@ -289,6 +290,8 @@ def test_account_management_routes_apply_role_permissions(tmp_path, monkeypatch)
     support = store.create_managed_account(
         owner["userId"], "perm_support", "support password long enough", "support"
     )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
     regular = store.register("perm_user", "regular password long enough")
     monkeypatch.setattr(server, "_account_store", lambda: store)
     client = TestClient(server.app)
@@ -336,7 +339,7 @@ def test_account_management_routes_apply_role_permissions(tmp_path, monkeypatch)
     )
     assert admin_reset.status_code == 403
 
-    assert client.get("/v1/owner/audit", headers=headers(admin["userId"])).status_code == 200
+    assert client.get("/v1/owner/audit", headers=headers(admin["userId"])).status_code == 403
     assert client.get(
         "/v1/owner/security/totp", headers=headers(admin["userId"])
     ).status_code == 403
@@ -350,6 +353,7 @@ def test_owner_permission_override_is_enforced_by_api(tmp_path, monkeypatch):
     admin = store.create_managed_account(
         owner["userId"], "perm_admin", "admin password long enough", "admin"
     )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
     target = store.register("premium_target", "target password long enough")
     monkeypatch.setattr(server, "_account_store", lambda: store)
     client = TestClient(server.app)
