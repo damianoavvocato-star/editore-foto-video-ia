@@ -437,3 +437,42 @@ def test_collaborator_billing_read_is_limited_to_self(tmp_path, monkeypatch):
     )
     assert own.status_code == 200
     assert other_account.status_code == 403
+
+
+def test_authenticated_session_inventory_and_revocation_api(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    import hashlib
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    first = store.register("session_user", "session user password long")
+    other = store.register("session_other", "session other password long")
+    _, first_token, _ = store.login("session_user", "session user password long")
+    _, second_token, _ = store.login("session_user", "session user password long")
+    _, other_token, _ = store.login("session_other", "session other password long")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    first_headers = {"Authorization": f"Bearer {first_token}"}
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    inventory = client.get("/v1/auth/sessions", headers=first_headers)
+    assert inventory.status_code == 200
+    sessions = inventory.json()["sessions"]
+    current = next(item for item in sessions if item["current"])
+    assert current["sessionId"] == hashlib.sha256(first_token.encode()).hexdigest()
+    other_session_id = hashlib.sha256(second_token.encode()).hexdigest()
+
+    forbidden = client.delete(
+        f"/v1/auth/sessions/{other_session_id}",
+        headers=other_headers,
+    )
+    assert forbidden.status_code == 404
+
+    revoked = client.delete(
+        f"/v1/auth/sessions/{other_session_id}",
+        headers=first_headers,
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["currentSessionRevoked"] is False
+    assert store.resolve_session(second_token) is None
+    assert store.resolve_session(first_token) is not None
+    assert store.resolve_session(other_token) is not None
