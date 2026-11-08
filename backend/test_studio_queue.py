@@ -36,7 +36,7 @@ def test_claim_is_exclusive_and_lease_owner_is_required(tmp_path):
     assert claimed["jobId"] == job["jobId"]
     assert claimed["attempts"] == 1
     assert queue.claim_next("worker-b", now=102) is None
-    with pytest.raises(StudioQueueError, match="lease"):
+    with pytest.raises(StudioQueueError, match="[Ll]ease"):
         queue.mark_submitted("worker-b", job["jobId"], "provider-1", now=103)
 
 
@@ -193,7 +193,7 @@ def test_stale_reconciliation_token_cannot_update_provider_status(tmp_path):
     assert stale is not None
     current = queue.claim_reconciliation("reconciler-b", now=119)
     assert current is not None
-    with pytest.raises(StudioQueueError, match="Lease"):
+    with pytest.raises(StudioQueueError, match="[Ll]ease"):
         queue.record_provider_status(
             "user-a", job["jobId"], "complete", now=120,
             reconciliation_token=stale["_worker"]["reconciliationToken"],
