@@ -23,7 +23,7 @@ class AccountPremiumPage extends StatefulWidget {
 }
 
 class _AccountPremiumPageState extends State<AccountPremiumPage> {
-  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})> _load;
+  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})> _load;
 
   @override
   void initState() {
@@ -31,10 +31,10 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
     _load = _loadEntitlement();
   }
 
-  Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})>
+  Future<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
-    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null);
+    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null, usageSummary: null, creditBalance: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
@@ -77,6 +77,16 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
       );
       String? referralCode;
       Map<String, dynamic>? usageSummary;
+      int? creditBalance;
+      try {
+        final credits = await api.request('GET', '/v1/account/credits');
+        final balance = credits['balance'];
+        if (balance is Map<String, dynamic> && balance['balance'] is int) {
+          creditBalance = balance['balance'] as int;
+        }
+      } on AccountApiException {
+        // Credit ledger can be unavailable independently of the Premium status.
+      }
       try {
         usageSummary = await api.request('GET', '/v1/account/usage');
       } on AccountApiException {
@@ -88,7 +98,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
       } on AccountApiException {
         // Entitlement remains usable if the referral endpoint is temporarily unavailable.
       }
-      return (userId: userId, entitlement: entitlement, referralCode: referralCode, usageSummary: usageSummary);
+      return (userId: userId, entitlement: entitlement, referralCode: referralCode, usageSummary: usageSummary, creditBalance: creditBalance);
     } finally {
       api.close();
     }
@@ -141,7 +151,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary})>(
+    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})>(
       future: _load,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -184,6 +194,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
           entitlement: data.entitlement,
           referralCode: data.referralCode,
           usageSummary: data.usageSummary,
+          creditBalance: data.creditBalance,
           onSignIn: widget.onSignIn,
           onUpgrade: () => _notice(
             'Acquisti Premium non ancora attivi: il sistema di pagamento '
