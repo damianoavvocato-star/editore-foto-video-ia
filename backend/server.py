@@ -315,8 +315,11 @@ def owner_totp_setup_start(body: OwnerTotpSetupStart, request: Request):
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
         if "Password" in str(exc):
-            store.record_login_failure(client_ip, owner["username"])
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
             store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "password_invalid"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_setup_threshold")
         raise HTTPException(403 if 'proprietario' in str(exc) else 422, str(exc)) from exc
     store.clear_login_failures(client_ip, owner["username"])
     from urllib.parse import quote
@@ -343,8 +346,11 @@ def owner_totp_setup_confirm(body: OwnerTotpCode, request: Request):
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
         if "Codice di verifica" in str(exc):
-            store.record_login_failure(client_ip, owner["username"])
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
             store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "code_invalid"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_enrollment_threshold")
         raise HTTPException(422, str(exc)) from exc
     store.clear_login_failures(client_ip, owner["username"])
     # Recovery codes are displayed once; only their hashes remain on the server.
@@ -364,8 +370,11 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
         raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
     except AccountError as exc:
         if "Password" in str(exc) or "Secondo fattore" in str(exc):
-            store.record_login_failure(client_ip, owner["username"])
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
             store.record_audit_event(owner["userId"], "security.totp_disable_failed", owner["userId"], {"reason": "reauthentication_failed"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_disable_threshold")
         raise HTTPException(422, str(exc)) from exc
     store.clear_login_failures(client_ip, owner["username"])
     return {"enabled": False, "sessionsRevoked": True}
