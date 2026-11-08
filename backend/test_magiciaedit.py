@@ -388,3 +388,51 @@ def test_ai_endpoint_rejects_non_object_options_before_creating_job(monkeypatch,
     )
     assert response.status_code == 422
     assert set(server.jobs) == before
+
+
+
+def test_authenticated_ai_jobs_enforce_monthly_free_quota(monkeypatch, tmp_path):
+    from backend.accounts import AccountStore
+    from backend.usage_store import UsageStore
+
+    database = tmp_path / "accounts.sqlite3"
+    accounts = AccountStore(database)
+    user = accounts.register("quota_user", "quota user password long")
+    token, _ = accounts.issue_session(user["userId"])
+    asset_id = "9" * 32
+    accounts.claim_media_resource("asset", asset_id, user["userId"])
+
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"image")
+    usage = UsageStore(database)
+
+    monkeypatch.setattr(server, "_account_store", lambda: accounts)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setenv("MEDIA_FREE_AI_MONTHLY_LIMIT", "1")
+
+    def fake_plan(paths, options, cancel_event):
+        return {"title": "Quota test", "clips": []}
+
+    monkeypatch.setattr(server, "create_magic_plan", fake_plan)
+    client = TestClient(server.app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/v1/ai/jobs",
+        headers=headers,
+        json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["usage"]["limit"] == 1
+    assert first.json()["usage"]["remaining"] == 0
+
+    second = client.post(
+        "/v1/ai/jobs",
+        headers=headers,
+        json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+    assert second.status_code == 429
+    assert second.json()["detail"]["code"] == "monthly_ai_quota_exceeded"

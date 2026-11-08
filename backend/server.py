@@ -16,6 +16,7 @@ from backend.accounts import AccountError, AccountStore, SecurityConfigurationEr
 from backend.authorization import PermissionError as PolicyError, PermissionPolicy
 from backend.entitlements import EntitlementError, EntitlementStore
 from backend.job_store import JobRegistry
+from backend.usage_store import UsageLimitError, UsageStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -904,6 +905,22 @@ def create_ai_job(body: dict[str, Any], request: Request):
     if not isinstance(options, dict):
         raise HTTPException(422, 'Opzioni MagicIAedit non valide.')
     job_id = uuid.uuid4().hex
+    usage = None
+    if account is not None:
+        is_premium = _entitlement_store().has_premium(account['userId'])
+        limit = _ai_monthly_limit(is_premium)
+        try:
+            usage = _usage_store().reserve(account['userId'], job_id, limit)
+        except UsageLimitError as exc:
+            raise HTTPException(
+                429,
+                detail={
+                    'code': 'monthly_ai_quota_exceeded',
+                    'message': 'Hai raggiunto il limite mensile di elaborazioni IA del tuo piano.',
+                    'limit': exc.limit,
+                    'period': exc.period,
+                },
+            ) from exc
     _claim_resource(request, 'job', job_id)
     with lock:
         jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
@@ -911,7 +928,10 @@ def create_ai_job(body: dict[str, Any], request: Request):
     threading.Thread(
         target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
     ).start()
-    return {'jobId': job_id}
+    response = {'jobId': job_id}
+    if usage is not None:
+        response['usage'] = usage
+    return response
 
 
 def _permission_policy() -> PermissionPolicy:
@@ -991,6 +1011,25 @@ class OwnerCreateAccount(BaseModel):
 
 def _entitlement_store() -> EntitlementStore:
     return EntitlementStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _usage_store() -> UsageStore:
+    return UsageStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _ai_monthly_limit(is_premium: bool) -> int:
+    variable = 'MEDIA_PREMIUM_AI_MONTHLY_LIMIT' if is_premium else 'MEDIA_FREE_AI_MONTHLY_LIMIT'
+    default = 100 if is_premium else 10
+    raw = os.getenv(variable)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(503, f'Configurazione non valida: {variable}.') from exc
+    if not 1 <= value <= 100000:
+        raise HTTPException(503, f'Configurazione non valida: {variable}.')
+    return value
 
 
 class FamilyInvitationAccept(BaseModel):
