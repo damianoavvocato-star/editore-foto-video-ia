@@ -75,6 +75,10 @@ class RemoteMediaApi {
     );
   }
 
+  void clearUploadCancellation(String cancellationKey) {
+    _cancelledUploads.remove(cancellationKey);
+  }
+
   bool _hasSameOrigin(Uri uri) =>
       uri.scheme.toLowerCase() == baseUri.scheme.toLowerCase() &&
       uri.host.toLowerCase() == baseUri.host.toLowerCase() &&
@@ -171,11 +175,11 @@ class RemoteMediaApi {
       req.headers.set(HttpHeaders.contentTypeHeader, 'multipart/form-data; boundary=$boundary');
       final filename = Uri.encodeComponent(file.uri.pathSegments.last);
       Stream<List<int>> multipartBody() async* {
-        yield utf8.encode('--$boundary\\r\\n'
-            'Content-Disposition: form-data; name="file"; filename="$filename"\\r\\n'
-            'Content-Type: application/octet-stream\\r\\n\\r\\n');
+        yield utf8.encode('--$boundary\r\n'
+            'Content-Disposition: form-data; name="file"; filename="$filename"\r\n'
+            'Content-Type: application/octet-stream\r\n\r\n');
         yield* file.openRead();
-        yield utf8.encode('\\r\\n--$boundary--\\r\\n');
+        yield utf8.encode('\r\n--$boundary--\r\n');
       }
       HttpClientResponse response;
       try {
@@ -432,6 +436,7 @@ class RemoteAiBackend implements AiProcessingBackend {
       );
     } finally {
       _remoteJobs.remove(request.jobId);
+      api.clearUploadCancellation(request.jobId);
       _cancelled.remove(request.jobId);
     }
   }
