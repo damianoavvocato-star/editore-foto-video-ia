@@ -674,6 +674,76 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
     return {"enabled": False, "sessionsRevoked": True}
 
 
+class SupportTicketCreate(BaseModel):
+    subject: str = Field(min_length=5, max_length=120)
+    message: str = Field(min_length=10, max_length=4000)
+
+
+class SupportTicketReply(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    status: str | None = Field(default=None, pattern=r"^(open|waiting_user|resolved|escalated)$")
+
+
+@app.post('/v1/support/tickets')
+def support_ticket_create(body: SupportTicketCreate, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    try: ticket = _account_store().create_support_ticket(account["userId"], body.subject, body.message)
+    except AccountError as exc: raise HTTPException(422, str(exc)) from exc
+    return {"ticket": ticket}
+
+
+@app.get('/v1/support/tickets')
+def support_ticket_list(request: Request, status: str | None = None,
+                        limit: int = Query(default=50, ge=1, le=100),
+                        offset: int = Query(default=0, ge=0, le=1_000_000)):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    staff = account.get("role") in {"owner", "admin", "support"}
+    if staff: _require_permission(request, "support.tickets.read")
+    try:
+        rows = _account_store().list_support_tickets(
+            owner_user_id=None if staff else account["userId"], status=status, limit=limit, offset=offset)
+    except AccountError as exc: raise HTTPException(422, str(exc)) from exc
+    return {"tickets": rows, "limit": limit, "offset": offset}
+
+
+@app.get('/v1/support/tickets/{ticket_id}')
+def support_ticket_detail(ticket_id: str, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    ticket = _account_store().get_support_ticket(ticket_id)
+    if ticket is None: raise HTTPException(404, "Ticket non trovato.")
+    if ticket["ownerUserId"] != account["userId"]: _require_permission(request, "support.tickets.read")
+    return {"ticket": ticket}
+
+
+@app.post('/v1/support/tickets/{ticket_id}/messages')
+def support_ticket_reply(ticket_id: str, body: SupportTicketReply, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    ticket = _account_store().get_support_ticket(ticket_id)
+    if ticket is None: raise HTTPException(404, "Ticket non trovato.")
+    staff = account.get("role") in {"owner", "admin", "support"}
+    if staff: _require_permission(request, "support.tickets.reply")
+    elif ticket["ownerUserId"] != account["userId"]: raise HTTPException(404, "Ticket non trovato.")
+    try:
+        updated = _account_store().reply_support_ticket(
+            ticket_id, account["userId"], body.message, account["role"], body.status)
+    except AccountError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message or "non disponibile" in message else 422, message) from exc
+    return {"ticket": updated}
+
+
+@app.get('/v1/admin/dashboard')
+def admin_dashboard(request: Request):
+    actor = _require_permission(request, "accounts.read")
+    if actor.get("role") != "admin":
+        raise HTTPException(403, "Console riservata agli amministratori.")
+    return {"dashboard": _account_store().admin_dashboard_stats()}
+
+
 @app.get('/v1/owner/accounts')
 def owner_list_accounts(
     request: Request, limit: int = 100, q: str | None = Query(default=None, max_length=64)
