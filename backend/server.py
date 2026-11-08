@@ -1899,6 +1899,20 @@ def account_referral_history(request: Request):
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get('/v1/account/usage')
+def account_get_usage(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    _referral_store().mature_due()
+    is_premium = _entitlement_store().has_premium(account['userId'])
+    limit = _ai_monthly_limit(is_premium)
+    try:
+        return _usage_store().summary(account['userId'], limit)
+    except ValueError as exc:
+        raise HTTPException(422, 'Impossibile leggere il riepilogo utilizzo.') from exc
+
+
 @app.get('/v1/account/entitlement')
 def account_get_entitlement(request: Request):
     account = _request_account(request)
