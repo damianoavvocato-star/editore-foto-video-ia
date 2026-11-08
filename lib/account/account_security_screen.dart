@@ -24,6 +24,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>> _accounts = [];
   List<Map<String, dynamic>> _activeSessions = [];
+  List<Map<String, dynamic>> _supportTickets = [];
   Map<String, dynamic>? _adminStats;
   bool _busy = false;
   bool _needsTotp = false;
@@ -38,6 +39,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
 
   bool get _isOwner => _user?['role'] == 'owner';
   bool get _isAdmin => _user?['role'] == 'admin';
+  bool get _isSupportStaff => _isOwner || _isAdmin || _user?['role'] == 'support';
   bool get _canManage => _isOwner || _user?['role'] == 'admin';
   bool get _canReset => _canManage || _user?['role'] == 'support';
   bool get _mustChangePassword => _user?['mustChangePassword'] == true;
@@ -171,6 +173,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       _api = null;
       _user = null;
       _accounts = [];
+      _supportTickets = [];
+      _adminStats = null;
       _totpEnabled = false;
       _needsTotp = false;
       _password.clear();
@@ -210,6 +214,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     await _refreshSessions();
     if (_canReset) await _refreshAccounts();
     if (_isAdmin) await _loadAdminDashboard();
+    await _refreshSupportTickets();
     if (_isOwner) await _loadTotpStatus();
   }
 
@@ -270,6 +275,162 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     }
+  }
+
+  Future<void> _refreshSupportTickets() async {
+    final api = _api;
+    if (api == null) return;
+    try {
+      final response = await api.request('GET', '/v1/support/tickets?limit=50');
+      final rows = response['tickets'] as List? ?? const [];
+      if (mounted) {
+        setState(() => _supportTickets = rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList());
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _createSupportTicket() async {
+    final api = _api;
+    if (api == null) return;
+    final subject = TextEditingController();
+    final message = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Nuova richiesta di assistenza'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: subject, maxLength: 120,
+                  decoration: const InputDecoration(labelText: 'Oggetto')),
+              TextField(controller: message, minLines: 3, maxLines: 6, maxLength: 4000,
+                  decoration: const InputDecoration(labelText: 'Descrivi il problema')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Annulla')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, {
+            'subject': subject.text.trim(), 'message': message.text.trim(),
+          }), child: const Text('Invia richiesta')),
+        ],
+      ),
+    );
+    subject.dispose();
+    message.dispose();
+    if (result == null) return;
+    try {
+      await api.request('POST', '/v1/support/tickets', body: result);
+      await _refreshSupportTickets();
+      _notify('Richiesta inviata all’assistenza.');
+    } catch (error) {
+      _notify(error.toString());
+    }
+  }
+
+  Future<void> _openSupportTicket(Map<String, dynamic> row) async {
+    final api = _api;
+    if (api == null) return;
+    final id = row['ticketId']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final reply = TextEditingController();
+    var status = row['status']?.toString() ?? 'open';
+    Map<String, dynamic>? ticket;
+    try {
+      final response = await api.request('GET', '/v1/support/tickets/${Uri.encodeComponent(id)}');
+      ticket = Map<String, dynamic>.from(response['ticket'] as Map);
+    } catch (error) {
+      _notify(error.toString());
+      reply.dispose();
+      return;
+    }
+    if (!mounted) { reply.dispose(); return; }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) {
+          final messages = ticket?['messages'] as List? ?? const [];
+          return AlertDialog(
+            title: Text(ticket?['subject']?.toString() ?? 'Ticket'),
+            content: SizedBox(
+              width: 560,
+              height: 480,
+              child: Column(
+                children: [
+                  Align(alignment: Alignment.centerLeft,
+                    child: Text('Stato: ${ticket?['status'] ?? status}')),
+                  const Divider(),
+                  Expanded(
+                    child: ListView(
+                      children: messages.whereType<Map>().map((item) {
+                        final isStaff = {'owner', 'admin', 'support'}.contains(item['authorRole']);
+                        return Card(
+                          child: ListTile(
+                            title: Text(isStaff ? 'Assistenza' : 'Utente'),
+                            subtitle: SelectableText(item['body']?.toString() ?? ''),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  TextField(
+                    controller: reply,
+                    minLines: 2,
+                    maxLines: 4,
+                    maxLength: 4000,
+                    decoration: const InputDecoration(labelText: 'Scrivi una risposta'),
+                  ),
+                  if (_isSupportStaff)
+                    DropdownButtonFormField<String>(
+                      initialValue: status,
+                      decoration: const InputDecoration(labelText: 'Stato ticket'),
+                      items: const [
+                        DropdownMenuItem(value: 'open', child: Text('Aperto')),
+                        DropdownMenuItem(value: 'waiting_user', child: Text('In attesa utente')),
+                        DropdownMenuItem(value: 'resolved', child: Text('Risolto')),
+                        DropdownMenuItem(value: 'escalated', child: Text('Escalato')),
+                      ],
+                      onChanged: (value) => refresh(() => status = value ?? status),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Chiudi')),
+              FilledButton(
+                onPressed: () async {
+                  if (reply.text.trim().isEmpty) return;
+                  try {
+                    final body = <String, Object?>{'message': reply.text.trim()};
+                    if (_isSupportStaff) body['status'] = status;
+                    final updated = await api.request(
+                      'POST',
+                      '/v1/support/tickets/${Uri.encodeComponent(id)}/messages',
+                      body: body,
+                    );
+                    ticket = Map<String, dynamic>.from(updated['ticket'] as Map);
+                    reply.clear();
+                    refresh(() {});
+                    await _refreshSupportTickets();
+                  } catch (error) {
+                    _notify(error.toString());
+                  }
+                },
+                child: const Text('Invia risposta'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    reply.dispose();
   }
 
   Future<void> _loadAdminDashboard() async {
@@ -1227,6 +1388,44 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   const Text('Nessuna sessione attiva trovata.')
                 else
                   ..._activeSessions.map(_sessionTile),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.support_agent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_isSupportStaff ? 'Console Assistenza' : 'Le mie richieste',
+                          style: Theme.of(context).textTheme.titleLarge),
+                    ),
+                    IconButton(onPressed: _refreshSupportTickets,
+                        tooltip: 'Aggiorna ticket', icon: const Icon(Icons.refresh)),
+                    IconButton(onPressed: _createSupportTicket,
+                        tooltip: 'Nuovo ticket', icon: const Icon(Icons.add_comment_outlined)),
+                  ],
+                ),
+                Text(_isSupportStaff
+                    ? 'Gestisci le richieste, rispondi e aggiorna lo stato. I contenuti restano isolati per ticket.'
+                    : 'Apri una richiesta e consulta lo storico delle risposte dell’assistenza.'),
+                const SizedBox(height: 8),
+                if (_supportTickets.isEmpty)
+                  const Text('Nessuna richiesta presente.')
+                else
+                  ..._supportTickets.map((ticket) => ListTile(
+                    leading: const Icon(Icons.confirmation_number_outlined),
+                    title: Text(ticket['subject']?.toString() ?? 'Ticket'),
+                    subtitle: Text('Stato: ${ticket['status']}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openSupportTicket(ticket),
+                  )),
               ],
             ),
           ),
