@@ -185,6 +185,14 @@ jobs:
           PY
       - name: Resolve Flutter dependencies
         run: flutter pub get
+
+      - name: Generate MagicIAedit launcher icon and native splash
+        run: |
+          python -m pip install --disable-pip-version-check cairosvg
+          python tool/prepare_branding.py
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+          python tool/configure_android_branding.py
       - name: Set Android compile SDK to 36
         run: |
           sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle.kts 2>/dev/null || true
@@ -272,6 +280,14 @@ jobs:
 
       - name: Resolve dependencies
         run: flutter pub get
+
+      - name: Generate MagicIAedit launcher icon and native splash
+        run: |
+          python -m pip install --disable-pip-version-check cairosvg
+          python tool/prepare_branding.py
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+          python tool/configure_android_branding.py
 
       - name: Set Android compile SDK to 36
         run: |

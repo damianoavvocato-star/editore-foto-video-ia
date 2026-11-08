@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -802,7 +803,25 @@ class _HomePageState extends State<HomePage> {
       textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(t('app')),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SvgPicture.asset(
+                'assets/branding/magiciaedit_mark.svg',
+                width: 34,
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 9),
+              const Flexible(
+                child: Text(
+                  'MagicIAedit',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           actions: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
