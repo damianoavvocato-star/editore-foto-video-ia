@@ -39,6 +39,24 @@ def test_only_project_owner_can_invite_or_revoke_and_only_collaborator_can_accep
         team.revoke_member(other["userId"], project["projectId"], collaborator["userId"])
 
 
+def test_member_listing_is_scoped_and_reports_pending_active_and_revoked(tmp_path):
+    path, _, owner, collaborator, other = _accounts(tmp_path)
+    team = TeamWorkspaceStore(path)
+    project = team.create_project(owner["userId"], "Elenco membri")
+    project_id = project["projectId"]
+    team.invite_member(owner["userId"], project_id, collaborator["userId"])
+    pending = team.list_members(owner["userId"], project_id)
+    assert {row["userId"]: row["status"] for row in pending} == {
+        owner["userId"]: "active", collaborator["userId"]: "pending"
+    }
+    with pytest.raises(TeamWorkspaceError, match="non disponibile"):
+        team.list_members(other["userId"], project_id)
+    team.respond_invitation(collaborator["userId"], project_id, True)
+    team.revoke_member(owner["userId"], project_id, collaborator["userId"])
+    revoked = team.list_members(owner["userId"], project_id)
+    assert next(row for row in revoked if row["userId"] == collaborator["userId"])["status"] == "revoked"
+
+
 def test_revocation_removes_project_and_comment_access(tmp_path):
     path, _, owner, collaborator, _ = _accounts(tmp_path)
     team = TeamWorkspaceStore(path)
