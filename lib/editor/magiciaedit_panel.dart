@@ -9,6 +9,7 @@ import '../models/magiciaedit_plan.dart';
 import '../services/ai_processing_service.dart';
 import '../services/magiciaedit_workflow.dart';
 import '../services/remote_media_api.dart';
+import '../services/account_api.dart';
 
 /// Review-first MagicIAedit UI. The AI proposal is never applied automatically.
 class MagicIAeditPanel extends StatefulWidget {
@@ -29,7 +30,6 @@ class MagicIAeditPanel extends StatefulWidget {
 
 class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   final _endpointController = TextEditingController();
-  final _tokenController = TextEditingController();
   final _selectedPaths = <String>{};
   MagicIAeditWorkflow? _workflow;
   MagicIAeditPlan? _plan;
@@ -38,7 +38,6 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
   String _progressMessage = '';
   double _progress = 0;
   bool _busy = false;
-  bool _showToken = false;
 
   List<EditorClip> get _availableMedia {
     final clips = widget.project.tracks
@@ -115,11 +114,17 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
       }
     }
 
+    final sessionToken = await const AccountSessionStore().readToken();
+    if (!mounted) return;
+    if (sessionToken == null || sessionToken.isEmpty) {
+      setState(() => _error =
+          'Accedi prima dalla sezione Impostazioni: MagicIAedit richiede una sessione personale protetta.');
+      return;
+    }
+
     final api = RemoteMediaApi(
       baseUri: endpoint,
-      bearerToken: _tokenController.text.trim().isEmpty
-          ? null
-          : _tokenController.text.trim(),
+      bearerToken: sessionToken,
     );
     final workflow = MagicIAeditWorkflow(
       AiProcessingService(RemoteAiBackend(api)),
@@ -216,7 +221,6 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
     }
     // The API is closed by _generate in its finally block.
     _endpointController.dispose();
-    _tokenController.dispose();
     super.dispose();
   }
 
@@ -256,18 +260,9 @@ class _MagicIAeditPanelState extends State<MagicIAeditPanel> {
             ),
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: _tokenController,
-            enabled: !_busy,
-            obscureText: !_showToken,
-            decoration: InputDecoration(
-              labelText: 'Token di accesso del server (facoltativo)',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                onPressed: () => setState(() => _showToken = !_showToken),
-                icon: Icon(_showToken ? Icons.visibility_off : Icons.visibility),
-              ),
-            ),
+          const Text(
+            'MagicIAedit usa la sessione personale salvata in modo protetto dopo l’accesso. Non inserire o condividere token manualmente.',
+            style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 12),
           Text('Media disponibili', style: Theme.of(context).textTheme.titleMedium),
