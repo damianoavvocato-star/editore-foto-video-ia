@@ -741,7 +741,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     return ListTile(
       leading: Icon(current ? Icons.phone_android : Icons.devices_other),
       title: Text(current ? 'Sessione corrente' : 'Altra sessione'),
-      subtitle: Text('Accesso: $createdLabel\\nScade: $expiresLabel'),
+      subtitle: Text('Accesso: $createdLabel\nScade: $expiresLabel'),
       isThreeLine: true,
       trailing: current
           ? const Chip(label: Text('Questa'))
