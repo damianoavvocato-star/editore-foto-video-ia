@@ -2,7 +2,7 @@ name: Flutter checks
 
 on:
   push:
-    branches: [ main, master, feature/magiciaedit-cloud-foundation ]
+    branches: [ main, master ]
   pull_request:
   workflow_dispatch:
     inputs:
