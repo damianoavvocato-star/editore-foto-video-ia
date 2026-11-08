@@ -95,3 +95,97 @@ def test_persisted_drafts_survive_store_recreation(tmp_path):
     draft, _ = store.create_draft("user-a", StudioJobRequest(task="script_to_video", script="Hello"))
     reopened = StudioJobStore(path)
     assert reopened.get("user-a", draft["jobId"])["request"]["script"] == "Hello"
+
+
+def _studio_api_user(store, username):
+    account = store.register(username, "a sufficiently long password")
+    token, _ = store.issue_session(account["userId"])
+    return account, {"Authorization": f"Bearer {token}"}
+
+
+def test_studio_api_creates_and_lists_private_drafts(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import server
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user, headers = _studio_api_user(store, "studio_user")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_STUDIO_DB", str(tmp_path / "studio.sqlite3"))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    client = TestClient(server.app)
+
+    created = client.post(
+        "/v1/studio/jobs",
+        headers=headers,
+        json={
+            "task": "script_to_video",
+            "title": "Presentazione",
+            "script": "Benvenuti nel nostro prodotto.",
+            "targetLanguages": ["it-IT", "en-US"],
+        },
+    )
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["state"] == "draft"
+    assert payload["providerState"] == "not_configured"
+    assert payload["created"] is True
+
+    listed = client.get("/v1/studio/jobs", headers=headers)
+    assert listed.status_code == 200
+    assert [item["jobId"] for item in listed.json()["jobs"]] == [payload["jobId"]]
+    assert client.get(
+        f"/v1/studio/jobs/{payload['jobId']}", headers=headers
+    ).json()["request"]["title"] == "Presentazione"
+    assert client.delete(
+        f"/v1/studio/jobs/{payload['jobId']}", headers=headers
+    ).json()["deleted"] is True
+
+
+def test_studio_api_prevents_cross_account_draft_access(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import server
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    _user_a, headers_a = _studio_api_user(store, "studio_owner_a")
+    _user_b, headers_b = _studio_api_user(store, "studio_owner_b")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_STUDIO_DB", str(tmp_path / "studio.sqlite3"))
+    client = TestClient(server.app)
+
+    created = client.post(
+        "/v1/studio/jobs", headers=headers_a,
+        json={"task": "script_to_video", "script": "Private script"},
+    )
+    assert created.status_code == 200
+    job_id = created.json()["jobId"]
+    assert client.get(f"/v1/studio/jobs/{job_id}", headers=headers_b).status_code == 404
+    assert client.delete(f"/v1/studio/jobs/{job_id}", headers=headers_b).status_code == 404
+
+
+def test_studio_api_rejects_personal_avatar_without_consent(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import server
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    _user, headers = _studio_api_user(store, "studio_consent_user")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_STUDIO_DB", str(tmp_path / "studio.sqlite3"))
+    response = TestClient(server.app).post(
+        "/v1/studio/jobs", headers=headers,
+        json={
+            "task": "avatar_video", "script": "Welcome",
+            "avatarMode": "personal", "avatarConsent": False,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_studio_api_requires_account_session():
+    from fastapi.testclient import TestClient
+    from backend import server
+
+    monkeypatch_client = TestClient(server.app)
+    assert monkeypatch_client.get("/v1/studio/capabilities").status_code == 401
