@@ -57,9 +57,9 @@ void main() {
     );
     final subscription = server.listen((socket) async {
       socket.add(utf8.encode(
-        'HTTP/1.1 200 OK\\r\\n'
-        'Content-Length: ${RemoteMediaApi.maxDownloadBytes + 1}\\r\\n'
-        'Connection: close\\r\\n\\r\\n',
+        'HTTP/1.1 200 OK\r\n'
+        'Content-Length: ${RemoteMediaApi.maxDownloadBytes + 1}\r\n'
+        'Connection: close\r\n\r\n',
       ));
       await socket.flush();
       await socket.close();
@@ -86,9 +86,9 @@ void main() {
     );
     final subscription = server.listen((socket) async {
       socket.add(utf8.encode(
-        'HTTP/1.1 200 OK\\r\\n'
-        'Content-Length: 10\\r\\n'
-        'Connection: close\\r\\n\\r\\n'
+        'HTTP/1.1 200 OK\r\n'
+        'Content-Length: 10\r\n'
+        'Connection: close\r\n\r\n'
       ));
       socket.add([1, 2, 3]);
       await socket.flush();
