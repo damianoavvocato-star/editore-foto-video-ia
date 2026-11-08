@@ -17,7 +17,7 @@ from typing import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 STUDIO_TASKS = {
@@ -61,20 +61,20 @@ class StudioJobRequest(BaseModel):
     templateId: str | None = Field(default=None, max_length=80)
     variables: dict[str, str] = Field(default_factory=dict)
 
-    @validator("title")
+    @field_validator("title")
     def clean_title(cls, value: str) -> str:
         value = value.strip()
         if not value:
             raise ValueError("Il titolo non può essere vuoto.")
         return value
 
-    @validator("sourceLanguage")
+    @field_validator("sourceLanguage")
     def valid_source_language(cls, value: str | None) -> str | None:
         if value is not None and not LANGUAGE_PATTERN.fullmatch(value):
             raise ValueError("Codice lingua sorgente non valido.")
         return value
 
-    @validator("targetLanguages")
+    @field_validator("targetLanguages")
     def valid_target_languages(cls, value: list[str]) -> list[str]:
         if not value or len(value) > 20:
             raise ValueError("Seleziona da 1 a 20 lingue di destinazione.")
@@ -84,7 +84,7 @@ class StudioJobRequest(BaseModel):
             raise ValueError("Le lingue di destinazione non possono essere duplicate.")
         return value
 
-    @validator("sourceAssetIds")
+    @field_validator("sourceAssetIds")
     def valid_source_assets(cls, value: list[str]) -> list[str]:
         if len(value) > 20 or any(
             not isinstance(item, str) or not ASSET_ID_PATTERN.fullmatch(item)
@@ -95,7 +95,7 @@ class StudioJobRequest(BaseModel):
             raise ValueError("La selezione contiene media duplicati.")
         return value
 
-    @validator("variables")
+    @field_validator("variables")
     def bounded_variables(cls, value: dict[str, str]) -> dict[str, str]:
         if len(value) > 100:
             raise ValueError("Sono ammesse al massimo 100 variabili per modello.")
@@ -173,7 +173,7 @@ class StudioJobStore:
         if not user_id:
             raise StudioRequestError("Account obbligatorio.")
         request.validate_policy()
-        payload = request.dict()
+        payload = request.model_dump()
         canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         now = time.time()
