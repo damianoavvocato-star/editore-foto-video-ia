@@ -42,7 +42,7 @@ The current service enforces the following bounds before provider submission:
 
 Supported image formats are JPG/JPEG, PNG and WebP. Supported video formats are
 MP4, MOV, AVI, WebM and M4V. Audio-only files are not accepted by MagicIAedit.
-Video analysis samples up to three frames from each clip using FFprobe/FFmpeg.
+Video analysis samples up to eight frames from each clip using FFprobe/FFmpeg.
 
 ## Authentication, privacy and cancellation
 

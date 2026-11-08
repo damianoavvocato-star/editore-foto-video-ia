@@ -167,7 +167,7 @@ def render_subtitles(segments: list[SpeechSegment], format: str = "srt") -> str:
             raise SpeechPipelineError("Intervallo temporale non valido.")
         start = _timestamp(segment.start_ms, "." if kind == "vtt" else ",")
         end = _timestamp(segment.end_ms, "." if kind == "vtt" else ",")
-        safe_text = html.escape(segment.text, quote=False).replace("-->", "—>")
+        safe_text = html.escape(segment.text, quote=False).replace("--&gt;", "—&gt;")
         prefix = f"{index}\n" if kind == "srt" else ""
         blocks.append(f"{prefix}{start} --> {end}\n{safe_text}")
     return ("WEBVTT\n\n" if kind == "vtt" else "") + "\n\n".join(blocks) + "\n"
