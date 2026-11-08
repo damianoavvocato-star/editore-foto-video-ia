@@ -58,8 +58,65 @@ class _EditoreAppState extends State<EditoreApp> {
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7657F6)),
-        scaffoldBackgroundColor: const Color(0xFFF7F7FB),
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF9B8CFF),
+          brightness: Brightness.dark,
+          surface: const Color(0xFF191A24),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF10111A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF10111A),
+          foregroundColor: Color(0xFFF5F3FF),
+          centerTitle: false,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1A1B27),
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(22)),
+            side: BorderSide(color: Color(0x22B9ADFF)),
+          ),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF171823),
+          indicatorColor: const Color(0xFF393253),
+          labelTextStyle: WidgetStateProperty.resolveWith(
+            (states) => TextStyle(
+              color: states.contains(WidgetState.selected)
+                  ? const Color(0xFFE9E3FF)
+                  : const Color(0xFF9B9BAA),
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+            ),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF7565C9),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF20212E),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0x223D3B50)),
+          ),
+        ),
+        dividerColor: const Color(0x223D3B50),
       ),
       home: HomePage(
         language: language,
@@ -799,14 +856,40 @@ class _HomePageState extends State<HomePage> {
                   : Column(
                       children: [
                         Expanded(child: editor),
-                        const SizedBox(height: 12),
-                        SizedBox(height: 180, child: sidebar),
+                        const SizedBox(height: 8),
+                        _buildMobileNavigation(context),
                       ],
                     ),
             );
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildMobileNavigation(BuildContext context) {
+    const destinations = <({int tab, IconData icon, String label})>[
+      (tab: 0, icon: Icons.movie_outlined, label: 'Video'),
+      (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
+      (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
+      (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
+      (tab: 6, icon: Icons.settings_outlined, label: 'Account'),
+    ];
+    final selectedIndex = destinations.indexWhere((item) => item.tab == selectedTab);
+    return NavigationBar(
+      height: 70,
+      selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+      onDestinationSelected: (index) {
+        setState(() => selectedTab = destinations[index].tab);
+      },
+      destinations: destinations
+          .map(
+            (item) => NavigationDestination(
+              icon: Icon(item.icon),
+              label: item.label,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -836,17 +919,51 @@ class _HomePageState extends State<HomePage> {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                ListTile(
-                  title: Text(t('preview'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: IconButton(
-                    tooltip: t('import'),
-                    onPressed: importMedia,
-                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 12, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: const Color(0x337B6CE0),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.movie_creation_outlined, color: Color(0xFFC9BEFF)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(t('preview'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            Text(
+                              media?.name ?? 'Il tuo prossimo progetto inizia qui',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFFAAA8BC)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        tooltip: t('import'),
+                        onPressed: importMedia,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(
                   child: Container(
-                    color: const Color(0xFF171820),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF11121B), Color(0xFF202033), Color(0xFF151622)],
+                      ),
+                    ),
                     alignment: Alignment.center,
                     child: media == null
                         ? Padding(

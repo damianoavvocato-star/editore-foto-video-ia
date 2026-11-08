@@ -227,7 +227,7 @@ jobs:
 
   android-apk:
     # Manual opt-in only: build the APK after Flutter, backend and Android checks pass.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android_apk && needs.flutter-test.result == 'success' && needs.backend-test.result == 'success' && needs.android-preflight.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true && needs.flutter-test.result == 'success' && needs.backend-test.result == 'success' && needs.android-preflight.result == 'success' }}
     needs: [flutter-test, backend-test, android-preflight]
     # Android scaffold is generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
