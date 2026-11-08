@@ -119,6 +119,8 @@ class AccountStore:
                 db.execute("ALTER TABLE accounts ADD COLUMN totp_pending_secret_enc BLOB")
             if "totp_enabled_at" not in account_columns:
                 db.execute("ALTER TABLE accounts ADD COLUMN totp_enabled_at INTEGER")
+            if "totp_pending_created_at" not in account_columns:
+                db.execute("ALTER TABLE accounts ADD COLUMN totp_pending_created_at INTEGER")
             db.execute("""CREATE TABLE IF NOT EXISTS totp_recovery_codes (
                 recovery_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
@@ -334,8 +336,8 @@ class AccountStore:
         encrypted = fernet.encrypt(secret.encode("ascii"))
         with self._connect() as db:
             db.execute(
-                "UPDATE accounts SET totp_pending_secret_enc=? WHERE user_id=? AND role='owner'",
-                (encrypted, user_id),
+                "UPDATE accounts SET totp_pending_secret_enc=?,totp_pending_created_at=? WHERE user_id=? AND role='owner'",
+                (encrypted, int(time.time()), user_id),
             )
         return secret
 
@@ -343,13 +345,21 @@ class AccountStore:
         from backend.totp import matching_counter
         with self._connect() as db:
             row = db.execute(
-                "SELECT role,totp_pending_secret_enc,disabled_at FROM accounts WHERE user_id=?",
+                "SELECT role,totp_pending_secret_enc,totp_pending_created_at,disabled_at FROM accounts WHERE user_id=?",
                 (user_id,),
             ).fetchone()
         if row is None or row["role"] != "owner" or row["disabled_at"] is not None:
             raise AccountError("Operazione riservata al proprietario.")
         if not row["totp_pending_secret_enc"]:
             raise AccountError("Avvia prima la configurazione della verifica in due passaggi.")
+        if (row["totp_pending_created_at"] is None
+                or int(time.time()) - row["totp_pending_created_at"] > 600):
+            with self._connect() as db:
+                db.execute(
+                    "UPDATE accounts SET totp_pending_secret_enc=NULL,totp_pending_created_at=NULL WHERE user_id=?",
+                    (user_id,),
+                )
+            raise AccountError("Configurazione 2FA scaduta; avvia nuovamente la procedura.")
         try:
             secret = self._totp_fernet().decrypt(row["totp_pending_secret_enc"]).decode("ascii")
         except InvalidToken as exc:
@@ -357,7 +367,7 @@ class AccountStore:
         counter = matching_counter(secret, code, window=1)
         if counter is None:
             raise AccountError("Codice di verifica non valido.")
-        recovery_codes = [secrets.token_hex(5).upper() for _ in range(10)]
+        recovery_codes = [secrets.token_hex(16).upper() for _ in range(10)]
         now = int(time.time())
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -371,7 +381,7 @@ class AccountStore:
                 raise AccountError("Configurazione 2FA modificata; ripeti la procedura.")
             db.execute(
                 """UPDATE accounts SET totp_secret_enc=?,totp_pending_secret_enc=NULL,
-                   totp_enabled_at=? WHERE user_id=?""",
+                   totp_pending_created_at=NULL,totp_enabled_at=? WHERE user_id=?""",
                 (row["totp_pending_secret_enc"], now, user_id),
             )
             db.execute(
@@ -438,7 +448,7 @@ class AccountStore:
         with self._connect() as db:
             db.execute(
                 """UPDATE accounts SET totp_secret_enc=NULL,totp_pending_secret_enc=NULL,
-                   totp_enabled_at=NULL WHERE user_id=?""",
+                   totp_pending_created_at=NULL,totp_enabled_at=NULL WHERE user_id=?""",
                 (user_id,),
             )
             db.execute("DELETE FROM totp_recovery_codes WHERE user_id=?", (user_id,))
