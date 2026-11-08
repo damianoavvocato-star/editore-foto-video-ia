@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from backend.accounts import _append_audit_event
+from backend.entitlements import EntitlementStore
 
 
 class ReferralError(ValueError):
@@ -24,6 +25,8 @@ class ReferralStore:
     def __init__(self, database: str | Path):
         self.database = str(database)
         Path(self.database).parent.mkdir(parents=True, exist_ok=True)
+        # Referral rewards are Premium grants; ensure their ledger schema exists.
+        EntitlementStore(self.database)
         with self._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS referral_codes (
                 user_id TEXT PRIMARY KEY,
