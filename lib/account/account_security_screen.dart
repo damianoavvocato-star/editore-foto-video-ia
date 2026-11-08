@@ -23,6 +23,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   RemoteAccountApi? _api;
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>> _accounts = [];
+  List<Map<String, dynamic>> _activeSessions = [];
   bool _busy = false;
   bool _needsTotp = false;
   bool _totpEnabled = false;
@@ -188,8 +189,47 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   Future<void> _loadConsoleData() async {
     final user = _user;
     if (user == null || _mustChangePassword) return;
+    await _refreshSessions();
     if (_canReset) await _refreshAccounts();
     if (_isOwner) await _loadTotpStatus();
+  }
+
+  Future<void> _refreshSessions() async {
+    final api = _api;
+    if (api == null) return;
+    try {
+      final response = await api.request('GET', '/v1/auth/sessions');
+      final rows = response['sessions'] as List? ?? const [];
+      if (mounted) {
+        setState(() => _activeSessions = rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList());
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _revokeSession(Map<String, dynamic> session) async {
+    final api = _api;
+    if (api == null) return;
+    final id = session['sessionId']?.toString() ?? '';
+    if (id.isEmpty) return;
+    try {
+      final response = await api.request(
+        'DELETE',
+        '/v1/auth/sessions/${Uri.encodeComponent(id)}',
+      );
+      if (response['currentSessionRevoked'] == true) {
+        await _logout();
+      } else {
+        await _refreshSessions();
+        _notify('Sessione revocata.');
+      }
+    } catch (error) {
+      _notify(error.toString());
+    }
   }
 
   Future<void> _refreshAccounts() async {
@@ -688,6 +728,31 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     );
   }
 
+  Widget _sessionTile(Map<String, dynamic> session) {
+    final current = session['current'] == true;
+    final created = int.tryParse(session['createdAt']?.toString() ?? '');
+    final expires = int.tryParse(session['expiresAt']?.toString() ?? '');
+    final createdLabel = created == null
+        ? 'Data non disponibile'
+        : DateTime.fromMillisecondsSinceEpoch(created * 1000).toLocal().toString();
+    final expiresLabel = expires == null
+        ? 'Scadenza non disponibile'
+        : DateTime.fromMillisecondsSinceEpoch(expires * 1000).toLocal().toString();
+    return ListTile(
+      leading: Icon(current ? Icons.phone_android : Icons.devices_other),
+      title: Text(current ? 'Sessione corrente' : 'Altra sessione'),
+      subtitle: Text('Accesso: $createdLabel\\nScade: $expiresLabel'),
+      isThreeLine: true,
+      trailing: current
+          ? const Chip(label: Text('Questa'))
+          : IconButton(
+              tooltip: 'Revoca sessione',
+              onPressed: () => _revokeSession(session),
+              icon: const Icon(Icons.logout),
+            ),
+    );
+  }
+
   Widget _accountTile(Map<String, dynamic> account) {
     final role = account['role']?.toString() ?? 'user';
     final disabled = account['disabled'] == true;
@@ -758,6 +823,32 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             title: Text(_user?['username']?.toString() ?? 'Account'),
             subtitle: Text('Ruolo: ${_user?['role'] ?? 'user'}'),
             trailing: TextButton(onPressed: _logout, child: const Text('Esci')),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('Sessioni attive', style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    IconButton(
+                      onPressed: _refreshSessions,
+                      tooltip: 'Aggiorna sessioni',
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
+                if (_activeSessions.isEmpty)
+                  const Text('Nessuna sessione attiva trovata.')
+                else
+                  ..._activeSessions.map(_sessionTile),
+              ],
+            ),
           ),
         ),
         if (_isOwner) Card(
