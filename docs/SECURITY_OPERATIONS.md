@@ -25,6 +25,19 @@ TOTP seeds must first be decrypted with the old key and re-encrypted with the
 new key in a controlled maintenance operation. A key rotation utility is not
 part of this implementation.
 
+## Mobile account session and media API
+
+The Settings tab includes the account console. Configure its API origin at
+build time with `--dart-define=MEDIA_API_URL=https://api.your-domain.example`.
+The value must be an HTTPS origin without a path, query, username or password.
+For local Android emulator development only, `http://10.0.2.2:8000` is
+accepted. Session bearer tokens are stored with platform secure storage and are
+reused by remote media export; the old shared media token is not accepted by
+authenticated media endpoints.
+
+Accounts created by an administrator receive a temporary password and must
+change it before protected application features become available.
+
 ## Owner two-factor enrollment
 
 1. Sign in as the owner over HTTPS.
