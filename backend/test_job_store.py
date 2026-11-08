@@ -373,3 +373,41 @@ def test_interrupted_job_retry_still_rejects_changed_fingerprint(tmp_path):
     )
     assert created is True
     assert restored[replayed_id]["state"] == "queued"
+
+
+
+def test_idempotent_job_with_worker_start_failure_can_be_retried(tmp_path):
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    registry = JobRegistry(database)
+    failed_id, created = registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "failed", "progress": 0.0, "error": "worker_start_failed"},
+        "account-scope",
+        "thread-start-retry-key",
+        "same-fingerprint",
+    )
+    assert created is True
+
+    retry_id, retried = registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "thread-start-retry-key",
+        "same-fingerprint",
+    )
+    assert retried is True
+    assert retry_id != failed_id
+    assert registry[failed_id]["error"] == "worker_start_failed"
+    assert registry[retry_id]["state"] == "queued"
+
+    replay_id, replayed = registry.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "thread-start-retry-key",
+        "same-fingerprint",
+    )
+    assert replayed is False
+    assert replay_id == retry_id

@@ -222,13 +222,16 @@ class JobRegistry(dict[str, dict[str, Any]]):
                     existing_values = json.loads(existing_row[0]) if existing_row else {}
                 except (TypeError, ValueError):
                     existing_values = {}
-                # A worker cannot survive a process restart. Permit exactly one
-                # atomic retry only for that explicit interruption marker; all
-                # other terminal and active jobs keep normal idempotent replay.
+                # A worker cannot survive a process restart, and a worker
+                # launch can fail before it starts. Permit an atomic retry only
+                # for these infrastructure failures; ordinary render failures
+                # and all active/completed jobs keep normal idempotent replay.
                 if (
                     isinstance(existing_values, dict)
                     and existing_values.get("state") == "failed"
-                    and existing_values.get("error") == "worker_interrupted"
+                    and existing_values.get("error") in {
+                        "worker_interrupted", "worker_start_failed"
+                    }
                 ):
                     connection.execute(
                         """INSERT INTO media_jobs(job_id, payload, updated_at)

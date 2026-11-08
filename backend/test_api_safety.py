@@ -608,3 +608,70 @@ def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_pat
     assert reservations == 0
     assert server.jobs == {}
     assert server.cancel_events == {}
+
+
+
+def test_render_worker_start_failure_releases_claim_and_allows_idempotent_retry(tmp_path, monkeypatch):
+    import json
+    import sqlite3
+    from backend.accounts import AccountStore
+    from backend.job_store import JobRegistry
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("render_owner", "render owner password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "c" * 32
+    store.claim_media_resource("asset", asset_id, user["userId"])
+    registry = JobRegistry(tmp_path / "jobs.sqlite3")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "jobs", registry)
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    class FailingThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated render worker startup failure")
+
+    body = {
+        "project": {"tracks": [{"kind": "video", "clips": [
+            {"kind": "image", "assetId": asset_id, "durationMs": 1000}
+        ]}]},
+        "settings": {"resolution": "p720"},
+    }
+    client = TestClient(server.app)
+    with client:
+        monkeypatch.setattr(server.threading, "Thread", FailingThread)
+        first = client.post(
+            "/v1/render/jobs", json=body,
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "render-start-failure"},
+        )
+        second = client.post(
+            "/v1/render/jobs", json=body,
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "render-start-failure"},
+        )
+
+    assert first.status_code == 503
+    assert second.status_code == 503
+    with sqlite3.connect(registry.database) as db:
+        rows = db.execute("SELECT job_id, payload FROM media_jobs ORDER BY updated_at").fetchall()
+        mapping = db.execute(
+            "SELECT job_id FROM render_idempotency WHERE idempotency_key=?",
+            ("render-start-failure",),
+        ).fetchone()
+    assert len(rows) == 2
+    failed_ids = [job_id for job_id, _ in rows]
+    assert len(set(failed_ids)) == 2
+    assert all(json.loads(payload)["error"] == "worker_start_failed" for _, payload in rows)
+    assert mapping[0] == failed_ids[-1]
+    assert registry[failed_ids[0]]["state"] == "failed"
+    assert registry[failed_ids[1]]["state"] == "failed"
+    assert server.cancel_events == {}
+    with store._connect() as db:
+        job_claims = db.execute(
+            "SELECT COUNT(*) FROM media_ownership WHERE resource_type='job' AND owner_user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    assert job_claims == 0
+    assert store.owns_media_resource("asset", asset_id, user["userId"]) is True

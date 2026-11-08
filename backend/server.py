@@ -726,7 +726,29 @@ def create_render(
             jobs.pop(job_id, None)
             raise
         cancel_events[job_id] = threading.Event()
-    threading.Thread(target=_render_job, args=(job_id, body.project, body.settings), daemon=True).start()
+    try:
+        worker = threading.Thread(
+            target=_render_job, args=(job_id, body.project, body.settings), daemon=True,
+        )
+        worker.start()
+    except Exception as exc:
+        # Keep the failed record for diagnostics and idempotent retry, but do
+        # not leave an account-owned ghost job behind when no worker exists.
+        with lock:
+            cancel_events.pop(job_id, None)
+            jobs[job_id].update(
+                state='failed', progress=0.0,
+                message='Avvio del rendering non riuscito. Riprova.',
+                error='worker_start_failed',
+            )
+        if account is not None:
+            try:
+                _account_store().release_media_resource('job', job_id, account['userId'])
+            except Exception:
+                logging.exception('Unable to release render job ownership after worker startup failure')
+        raise HTTPException(
+            503, 'Impossibile avviare il rendering. Riprova più tardi.'
+        ) from exc
     return {'jobId': job_id}
 
 def _render_job(job_id: str, project: dict, settings: dict):
