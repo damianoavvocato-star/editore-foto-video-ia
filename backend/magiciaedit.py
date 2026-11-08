@@ -301,7 +301,9 @@ def create_magic_plan(
         "Restituisci SOLO JSON con title, description e clips; ogni clip deve avere "
         "assetId, sourceStartMs, durationMs, transitionAfterMs, transitionAfter e reason. "
         "Non inventare contenuti o asset. Confronta i fotogrammi nel tempo, evita ripetizioni e scegli intervalli con soggetto leggibile, dettaglio e luminosità adeguati. I segnali brightness, contrast e detail sono indizi tecnici, non verità semantiche: valuta anche il contenuto visivo. Per i video sourceStartMs deve corrispondere a un momento realmente campionato o vicino ad esso. Alterna inquadrature, conserva la continuità narrativa e motiva brevemente ogni scelta in reason. "
-        f"Preferenze dell'utente: {preferences or 'nessuna'}."
+        f"Preferenze creative validate: {json.dumps(preferences, ensure_ascii=False)}. "
+        "Rispetta stile, ritmo, formato, lingua dei testi e durata obiettivo; "
+        "la durata finale può essere più breve se i media non offrono materiale sufficiente."
     )
     payload = {
         "model": model,
