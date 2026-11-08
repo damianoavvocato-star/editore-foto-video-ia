@@ -18,7 +18,14 @@ from backend.entitlements import EntitlementError, EntitlementStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
-ASSETS.mkdir(parents=True, exist_ok=True); OUTPUTS.mkdir(parents=True, exist_ok=True)
+ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+ASSETS.mkdir(parents=True, exist_ok=True, mode=0o700)
+OUTPUTS.mkdir(parents=True, exist_ok=True, mode=0o700)
+for _private_dir in (ROOT, ASSETS, OUTPUTS):
+    try:
+        os.chmod(_private_dir, 0o700)
+    except OSError:
+        logging.warning("Unable to restrict media directory permissions")
 TOKEN = os.getenv('MEDIA_API_TOKEN', '')
 # Insecure unauthenticated mode is opt-in and intended only for local development.
 ALLOW_INSECURE_LOCAL = os.getenv('MEDIA_ALLOW_INSECURE_LOCAL', '').strip().lower() == 'true'
@@ -483,11 +490,12 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
         with destination.open('wb') as out:
             while chunk := await file.read(1024*1024):
                 size += len(chunk)
-                if size > 1024*1024*1024:
-                    raise HTTPException(413, 'File superiore a 1 GB')
+                if size > 400*1024*1024:
+                    raise HTTPException(413, 'File superiore a 400 MB')
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, 'File vuoto')
+        os.chmod(destination, 0o600)
     except Exception:
         destination.unlink(missing_ok=True)
         raise
@@ -544,7 +552,11 @@ def create_render(body: RenderBody, request: Request):
     return {'jobId': job_id}
 
 def _render_job(job_id: str, project: dict, settings: dict):
-    work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True)
+    work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(work, 0o700)
+    except OSError:
+        pass
     output: Path | None = None
     try:
         if cancel_events.get(job_id, threading.Event()).is_set():
@@ -733,6 +745,10 @@ def _render_job(job_id: str, project: dict, settings: dict):
             output.unlink(missing_ok=True)
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
         else:
+            try:
+                os.chmod(output, 0o600)
+            except OSError:
+                logging.warning('Unable to restrict rendered output permissions for job %s', job_id)
             with lock: jobs[job_id].update(state='completed',progress=1.0,message='Rendering completato',downloadUrl=f'/v1/outputs/{job_id}')
     except Exception:
         # Remove a partially written output when FFmpeg or post-processing fails.
