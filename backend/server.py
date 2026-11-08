@@ -517,9 +517,12 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
         raise HTTPException(415, 'Formato file non supportato')
     asset_id = uuid.uuid4().hex
     destination = ASSETS / f'{asset_id}{suffix}'
+    partial = ASSETS / f'.{asset_id}{suffix}.part'
     size = 0
     try:
-        with destination.open('wb') as out:
+        # Stream into a private temporary file and publish atomically only
+        # after the complete upload passes size and non-empty checks.
+        with partial.open('xb') as out:
             while chunk := await file.read(1024*1024):
                 size += len(chunk)
                 if size > 400*1024*1024:
@@ -527,8 +530,10 @@ async def upload_asset(request: Request, file: UploadFile = File(...)):
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, 'File vuoto')
-        os.chmod(destination, 0o600)
+        os.chmod(partial, 0o600)
+        os.replace(partial, destination)
     except Exception:
+        partial.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
         raise
     finally:

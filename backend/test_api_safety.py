@@ -476,3 +476,31 @@ def test_authenticated_session_inventory_and_revocation_api(tmp_path, monkeypatc
     assert store.resolve_session(second_token) is None
     assert store.resolve_session(first_token) is not None
     assert store.resolve_session(other_token) is not None
+
+def test_interrupted_upload_removes_partial_file(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+
+    class InterruptedUpload:
+        filename = 'interrupted.png'
+        calls = 0
+
+        async def read(self, _size):
+            self.calls += 1
+            if self.calls == 1:
+                return b'partial-bytes'
+            raise OSError('simulated client disconnect')
+
+        async def close(self):
+            return None
+
+    request = SimpleNamespace(
+        state=SimpleNamespace(account=None, local_dev=True)
+    )
+    with pytest.raises(OSError, match='simulated client disconnect'):
+        asyncio.run(server.upload_asset(request, InterruptedUpload()))
+
+    assert list(tmp_path.iterdir()) == []
+
