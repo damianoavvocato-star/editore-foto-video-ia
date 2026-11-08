@@ -46,3 +46,12 @@ def test_owner_can_review_permission_overrides_and_effective_set(tmp_path):
     assert "billing.read" not in policy.effective_permissions("support1", "support")
     with pytest.raises(PermissionError):
         policy.list_overrides("admin", "support1")
+
+
+def test_team_management_is_limited_to_owner_and_admin(tmp_path):
+    policy = PermissionPolicy(tmp_path / "permissions.sqlite3")
+    assert policy.has_permission("owner", "owner", "team.manage") is True
+    assert policy.has_permission("admin", "admin", "team.manage") is True
+    assert policy.has_permission("support", "support", "team.manage") is False
+    assert policy.has_permission("collab", "collaborator", "team.manage") is False
+    assert policy.has_permission("user", "user", "team.manage") is False
