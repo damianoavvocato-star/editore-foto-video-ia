@@ -1018,6 +1018,12 @@ def owner_enable_account(user_id: str, request: Request):
     return {'user': account}
 
 
+@app.get('/v1/owner/audit/integrity')
+def owner_audit_integrity(request: Request):
+    _require_owner(request)
+    return _account_store().verify_audit_chain()
+
+
 @app.get('/v1/owner/audit')
 def owner_audit_events(
     request: Request,
