@@ -752,10 +752,34 @@ def owner_enable_account(user_id: str, request: Request):
 
 
 @app.get('/v1/owner/audit')
-def owner_audit_events(request: Request, limit: int = 50):
+def owner_audit_events(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    action: str | None = None,
+    actorUserId: str | None = None,
+    targetUserId: str | None = None,
+    since: int | None = None,
+    until: int | None = None,
+):
     _require_permission(request, "audit.read")
-    # AccountStore clamps the requested page size to 1..100.
-    return {'events': _account_store().list_audit_events(limit)}
+    if since is not None and until is not None and since > until:
+        raise HTTPException(422, "Intervallo temporale audit non valido.")
+    events = _account_store().list_audit_events(
+        limit=limit,
+        offset=offset,
+        action=action,
+        actor_user_id=actorUserId,
+        target_user_id=targetUserId,
+        since=since,
+        until=until,
+    )
+    return {
+        'events': events,
+        'limit': max(1, min(100, limit)),
+        'offset': max(0, min(1_000_000, offset)),
+        'hasMore': len(events) == max(1, min(100, limit)),
+    }
 
 
 @app.get('/health')
