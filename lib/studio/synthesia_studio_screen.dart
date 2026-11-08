@@ -135,6 +135,46 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
     }
   }
 
+  Future<void> _confirmAndEnqueueDraft(StudioJobDraft draft) async {
+    final studio = _studio;
+    if (studio == null || _busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Conferma progetto'),
+        content: Text(
+          'Vuoi confermare “${draft.request['title'] ?? 'Video IA'}” e inserirlo nella coda? '
+          'Questa operazione salva la richiesta, ma non genera ancora il video: '
+          'il provider video non è collegato.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Rivedi più tardi'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Conferma e accoda'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() { _busy = true; _message = null; });
+    try {
+      final result = await studio.enqueueDraft(draft.jobId);
+      if (!mounted) return;
+      setState(() {
+        _message = result['message']?.toString() ??
+            'Richiesta salvata nella coda. La generazione video non è stata avviata.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ready = _capabilities['generationAvailable'] == true;
@@ -228,7 +268,22 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
         leading: const Icon(Icons.video_library_outlined),
         title: Text(draft.request['title']?.toString() ?? 'Video IA'),
         subtitle: Text('${draft.state} · ${draft.providerState}'),
-        trailing: IconButton(tooltip: 'Elimina bozza', icon: const Icon(Icons.delete_outline), onPressed: () => _deleteDraft(draft)),
+        trailing: Wrap(
+          spacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            IconButton(
+              tooltip: 'Conferma e inserisci in coda',
+              icon: const Icon(Icons.playlist_add_check),
+              onPressed: _busy ? null : () => _confirmAndEnqueueDraft(draft),
+            ),
+            IconButton(
+              tooltip: 'Elimina bozza',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _busy ? null : () => _deleteDraft(draft),
+            ),
+          ],
+        ),
       ))),
     ]);
   }
