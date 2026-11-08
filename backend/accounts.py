@@ -111,7 +111,11 @@ class AccountStore:
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS support_ticket_owner_idx ON support_tickets(owner_user_id, updated_at DESC)")
+            support_columns = {row["name"] for row in db.execute("PRAGMA table_info(support_tickets)").fetchall()}
+            if "assigned_to_user_id" not in support_columns:
+                db.execute("ALTER TABLE support_tickets ADD COLUMN assigned_to_user_id TEXT REFERENCES accounts(user_id) ON DELETE SET NULL")
             db.execute("CREATE INDEX IF NOT EXISTS support_ticket_status_idx ON support_tickets(status, updated_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS support_ticket_assignee_idx ON support_tickets(assigned_to_user_id, updated_at DESC)")
             db.execute("""CREATE TABLE IF NOT EXISTS support_ticket_messages (
                 message_id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES support_tickets(ticket_id) ON DELETE CASCADE,
                 author_user_id TEXT REFERENCES accounts(user_id) ON DELETE SET NULL,
@@ -992,11 +996,36 @@ class AccountStore:
             account = db.execute("SELECT role,disabled_at FROM accounts WHERE user_id=?", (owner_user_id,)).fetchone()
             if account is None or account["disabled_at"] is not None:
                 raise AccountError("Account non disponibile.")
-            db.execute("INSERT INTO support_tickets VALUES(?,?,?,'open',?,?)", (ticket_id, owner_user_id, subject, now, now))
+            db.execute("INSERT INTO support_tickets(ticket_id,owner_user_id,subject,status,created_at,updated_at) VALUES(?,?,?,'open',?,?)", (ticket_id, owner_user_id, subject, now, now))
             db.execute("INSERT INTO support_ticket_messages VALUES(?,?,?,?,?,?)",
                        (message_id, ticket_id, owner_user_id, account["role"], message, now))
         self.record_audit_event(owner_user_id, "support.ticket_created", owner_user_id, {"ticketId": ticket_id})
         return self.get_support_ticket(ticket_id)
+
+    def assign_support_ticket(self, ticket_id: str, actor_user_id: str, assignee_user_id: str | None) -> dict[str, Any]:
+        """Assign a ticket to an active Support account, or clear its assignment."""
+        with self._connect() as db:
+            ticket = db.execute("SELECT ticket_id FROM support_tickets WHERE ticket_id=?", (ticket_id,)).fetchone()
+            if ticket is None:
+                raise AccountError("Ticket non trovato.")
+            if assignee_user_id is not None:
+                assignee = db.execute(
+                    "SELECT role,disabled_at FROM accounts WHERE user_id=?", (assignee_user_id,)
+                ).fetchone()
+                if assignee is None or assignee["disabled_at"] is not None or assignee["role"] != "support":
+                    raise AccountError("Assegnatario non valido: seleziona un account Assistenza attivo.")
+            db.execute(
+                "UPDATE support_tickets SET assigned_to_user_id=?,updated_at=? WHERE ticket_id=?",
+                (assignee_user_id, int(time.time()), ticket_id),
+            )
+        self.record_audit_event(
+            actor_user_id, "support.ticket_assigned", None,
+            {"ticketId": ticket_id, "assigneeUserId": assignee_user_id},
+        )
+        updated = self.get_support_ticket(ticket_id)
+        if updated is None:
+            raise AccountError("Ticket non trovato.")
+        return updated
 
     def list_support_tickets(self, owner_user_id: str | None = None, status: str | None = None,
                              limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
@@ -1012,9 +1041,10 @@ class AccountStore:
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         values.extend((limit, offset))
         with self._connect() as db:
-            rows = db.execute("""SELECT ticket_id,owner_user_id,subject,status,created_at,updated_at
+            rows = db.execute("""SELECT ticket_id,owner_user_id,assigned_to_user_id,subject,status,created_at,updated_at
                 FROM support_tickets""" + where + " ORDER BY updated_at DESC,ticket_id LIMIT ? OFFSET ?", values).fetchall()
-        return [{"ticketId": r["ticket_id"], "ownerUserId": r["owner_user_id"], "subject": r["subject"],
+        return [{"ticketId": r["ticket_id"], "ownerUserId": r["owner_user_id"],
+                 "assignedToUserId": r["assigned_to_user_id"], "subject": r["subject"],
                  "status": r["status"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
 
     def get_support_ticket(self, ticket_id: str) -> dict[str, Any] | None:
@@ -1026,6 +1056,7 @@ class AccountStore:
             messages = db.execute("""SELECT message_id,author_user_id,author_role,body,created_at
                 FROM support_ticket_messages WHERE ticket_id=? ORDER BY created_at,message_id""", (ticket_id,)).fetchall()
         return {"ticketId": ticket["ticket_id"], "ownerUserId": ticket["owner_user_id"],
+                "assignedToUserId": ticket["assigned_to_user_id"],
                 "subject": ticket["subject"], "status": ticket["status"],
                 "createdAt": ticket["created_at"], "updatedAt": ticket["updated_at"],
                 "messages": [{"messageId": m["message_id"], "authorUserId": m["author_user_id"],
