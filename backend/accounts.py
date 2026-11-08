@@ -422,6 +422,11 @@ class AccountStore:
                    updated_at=excluded.updated_at""",
                 (user_id, counter, now),
             )
+            # Force every previously issued owner session to reauthenticate with 2FA.
+            db.execute(
+                "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, user_id),
+            )
             db.execute("DELETE FROM totp_recovery_codes WHERE user_id=?", (user_id,))
             db.executemany(
                 """INSERT INTO totp_recovery_codes(user_id,code_hash,created_at)
