@@ -271,6 +271,15 @@ def _require_owner(request: Request) -> dict[str, Any]:
     return account
 
 
+def _require_permission(request: Request, permission: str) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None or not _permission_policy().has_permission(
+        account["userId"], account["role"], permission
+    ):
+        raise HTTPException(403, "Permesso insufficiente.")
+    return account
+
+
 @app.get('/v1/owner/security/totp')
 def owner_totp_status(request: Request):
     owner = _require_owner(request)
@@ -324,13 +333,13 @@ def owner_totp_disable(body: OwnerTotpDisable, request: Request):
 
 @app.get('/v1/owner/accounts')
 def owner_list_accounts(request: Request, limit: int = 100):
-    _require_owner(request)
+    _require_permission(request, "accounts.read")
     return {'accounts': _account_store().list_accounts(limit)}
 
 
 @app.post('/v1/owner/accounts')
 def owner_create_account(body: OwnerCreateAccount, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "accounts.create")
     try:
         account = _account_store().create_managed_account(
             owner['userId'], body.username, body.temporaryPassword, body.role
@@ -346,7 +355,7 @@ def owner_create_account(body: OwnerCreateAccount, request: Request):
 
 @app.post('/v1/owner/accounts/{user_id}/reset-password')
 def owner_reset_account_password(user_id: str, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "accounts.password_reset")
     try:
         temporary = _account_store().reset_account_password(
             owner['userId'], user_id
@@ -360,7 +369,7 @@ def owner_reset_account_password(user_id: str, request: Request):
 
 @app.post('/v1/owner/accounts/{user_id}/role')
 def owner_set_account_role(user_id: str, body: OwnerSetRole, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "accounts.update")
     try:
         account = _account_store().set_account_role(
             owner['userId'], user_id, body.role
@@ -373,7 +382,7 @@ def owner_set_account_role(user_id: str, body: OwnerSetRole, request: Request):
 
 @app.post('/v1/owner/accounts/{user_id}/disable')
 def owner_disable_account(user_id: str, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "accounts.disable")
     try:
         account = _account_store().set_account_disabled(owner['userId'], user_id, True)
     except AccountError as exc:
@@ -384,7 +393,7 @@ def owner_disable_account(user_id: str, request: Request):
 
 @app.post('/v1/owner/accounts/{user_id}/enable')
 def owner_enable_account(user_id: str, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "accounts.disable")
     try:
         account = _account_store().set_account_disabled(owner['userId'], user_id, False)
     except AccountError as exc:
@@ -395,7 +404,7 @@ def owner_enable_account(user_id: str, request: Request):
 
 @app.get('/v1/owner/audit')
 def owner_audit_events(request: Request, limit: int = 50):
-    _require_owner(request)
+    _require_permission(request, "audit.read")
     # AccountStore clamps the requested page size to 1..100.
     return {'events': _account_store().list_audit_events(limit)}
 
@@ -1030,7 +1039,7 @@ def account_get_entitlement(request: Request):
 
 @app.post('/v1/owner/accounts/{user_id}/premium-grants')
 def owner_create_premium_grant(user_id: str, body: OwnerPremiumGrant, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "billing.grant")
     target = _account_store().get_account(user_id)
     if target is None:
         raise HTTPException(404, 'Account non trovato.')
@@ -1057,7 +1066,7 @@ def owner_create_premium_grant(user_id: str, body: OwnerPremiumGrant, request: R
 
 @app.get('/v1/owner/accounts/{user_id}/premium-grants')
 def owner_list_premium_grants(user_id: str, request: Request, limit: int = 50):
-    _require_owner(request)
+    _require_permission(request, "billing.read")
     if _account_store().get_account(user_id) is None:
         raise HTTPException(404, 'Account non trovato.')
     return {'grants': _entitlement_store().list_grants('owner', user_id, limit)}
@@ -1065,7 +1074,7 @@ def owner_list_premium_grants(user_id: str, request: Request, limit: int = 50):
 
 @app.delete('/v1/owner/accounts/{user_id}/premium-grants/{grant_id}')
 def owner_revoke_premium_grant(user_id: str, grant_id: str, request: Request):
-    owner = _require_owner(request)
+    owner = _require_permission(request, "billing.grant")
     if _account_store().get_account(user_id) is None:
         raise HTTPException(404, 'Account non trovato.')
     store = _entitlement_store()
