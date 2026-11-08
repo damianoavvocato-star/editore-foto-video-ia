@@ -105,6 +105,19 @@ class AccountStore:
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_created_idx ON account_audit_events(created_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_actor_idx ON account_audit_events(actor_user_id, created_at DESC)")
+            db.execute("""CREATE TABLE IF NOT EXISTS support_tickets (
+                ticket_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL REFERENCES accounts(user_id) ON DELETE CASCADE,
+                subject TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('open','waiting_user','resolved','escalated')),
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS support_ticket_owner_idx ON support_tickets(owner_user_id, updated_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS support_ticket_status_idx ON support_tickets(status, updated_at DESC)")
+            db.execute("""CREATE TABLE IF NOT EXISTS support_ticket_messages (
+                message_id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES support_tickets(ticket_id) ON DELETE CASCADE,
+                author_user_id TEXT REFERENCES accounts(user_id) ON DELETE SET NULL,
+                author_role TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS support_message_ticket_idx ON support_ticket_messages(ticket_id, created_at)")
             db.execute("""CREATE TABLE IF NOT EXISTS permission_overrides (
                 user_id TEXT NOT NULL,
                 permission TEXT NOT NULL,
@@ -749,6 +762,19 @@ class AccountStore:
             "accountsByRole": {row["role"]: int(row["count"]) for row in rows},
         }
 
+    def admin_dashboard_stats(self) -> dict[str, Any]:
+        """Return aggregate operational counters only; never expose account identities."""
+        now = int(time.time())
+        with self._connect() as db:
+            total = db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+            active = db.execute("SELECT COUNT(*) FROM accounts WHERE disabled_at IS NULL").fetchone()[0]
+            disabled = db.execute("SELECT COUNT(*) FROM accounts WHERE disabled_at IS NOT NULL").fetchone()[0]
+            rows = db.execute("SELECT role,COUNT(*) AS count FROM accounts GROUP BY role").fetchall()
+            recent = db.execute("SELECT COUNT(*) FROM accounts WHERE created_at>=?", (now - 30 * 86400,)).fetchone()[0]
+        return {"totalAccounts": int(total), "activeAccounts": int(active),
+                "disabledAccounts": int(disabled), "createdLast30Days": int(recent),
+                "accountsByRole": {row["role"]: int(row["count"]) for row in rows}}
+
     def create_managed_account(
         self, actor_user_id: str, username: str, password: str, role: str
     ) -> dict[str, Any]:
@@ -966,6 +992,82 @@ class AccountStore:
                 "createdAt": target["created_at"],
                 "disabled": disabled,
             }
+
+    def create_support_ticket(self, owner_user_id: str, subject: str, message: str) -> dict[str, Any]:
+        subject = subject.strip() if isinstance(subject, str) else ""
+        message = message.strip() if isinstance(message, str) else ""
+        if not 5 <= len(subject) <= 120:
+            raise AccountError("L'oggetto del ticket deve contenere da 5 a 120 caratteri.")
+        if not 10 <= len(message) <= 4000:
+            raise AccountError("Il messaggio deve contenere da 10 a 4000 caratteri.")
+        ticket_id, message_id, now = uuid.uuid4().hex, uuid.uuid4().hex, int(time.time())
+        with self._connect() as db:
+            account = db.execute("SELECT role,disabled_at FROM accounts WHERE user_id=?", (owner_user_id,)).fetchone()
+            if account is None or account["disabled_at"] is not None:
+                raise AccountError("Account non disponibile.")
+            db.execute("INSERT INTO support_tickets VALUES(?,?,?,'open',?,?)", (ticket_id, owner_user_id, subject, now, now))
+            db.execute("INSERT INTO support_ticket_messages VALUES(?,?,?,?,?,?)",
+                       (message_id, ticket_id, owner_user_id, account["role"], message, now))
+        self.record_audit_event(owner_user_id, "support.ticket_created", owner_user_id, {"ticketId": ticket_id})
+        return self.get_support_ticket(ticket_id)
+
+    def list_support_tickets(self, owner_user_id: str | None = None, status: str | None = None,
+                             limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        limit = max(1, min(100, limit if isinstance(limit, int) and not isinstance(limit, bool) else 50))
+        offset = max(0, min(1_000_000, offset if isinstance(offset, int) and not isinstance(offset, bool) else 0))
+        clauses, values = [], []
+        if owner_user_id:
+            clauses.append("owner_user_id=?"); values.append(owner_user_id)
+        if status:
+            if status not in {"open", "waiting_user", "resolved", "escalated"}:
+                raise AccountError("Stato ticket non valido.")
+            clauses.append("status=?"); values.append(status)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.extend((limit, offset))
+        with self._connect() as db:
+            rows = db.execute("""SELECT ticket_id,owner_user_id,subject,status,created_at,updated_at
+                FROM support_tickets""" + where + " ORDER BY updated_at DESC,ticket_id LIMIT ? OFFSET ?", values).fetchall()
+        return [{"ticketId": r["ticket_id"], "ownerUserId": r["owner_user_id"], "subject": r["subject"],
+                 "status": r["status"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
+
+    def get_support_ticket(self, ticket_id: str) -> dict[str, Any] | None:
+        if not isinstance(ticket_id, str) or not re.fullmatch(r"[a-f0-9]{32}", ticket_id):
+            return None
+        with self._connect() as db:
+            ticket = db.execute("SELECT * FROM support_tickets WHERE ticket_id=?", (ticket_id,)).fetchone()
+            if ticket is None: return None
+            messages = db.execute("""SELECT message_id,author_user_id,author_role,body,created_at
+                FROM support_ticket_messages WHERE ticket_id=? ORDER BY created_at,message_id""", (ticket_id,)).fetchall()
+        return {"ticketId": ticket["ticket_id"], "ownerUserId": ticket["owner_user_id"],
+                "subject": ticket["subject"], "status": ticket["status"],
+                "createdAt": ticket["created_at"], "updatedAt": ticket["updated_at"],
+                "messages": [{"messageId": m["message_id"], "authorUserId": m["author_user_id"],
+                              "authorRole": m["author_role"], "body": m["body"], "createdAt": m["created_at"]}
+                             for m in messages]}
+
+    def reply_support_ticket(self, ticket_id: str, actor_user_id: str, body: str,
+                              actor_role: str, status: str | None = None) -> dict[str, Any]:
+        body = body.strip() if isinstance(body, str) else ""
+        if not 1 <= len(body) <= 4000: raise AccountError("La risposta deve contenere da 1 a 4000 caratteri.")
+        if status is not None and status not in {"open", "waiting_user", "resolved", "escalated"}:
+            raise AccountError("Stato ticket non valido.")
+        now, message_id = int(time.time()), uuid.uuid4().hex
+        with self._connect() as db:
+            ticket = db.execute("SELECT owner_user_id,status FROM support_tickets WHERE ticket_id=?", (ticket_id,)).fetchone()
+            if ticket is None: raise AccountError("Ticket non trovato.")
+            if actor_role not in {"owner", "admin", "support"} and ticket["owner_user_id"] != actor_user_id:
+                raise AccountError("Ticket non disponibile.")
+            if actor_role in {"owner", "admin", "support"}:
+                new_status = status or ("resolved" if ticket["status"] == "resolved" else "waiting_user")
+            else:
+                if status is not None: raise AccountError("Solo l'assistenza può modificare lo stato del ticket.")
+                new_status = "open"
+            db.execute("INSERT INTO support_ticket_messages VALUES(?,?,?,?,?,?)",
+                       (message_id, ticket_id, actor_user_id, actor_role, body, now))
+            db.execute("UPDATE support_tickets SET status=?,updated_at=? WHERE ticket_id=?", (new_status, now, ticket_id))
+        self.record_audit_event(actor_user_id, "support.ticket_replied", ticket["owner_user_id"],
+                                {"ticketId": ticket_id, "status": new_status})
+        return self.get_support_ticket(ticket_id)
 
     def record_audit_event(
         self,
