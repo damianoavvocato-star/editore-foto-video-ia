@@ -38,7 +38,7 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P1-01 | Schermata Premium collegata alla navigazione | User | AccountPremiumScreen e route | entitlement API | raggiungibile da tutte le piattaforme target | partial |
+| P1-01 | Schermata Premium collegata alla navigazione | User | AccountPremiumPage collegata a menu desktop e mobile; stato sessione e messaggi di fallback | lettura reale di /v1/auth/me e /v1/account/entitlement | piano mostrato solo dopo verifica server; errori ritentabili; test widget; pagamenti e referral non simulati | partial |
 | P1-02 | Concessione/revoca/estensione Premium | Owner | console grant | grant API e audit | scadenze, revoca e audit verificati | partial |
 | P1-03 | Pagamenti reali e store billing | User, Owner | acquisto, restore, ricevute | store validation, webhook, entitlement sync | sandbox Apple/Google/web | missing |
 | P1-04 | Matrice Free/Premium e quote | Owner, User | paywall e consumi | policy e contatori per feature | enforcement server-side e trasparenza quote | missing |
@@ -187,3 +187,12 @@
 - Dichiarato in UI il limite attuale: i file multimediali e i progetti locali non vengono caricati/sincronizzati. Non si presenta quindi la collaborazione come sincronizzazione cloud già disponibile.
 - P0-06 e P3-01 restano `partial` in attesa della CI sul nuovo frontend e di test UI dedicati; restano inoltre da implementare sincronizzazione media, notifiche, versioni e cronologia revisioni.
 - Stima del registro invariata: 1 done, 25 partial, 28 missing, 3 blocked su 57; circa 24% con ponderazione uniforme. Nessun APK generato; fase 6 resta l'ultima.
+
+
+## Aggiornamento Premium — 8 novembre 2026, collegamento entitlement e navigazione
+
+- Aggiunta `AccountPremiumPage`: recupera la sessione da secure storage, verifica il profilo autenticato e legge il piano reale da `GET /v1/account/entitlement`.
+- La schermata Premium è raggiungibile dal menu laterale e dalla navigazione mobile. In assenza di configurazione API/sessione mostra lo stato non autenticato; in caso di errore di rete consente un nuovo tentativo.
+- Acquisto, ripristino e referral non vengono simulati: la UI dichiara che pagamenti e servizio inviti non sono ancora collegati. Nessun codice invito fittizio e nessuna concessione Premium lato client.
+- Aggiunti test widget per stato senza sessione/configurazione e trasparenza sul pagamento non attivo. La modifica resta da confermare con CI.
+- P1-01 resta `partial`: la lettura entitlement è collegata, ma mancano flussi di accesso integrati, billing reale e verifica multipiattaforma. P1-03 e P1-05 non avanzano di stato.
