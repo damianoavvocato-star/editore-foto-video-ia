@@ -85,3 +85,51 @@ def test_account_usage_endpoint_requires_auth_and_returns_server_quota(tmp_path,
     assert data["used"] == 0
     assert data["remaining"] == data["limit"]
     assert data["exhausted"] is False
+
+
+
+def test_credit_api_is_owner_only_and_balance_is_private(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("credit_owner", "owner password long enough")
+    user = store.register("credit_user", "user password long enough")
+    other = store.register("credit_other", "other password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    owner_headers = headers(owner["userId"])
+    user_headers = headers(user["userId"])
+    other_headers = headers(other["userId"])
+
+    assert client.get("/v1/account/credits").status_code == 401
+    assert client.get("/v1/account/credits", headers=user_headers).json()["balance"]["balance"] == 0
+
+    denied = client.post(
+        f"/v1/owner/accounts/{user['userId']}/credits",
+        headers=user_headers,
+        json={"amount": 50, "referenceId": "launch-bonus", "reason": "test"},
+    )
+    assert denied.status_code == 403
+
+    grant = client.post(
+        f"/v1/owner/accounts/{user['userId']}/credits",
+        headers=owner_headers,
+        json={"amount": 50, "referenceId": "launch-bonus", "reason": "beta bonus"},
+    )
+    assert grant.status_code == 200
+    assert grant.json()["balance"] == 50
+
+    repeated = client.post(
+        f"/v1/owner/accounts/{user['userId']}/credits",
+        headers=owner_headers,
+        json={"amount": 50, "referenceId": "launch-bonus", "reason": "beta bonus"},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["applied"] is False
+
+    assert client.get("/v1/account/credits", headers=user_headers).json()["balance"]["balance"] == 50
+    assert client.get("/v1/account/credits", headers=other_headers).json()["balance"]["balance"] == 0
