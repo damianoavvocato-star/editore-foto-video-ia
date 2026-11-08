@@ -186,7 +186,7 @@ jobs:
         run: |
           set -euo pipefail
           wrapper=gradle/wrapper/gradle-wrapper.properties
-          sed -i 's/-all\\.zip/-bin\\.zip/' "$wrapper"
+          sed -i 's/-all\.zip/-bin\.zip/' "$wrapper"
           grep '^distributionUrl=' "$wrapper"
 
       - name: Validate Gradle project configuration without building APK
