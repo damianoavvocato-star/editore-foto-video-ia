@@ -126,6 +126,36 @@ class AccountStore:
         return hashlib.scrypt(password.encode("utf-8"), salt=salt,
                               n=2**14, r=8, p=1, dklen=32)
 
+    def _authorized_actor_role(
+        self, db: sqlite3.Connection, actor_user_id: str, permission: str
+    ) -> str | None:
+        """Resolve an active actor and enforce the same persistent policy as HTTP routes."""
+        from backend.authorization import PERMISSIONS, ROLE_DEFAULTS
+
+        if permission not in PERMISSIONS:
+            return None
+        actor = db.execute(
+            "SELECT role,disabled_at FROM accounts WHERE user_id=?",
+            (actor_user_id,),
+        ).fetchone()
+        if actor is None or actor["disabled_at"] is not None:
+            return None
+        role = actor["role"]
+        if role not in ROLE_DEFAULTS:
+            return None
+        if role == "owner":
+            return role
+        override = db.execute(
+            "SELECT effect FROM permission_overrides WHERE user_id=? AND permission=?",
+            (actor_user_id, permission),
+        ).fetchone()
+        allowed = (
+            override["effect"] == "allow"
+            if override is not None
+            else permission in ROLE_DEFAULTS[role]
+        )
+        return role if allowed else None
+
     @staticmethod
     def _public(row: sqlite3.Row) -> dict[str, Any]:
         return {
@@ -572,14 +602,11 @@ class AccountStore:
         now = int(time.time())
         try:
             with self._connect() as db:
-                actor = db.execute(
-                    "SELECT role,disabled_at FROM accounts WHERE user_id=?",
-                    (actor_user_id,),
-                ).fetchone()
-                if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+                actor_role = self._authorized_actor_role(db, actor_user_id, "accounts.create")
+                if actor_role is None:
                     raise AccountError("Permesso di creazione account insufficiente.")
-                if actor["role"] == "admin" and role not in {"user", "collaborator"}:
-                    raise AccountError("Un amministratore può creare solo account user o collaborator.")
+                if actor_role != "owner" and role not in {"user", "collaborator"}:
+                    raise AccountError("Solo il proprietario può creare account admin o support.")
                 db.execute(
                     """INSERT INTO accounts
                        (user_id,username,password_salt,password_hash,role,created_at,must_change_password)
@@ -609,10 +636,8 @@ class AccountStore:
         digest = self._password(temporary, salt)
         now = int(time.time())
         with self._connect() as db:
-            actor = db.execute(
-                "SELECT role,disabled_at FROM accounts WHERE user_id=?", (actor_user_id,)
-            ).fetchone()
-            if actor is None or actor["role"] not in {"owner", "admin", "support"} or actor["disabled_at"] is not None:
+            actor_role = self._authorized_actor_role(db, actor_user_id, "accounts.password_reset")
+            if actor_role is None:
                 raise AccountError("Permesso di reset password insufficiente.")
             target = db.execute(
                 "SELECT role FROM accounts WHERE user_id=?", (target_user_id,)
@@ -621,10 +646,8 @@ class AccountStore:
                 raise AccountError("Account non trovato.")
             if target["role"] == "owner":
                 raise AccountError("Il reset dell'account proprietario richiede la procedura dedicata.")
-            if actor["role"] == "admin" and target["role"] not in {"support", "collaborator", "user"}:
-                raise AccountError("L'amministratore non può reimpostare le credenziali di un altro amministratore.")
-            if actor["role"] == "support" and target["role"] not in {"collaborator", "user"}:
-                raise AccountError("Il supporto può reimpostare solo account user o collaborator.")
+            if actor_role != "owner" and target["role"] == "admin":
+                raise AccountError("Solo il proprietario può reimpostare le credenziali di un amministratore.")
             db.execute(
                 "UPDATE accounts SET password_salt=?,password_hash=?,must_change_password=1 WHERE user_id=?",
                 (salt, digest, target_user_id),
@@ -683,14 +706,9 @@ class AccountStore:
             raise AccountError("Ruolo non valido o riservato.")
         now = int(time.time())
         with self._connect() as db:
-            actor = db.execute(
-                "SELECT role,disabled_at FROM accounts WHERE user_id=?",
-                (actor_user_id,),
-            ).fetchone()
-            if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+            actor_role = self._authorized_actor_role(db, actor_user_id, "accounts.update")
+            if actor_role is None:
                 raise AccountError("Permesso di modifica ruolo insufficiente.")
-            if actor["role"] == "admin" and role == "admin":
-                raise AccountError("Un amministratore non può assegnare il ruolo admin.")
             target = db.execute(
                 "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
                 (target_user_id,),
@@ -699,6 +717,8 @@ class AccountStore:
                 raise AccountError("Account non trovato.")
             if target["role"] == "owner":
                 raise AccountError("Il ruolo proprietario non può essere modificato.")
+            if actor_role != "owner" and (target["role"] == "admin" or role == "admin"):
+                raise AccountError("Solo il proprietario può modificare o assegnare il ruolo admin.")
             db.execute("UPDATE accounts SET role=? WHERE user_id=?", (role, target_user_id))
             # Existing sessions carry a stale role snapshot; require a fresh login.
             db.execute(
@@ -728,11 +748,8 @@ class AccountStore:
             raise AccountError("Stato account non valido.")
         now = int(time.time())
         with self._connect() as db:
-            actor = db.execute(
-                "SELECT role,disabled_at FROM accounts WHERE user_id=?",
-                (actor_user_id,),
-            ).fetchone()
-            if actor is None or actor["role"] not in {"owner", "admin"} or actor["disabled_at"] is not None:
+            actor_role = self._authorized_actor_role(db, actor_user_id, "accounts.disable")
+            if actor_role is None:
                 raise AccountError("Permesso di sospensione account insufficiente.")
             target = db.execute(
                 "SELECT user_id,username,role,created_at,disabled_at FROM accounts WHERE user_id=?",
@@ -742,8 +759,8 @@ class AccountStore:
                 raise AccountError("Account non trovato.")
             if target["role"] == "owner":
                 raise AccountError("L'account proprietario non può essere sospeso o modificato.")
-            if actor["role"] == "admin" and target["role"] == "admin":
-                raise AccountError("Un amministratore non può sospendere un altro amministratore.")
+            if actor_role != "owner" and target["role"] == "admin":
+                raise AccountError("Solo il proprietario può sospendere un amministratore.")
             disabled_at = now if disabled else None
             db.execute(
                 "UPDATE accounts SET disabled_at=? WHERE user_id=?",
