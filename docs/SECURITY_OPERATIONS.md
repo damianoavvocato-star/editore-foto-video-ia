@@ -20,10 +20,23 @@ runtime and authorized operators. Back up the key separately from the database.
 Loss of this key makes encrypted TOTP seeds unreadable; the login endpoint
 fails closed with HTTP 503 rather than silently accepting password-only login.
 
-Do not rotate this key by simply replacing the environment value: existing
-TOTP seeds must first be decrypted with the old key and re-encrypted with the
-new key in a controlled maintenance operation. A key rotation utility is not
-part of this implementation.
+Do not rotate this key by simply replacing the environment value. The
+repository includes an atomic offline rotation utility. Back up the account
+database and both keys, stop the backend or put it in maintenance mode, then
+inject the old and new keys into a protected operator environment and run:
+
+```sh
+export MEDIA_AUTH_DB=/secure/path/accounts.sqlite3
+export MEDIA_TOTP_OLD_ENCRYPTION_KEY='(old key from secret manager)'
+export MEDIA_TOTP_NEW_ENCRYPTION_KEY='(new key generated above)'
+python -m backend.security_key_rotation
+```
+
+The utility re-encrypts active and pending TOTP seeds in one SQLite transaction,
+rolls back if any seed cannot be decrypted, and prints only the number of
+updated records. Update the deployment's `MEDIA_TOTP_ENCRYPTION_KEY` to the
+new key before restarting the backend. Never place the values in shell history,
+source control, command-line arguments, or logs.
 
 ## Mobile account session and media API
 
