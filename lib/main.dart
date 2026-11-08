@@ -599,10 +599,10 @@ class _HomePageState extends State<HomePage> {
 
   String t(String key) => Copy.get(widget.language, key);
 
-  Future<void> importMedia() async {
+  Future<void> importMedia({bool photosOnly = false, int? maxFiles}) async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [
+      type: photosOnly ? FileType.image : FileType.custom,
+      allowedExtensions: photosOnly ? null : [
         'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v',
         'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp',
         'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'flac', 'aiff', 'wma',
@@ -612,6 +612,12 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (result == null || result.files.isEmpty) return;
+    final selectedFiles = maxFiles == null
+        ? result.files
+        : result.files.take(maxFiles).toList();
+    if (photosOnly && result.files.length > selectedFiles.length && mounted) {
+      _message('Per l’importazione rapida vengono utilizzate solo le prime ${selectedFiles.length} foto selezionate.');
+    }
 
     var updatedProject = project;
     var importedCount = 0;
@@ -640,8 +646,8 @@ class _HomePageState extends State<HomePage> {
       return end;
     }
 
-    for (var i = 0; i < result.files.length; i++) {
-      final file = result.files[i];
+    for (var i = 0; i < selectedFiles.length; i++) {
+      final file = selectedFiles[i];
       final path = file.path;
 
       if (path == null) continue;
@@ -825,6 +831,12 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           actions: [
+            if (selectedTab == 0 || selectedTab == 1 || selectedTab == 2)
+              IconButton(
+                tooltip: 'Importa rapidamente fino a 2 foto',
+                icon: const Icon(Icons.photo_library_outlined),
+                onPressed: () => importMedia(photosOnly: true, maxFiles: 2),
+              ),
             if (selectedTab != 2)
               IconButton(
                 tooltip: 'Apri MagicIAedit',
