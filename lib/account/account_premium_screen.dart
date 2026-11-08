@@ -204,7 +204,7 @@ class _UsageSummaryCard extends StatelessWidget {
             Text('$used di $limit elaborazioni · $remaining rimanenti'),
             const SizedBox(height: 8),
             LinearProgressIndicator(
-              value: limit == 0 ? 0 : (used / limit).clamp(0.0, 1.0),
+              value: limit == 0 ? 0 : (used / limit).clamp(0.0, 1.0).toDouble(),
             ),
             const SizedBox(height: 6),
             Text('Periodo: $period',
