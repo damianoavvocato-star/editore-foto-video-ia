@@ -41,7 +41,7 @@ Per impostazione predefinita, se `MEDIA_API_TOKEN` non è configurato, tutte le 
 
 ## Limiti e requisiti prima della produzione
 
-Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider cloud MagicIAedit è predisposto ma non è attivo finché le credenziali e il modello non vengono configurati sul server. I job e gli asset sono conservati in memoria/directory locale, senza coda persistente né proprietà per utente. Prima dell'esposizione pubblica servono autenticazione individuale, autorizzazione per asset/job/output, HTTPS, rate limiting, quote, scansione/validazione contenuti, retention e pulizia automatica, coda persistente e test di carico.
+Il renderer è un backend di riferimento e non è ancora collegato e collaudato end-to-end nell'interfaccia Flutter. Il provider cloud MagicIAedit è predisposto ma non è attivo finché le credenziali e il modello non vengono configurati sul server. Gli asset sono salvati su disco e associati a un account; le autorizzazioni per asset, job e output sono verificate lato server. Lo stato dei job e gli eventi di cancellazione sono invece conservati in memoria del processo: un riavvio del server perde lo stato dei job e non esiste ancora una coda durevole o un ripristino automatico. Prima dell'esposizione pubblica servono ancora coda persistente e recupero dei job, quote e rate limiting per account, scansione/validazione dei contenuti, retention e pulizia automatica, monitoraggio operativo e test di carico.
 
 ## Test
 
