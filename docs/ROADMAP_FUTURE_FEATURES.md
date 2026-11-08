@@ -251,3 +251,127 @@ Una funzione entra nello stato “completata” solo se:
 - TeamStudio e AdCreator dopo i gate di sicurezza, licenze e costi.
 
 I livelli indicano priorità, non date o completamento. Una funzione cloud ad alto costo non va attivata in produzione finché preventivo, quote, cancellazione, privacy e provider fallback non superano i test.
+
+---
+
+## 11. Pacchetto approvato — Universal Creative Studio IA (8 novembre 2026)
+
+> **Stato di tutte le voci di questa sezione: REQUISITO APPROVATO / PIANIFICATO.**
+> L'inclusione in roadmap non dimostra implementazione, disponibilità di provider, qualità garantita o attivazione in produzione. Le funzioni già presenti mantengono lo stato assegnato nell'audit tecnico; nessuna voce cambia automaticamente stato per effetto di questo addendum.
+
+### 11.1 Visione di prodotto
+
+L'obiettivo è un ambiente creativo multimodale in cui l'utente descrive il risultato con testo, voce, immagini, video o documenti e un agente coordina strumenti fotografici, video, audio, grafici e di distribuzione. Il sistema deve trasformare richieste complesse in piani espliciti, eseguibili per passi, verificabili e annullabili. Non si promette che ogni richiesta sia sempre realizzabile: capacità mancanti, limiti dei modelli, diritti, costi, hardware e dati insufficienti devono essere dichiarati prima dell'esecuzione.
+
+### 11.2 MagicIA Brain e Universal Creative Agent
+
+| Requisito approvato | Specifica da realizzare | Dipendenze e gate |
+|---|---|---|
+| **MagicIA Brain** | Livello centrale di comprensione multimodale, intent detection, pianificazione, memoria di contesto del progetto e coordinamento dei tool. | Contratti API versionati, catalogo capability, autenticazione/ownership, provider adapter, osservabilità. |
+| **Universal Creative Agent** | Scompone richieste articolate in un grafo di attività con input/output tipizzati, dipendenze, stato, progressi, retry e risultati parziali. | Job orchestrator durevole; non deve eseguire codice arbitrario né accedere a risorse non autorizzate. |
+| **Selezione automatica modelli** | Router per capacità, qualità attesa, costo stimato, latenza, regione, licenza, privacy e disponibilità; fallback controllato. | Registro provider/modelli con capability dichiarate e health check; segreti solo server-side; test contrattuali e sandbox. |
+| **Quality Guarantee Engine** | Verifiche tecniche e semantiche specifiche per tipo di output, soglie configurabili, correzioni consentite e nuovo controllo. | Suite di validator per immagini, video, audio, sottotitoli e pacchetti; report con controlli superati/non verificabili. Non promettere perfezione assoluta. |
+| **Creative Memory / Creative DNA** | Preferenze di stile, preset e decisioni che l'utente sceglie di conservare; applicazione suggerita ai progetti futuri. | Memoria opt-in, consultabile, modificabile, esportabile e cancellabile; separazione per account e dispositivo; nessun uso per training senza consenso. |
+| **Modalità Fai tutto tu** | Esecuzione end-to-end di un piano approvato, con anteprima, checkpoint, undo e conferma prima di operazioni esterne o irreversibili. | Agent orchestration, quote/costo, job recovery, permessi granulari e audit. |
+| **Modalità apprendimento** | Spiegazioni contestuali, tutorial guidati e possibilità di eseguire insieme all'utente. | Tutorial versionati, accessibilità, telemetria opt-in e nessun blocco del flusso editor. |
+
+### 11.3 Fotografia e immagini
+
+| Requisito approvato | Funzioni comprese | Criteri minimi |
+|---|---|---|
+| Restauro e colorizzazione | Denoise, deblur, scratch/damage repair, recupero dettagli, colorizzazione B/N, upscaling e correzione artefatti. | Originale preservato; confronto prima/dopo; test su scansioni, volti, testo e immagini degradate; dichiarare ricostruzioni sintetiche. |
+| Ritocco e generazione | Ritratto, pelle, luce, compositing, generazione da testo e immagini di riferimento. | Maschere modificabili, consistenza, controllo artefatti, provenienza e limiti del modello. |
+| Rimozione/sostituzione oggetti | Selezione manuale o assistita, inpainting, outpainting, riempimento e sostituzione sfondo/oggetto. | Maschere e risultato revisionabili; nessuna modifica distruttiva dell'originale; test su occlusioni e bordi. |
+| Sfondi, luce e prospettiva | Segmentazione soggetto, relighting, correzione prospettica e geometrica, sfocatura e scenari. | Coerenza ombre/riflessi e bordi; fallback locale/cloud; test su soggetti complessi. |
+| Generazione testo/immagine | Text-to-image, image-to-image, varianti, riferimenti, stili e composizioni. | Provider e licenze verificati, disclosure contenuto generato, filtri di sicurezza e stima costo. |
+| Foto parlanti e animazione | Photo-to-video, animazione ritratto, voce e movimenti facciali autorizzati. | Consenso verificabile della persona/diritti; etichettatura sintetico; anti-impersonificazione e cancellazione media. |
+| Profondità e 3D | Stima profondità, parallax, camera motion e ricostruzione 3D approssimata da immagini multiple. | Dichiarare limiti geometrici; controlli su occlusioni e artefatti; export in formati supportati. |
+| Photo Match e archivio | Duplicati/simili, raggruppamento per evento, soggetto e contenuto, ricerca semantica e uniformazione stile. | Indice cancellabile e isolato per account; elaborazione locale ove possibile; indicizzazione remota solo opt-in. |
+
+### 11.4 Video e montaggio
+
+| Requisito approvato | Funzioni comprese | Criteri minimi |
+|---|---|---|
+| MagicIAedit evoluto | Analisi multimodale più ampia, piano timeline, selezione momenti e proposte modificabili. | Separare piano, applicazione e rendering; supportare preview, undo, cancel e verifica output. |
+| Regista IA / montaggio automatico | Storyboard, ritmo, inquadrature, ordine scene, transizioni, musica e varianti per obiettivo/durata. | Motivazioni e alternative visibili; clip bloccabili; timeline valida e sempre modificabile. |
+| Generazione testo/immagine/video | Generazione clip e scene, image-to-video, estensione e raccordi generativi. | Provider reale testato, costi/quote, licenze, provenance e limiti durata/risoluzione. |
+| Modifica generativa scene | Rimozione/sostituzione elementi, sfondi, condizioni ambientali e riempimento temporale. | Coerenza tra frame, controllo flicker e tracking; confronto con originale e disclosure. |
+| Tracking, maschere e rotoscoping | Tracking soggetti/oggetti, maschere temporali, keying e correzione manuale. | Test perdita target, occlusioni, motion blur e correzione frame-by-frame. |
+| Stabilizzazione e miglioramento | Stabilizzazione, denoise, deblur, upscaling, frame interpolation e correzione colore. | Test rolling shutter, flicker, frame rate variabile, audio sync e limiti device/GPU. |
+| Montaggio da trascrizione | ASR con parole/timestamp, rimozione frasi/silenzi e collegamento testo-timeline. | Timestamp verificabili, diarizzazione opzionale, undo e revisione trascrizione. |
+| Multicamera e musica | Sync per audio/timecode, switching multicamera, beat detection e allineamento clip. | Gestione drift, sorgenti mancanti, licenze musicali e fallback manuale. |
+| StoryMemory e ricerca | Ricerca semantica di momenti e raggruppamento narrativo di ricordi/eventi. | Indici opt-in, filtri e cancellazione; non dedurre identità o relazioni non verificate. |
+| VideoDoctor | Diagnostica tecnica/narrativa, audio, frame, sottotitoli, aspect ratio e compatibilità export. | Report ripetibile con severità, falsi positivi e controlli non verificabili; riparazione solo su copia. |
+
+### 11.5 Voce, audio e lingue
+
+- Riconoscimento vocale, rilevamento lingua, timestamp e diarizzazione multi-speaker.
+- Traduzione in più lingue in un singolo batch, con glossari, nomi propri, tono e revisione umana.
+- Doppiaggio/TTS, voci selezionabili, dizionari di pronuncia e voice-over.
+- Clonazione o imitazione vocale soltanto con consenso verificabile, diritti e protezioni anti-impersonificazione.
+- Lip-sync e adattamento temporale del parlato, ove supportati dal provider.
+- Pulizia rumore/vento/riverbero, separazione voce/musica/effetti e mix automatico.
+- Musica ed effetti sonori generati o selezionati esclusivamente con licenza/diritti verificati.
+- Sottotitoli SRT/VTT/ASS, editor sincronizzato, descrizione audio e accessibilità.
+- Un output distinto per lingua, più eventuale ZIP, con stato, retry, cancel e download indipendenti per lingua.
+- Supporto RTL e shaping arabo nei sottotitoli e nel rendering, verificato con fixture linguistiche reali.
+
+**Gate comune:** pipeline ASR → revisione trascrizione → traduzione → revisione → TTS/doppiaggio → sincronizzazione → rendering per lingua → QA. Nessun job batch deve essere conteggiato o recuperato come se fosse un singolo render indivisibile.
+
+### 11.6 Creatività, lavoro e distribuzione
+
+- **MultiSocial Universe:** timeline master e varianti per piattaforma, rapporto d'aspetto, durata, safe area, lingua, sottotitoli, copertina e metadati.
+- **AdCreator:** spot, annunci, storyboard, copy, voice-over e varianti; controllo delle affermazioni commerciali non supportate.
+- **E-commerce:** fotografie prodotto, cataloghi, mockup, schede e video dimostrativi.
+- **Documenti in video:** PDF, slide e documenti trasformati in storyboard, narrazione e clip, rispettando i diritti dei contenuti.
+- **Brand kit e template:** loghi, colori, font, preset e librerie con licenze/attribuzioni verificabili.
+- **TeamStudio:** collaborazione, ruoli, commenti timecode, revisioni, approvazioni e conflitti; subordinato a isolamento account e storage autorizzato.
+- **Export professionale:** profili container/codec, risoluzioni, frame rate, bitrate, audio, sottotitoli e metadati; supporto dichiarato solo dopo test su file e device.
+- **Condivisione assistita:** share sheet o API ufficiali; conferma esplicita prima di pubblicare e nessuna memorizzazione non necessaria di credenziali social.
+
+### 11.7 Innovazione, sicurezza e affidabilità
+
+- **Privacy Director:** rilevamento assistito di volti, targhe, documenti, indirizzi e dati sensibili; blur/redaction e revisione prima dell'export.
+- **Creative DNA:** profili creativi separati dai contenuti media, opt-in e pieno controllo dell'utente.
+- **Auto-Recovery Engine:** autosave, versioni, checkpoint dei job, retry idempotenti, recupero dopo crash/riavvio e ripristino senza sovrascrivere copie valide.
+- **Versioning e backup:** cronologia, backup cifrati, retention, restore verificato e gestione storage.
+- **Cost & Quality Optimizer:** stima prima dell'elaborazione di costo, durata, qualità, consumo e alternative; blocco/consenso oltre budget impostato.
+- **Copyright e consenso:** provenienza asset, licenze musica/font/template/modelli, consenso per volto/voce e registro delle autorizzazioni necessarie.
+- **Accessibilità:** sottotitoli, descrizione audio, contrasto, navigazione accessibile, controlli vocali e localizzazione.
+- **Offline compatibile:** editor base, cache, preset, strumenti locali e coda differita; indicare chiaramente quali funzioni richiedono rete/provider.
+- **SmartDevice / SmartShield:** adattamento a memoria, storage, codec e capacità del dispositivo; degradazione progressiva e protezione da crash/thermal pressure quando i segnali sono disponibili.
+
+### 11.8 Nuove combinazioni differenzianti da prototipare
+
+Queste idee sono proposte di prodotto da validare, non affermazioni di novità assoluta sul mercato:
+
+1. **Creative Intent Compiler:** converte una richiesta libera in un piano strutturato, con obiettivi, vincoli, asset, operazioni, costo stimato e test di accettazione.
+2. **Continuity Guardian:** controlla coerenza tra scene di personaggi, abiti, oggetti, colori, luce e ambientazione; segnala differenze senza correggerle automaticamente senza consenso.
+3. **Narrative Repair:** identifica passaggi poco chiari, salti temporali e raccordi mancanti; propone soluzioni e mostra il motivo.
+4. **Universal Project Portability:** esporta progetto, media collegati, font/licenze e manifest dei provider in un pacchetto portabile, con verifica dei riferimenti e possibilità di riaprire il progetto su un altro dispositivo.
+5. **Creative Simulation Preview:** genera una preview a bassa qualità e stima tempi/costi/spazio prima del rendering completo.
+6. **Trust & Provenance Ledger:** registra localmente o nel progetto le trasformazioni, gli asset generati, i provider e le licenze dichiarate, senza esporre segreti o dati privati.
+7. **Accessibility Twin:** crea in parallelo versioni accessibili del progetto (sottotitoli, descrizione audio, testo leggibile e lingua semplificata), collegate alla timeline master.
+8. **Intent-to-Outcome Test:** prima di esportare, confronta il risultato con l'obiettivo dichiarato dall'utente e segnala requisiti soddisfatti, parziali o non verificabili.
+
+### 11.9 Architettura modulare e contratti obbligatori
+
+Ogni capability deve registrare: identificatore/versione, input e output tipizzati, piattaforme, provider/modello, modalità locale/cloud, requisiti di consenso, licenza, limiti, costo stimato, timeout, retry policy, cancellazione, retention, fallback e test. MagicIA Brain può invocare soltanto capability registrate e autorizzate.
+
+L'orchestratore deve usare job e sotto-job durevoli, lease dei worker, idempotenza per fase, checkpoint, retry selettivo, cancellazione cooperativa e isolamento per account. I risultati intermedi devono essere riutilizzabili senza rielaborare tutto il progetto. Le operazioni distruttive, pubblicazioni, condivisioni, clonazioni vocali e upload remoti richiedono conferma/consenso esplicito.
+
+### 11.10 Sequenza incrementale e protezione della fase APK
+
+1. **Fondazioni P0:** sicurezza account/asset/job, recovery durevole, quote, idempotenza, rate limit, secret management, cancellazione e audit. Non ampliare i provider cloud prima di questo gate.
+2. **Fondazioni IA P1:** capability registry, contratti versionati, router provider, planner/validator e job orchestrator; prima versione di MagicIA Brain senza dichiarare autonomia illimitata.
+3. **Valore locale P2:** VideoDoctor tecnico, Photo Match locale, preset MultiSocial, accessibilità e Auto-Recovery per funzioni compatibili senza dipendenza cloud.
+4. **Provider P3:** selezione e prova di provider immagine/video/ASR/TTS/traduzione; sandbox, test contrattuali, privacy, licenze, costi e fallback.
+5. **Workflow P4:** Regista IA, batch multi-lingua, generazione/ritocco, audio, AdCreator, TeamStudio e funzioni generative in moduli separati.
+6. **QA e release gate:** test unitari, integrazione, sicurezza, carico, regressione, dispositivi reali e verifica dei costi; solo dopo i gate si autorizza la fase 6.
+7. **Fase 6:** build APK release, firma configurata in modo sicuro, installazione e smoke test su dispositivo; nessuna build APK prima di questa fase.
+
+Ogni incremento deve mantenere main intatto, lavorare sul branch feature e usare aggiornamenti non-forzati con expected SHA. Se una funzione nuova rompe test o stabilità, il modulo viene isolato/disattivato o corretto prima di proseguire; non si riduce artificialmente la percentuale delle parti già verificate e non si aumenta la percentuale per requisiti solo pianificati.
+
+### 11.11 Definizione di “completata”
+
+Una capability è “completata” solo quando esiste un flusso UI/API reale, il provider o il motore locale è effettivamente configurato, input/output sono verificati, autorizzazioni e consenso sono testati, cancellazione/timeout/fallback funzionano, test automatici passano, il risultato è collaudato su media rappresentativi e limiti/costi/licenze sono documentati. In caso contrario lo stato resta **pianificata**, **parziale**, **bloccata da provider/configurazione** o **non verificata**.
