@@ -153,7 +153,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance})>(
+    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode, Map<String, dynamic>? usageSummary, int? creditBalance, List<dynamic>? referralClaims})>(
       future: _load,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
