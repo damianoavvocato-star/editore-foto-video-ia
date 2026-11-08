@@ -220,7 +220,7 @@ def _normalise_plan(raw: Any, asset_ids: set[str]) -> dict[str, Any]:
 _STYLE_PRESETS = {"balanced", "cinematic", "travel", "family", "social_short", "product", "storytelling", "dynamic"}
 _PACES = {"slow", "balanced", "fast"}
 _ASPECT_RATIOS = {"9:16", "16:9", "1:1", "4:5"}
-_LANGUAGES = {"it", "en", "fr", "es", "ar", "de", "pt"}
+_LANGUAGES = {"it", "en", "fr", "es", "ar", "de", "pt", "zh", "ja", "hi", "ru", "ko", "nl", "tr", "pl", "uk", "id", "vi", "th", "sv", "da", "no", "fi", "el", "he", "cs", "ro", "hu", "bn", "ur"}
 
 
 def _normalise_options(options: Any) -> dict[str, Any]:

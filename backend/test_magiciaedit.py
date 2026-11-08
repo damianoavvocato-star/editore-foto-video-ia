@@ -530,7 +530,7 @@ def test_magic_options_are_normalised_with_safe_defaults():
 
 
 def test_magic_options_reject_unknown_style_and_language():
-    for options in ({"style": "unknown"}, {"language": "xx"}, {"aspectRatio": "3:2"}):
+    for options in ({"style": "unknown"}, {"language": "zz"}, {"aspectRatio": "3:2"}):
         try:
             magiciaedit._normalise_options(options)
         except magiciaedit.MagicIAError:
