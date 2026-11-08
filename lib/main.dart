@@ -893,7 +893,7 @@ class _HomePageState extends State<HomePage> {
       (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
       (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
       (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
-      (tab: 6, icon: Icons.settings_outlined, label: 'Account'),
+      (tab: 6, icon: Icons.admin_panel_settings_outlined, label: 'Pannelli'),
     ];
     final selectedIndex = destinations.indexWhere((item) => item.tab == selectedTab);
     return NavigationBar(
