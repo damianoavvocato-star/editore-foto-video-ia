@@ -1121,7 +1121,11 @@ def owner_create_premium_grant(user_id: str, body: OwnerPremiumGrant, request: R
 
 @app.get('/v1/owner/accounts/{user_id}/premium-grants')
 def owner_list_premium_grants(user_id: str, request: Request, limit: int = 50):
-    _require_permission(request, "billing.read")
+    actor = _require_permission(request, "billing.read")
+    # Basic collaborators can inspect only their own billing grants, even when
+    # billing.read is explicitly granted. Cross-account visibility is privileged.
+    if actor["role"] in {"user", "collaborator"} and user_id != actor["userId"]:
+        raise HTTPException(403, "Puoi consultare solo i tuoi dati di abbonamento.")
     if _account_store().get_account(user_id) is None:
         raise HTTPException(404, 'Account non trovato.')
     return {'grants': _entitlement_store().list_grants('owner', user_id, limit)}
