@@ -18,6 +18,7 @@ from backend.entitlements import EntitlementError, EntitlementStore
 from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
+from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
@@ -34,6 +35,89 @@ TOKEN = os.getenv('MEDIA_API_TOKEN', '')
 ALLOW_INSECURE_LOCAL = os.getenv('MEDIA_ALLOW_INSECURE_LOCAL', '').strip().lower() == 'true'
 FFMPEG = os.getenv('FFMPEG_PATH', 'ffmpeg')
 app = FastAPI(title='Editore Foto Video IA Media API', version='0.2.0')
+
+
+def _studio_store() -> StudioJobStore:
+    return StudioJobStore(os.getenv('MEDIA_STUDIO_DB', str(ROOT / 'studio.sqlite3')))
+
+
+def _studio_user(request: Request) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'È richiesto un account per usare Studio IA.')
+    return account
+
+
+@app.get('/v1/studio/capabilities')
+def studio_capabilities(request: Request):
+    _studio_user(request)
+    return {
+        'studioDrafts': True,
+        'scriptToVideo': 'planned',
+        'documentToVideo': 'planned',
+        'slidesToVideo': 'planned',
+        'avatarStudio': 'planned',
+        'voiceStudio': 'planned',
+        'translationAndDubbing': 'planned',
+        'interactiveVideo': 'planned',
+        'bulkPersonalization': 'planned',
+        'screenExplainer': 'planned',
+        'maxLanguagesPerDraft': 20,
+        'providerConfigured': False,
+        'generationAvailable': False,
+        'message': 'La creazione dei progetti è disponibile; la generazione richiede ancora un provider video autorizzato e verificato.',
+    }
+
+
+@app.post('/v1/studio/jobs')
+def studio_create_job(body: StudioJobRequest, request: Request):
+    account = _studio_user(request)
+    try:
+        body.validate_policy()
+    except StudioRequestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    for asset_id in body.sourceAssetIds:
+        _require_resource_owner(request, 'asset', asset_id)
+        if not any(
+            path.is_file() and path.resolve().parent == ASSETS.resolve()
+            for path in ASSETS.glob(asset_id + '.*')
+        ):
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+    key = request.headers.get('Idempotency-Key', '').strip() or None
+    if key is not None and (len(key) > 128 or any(ord(ch) < 33 for ch in key)):
+        raise HTTPException(422, 'Chiave idempotenza non valida.')
+    try:
+        draft, created = _studio_store().create_draft(account['userId'], body, key)
+    except StudioRequestError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {**draft, 'created': created}
+
+
+@app.get('/v1/studio/jobs')
+def studio_list_jobs(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    account = _studio_user(request)
+    return {'jobs': _studio_store().list_for_user(account['userId'], limit)}
+
+
+@app.get('/v1/studio/jobs/{job_id}')
+def studio_get_job(job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    draft = _studio_store().get(account['userId'], job_id)
+    if draft is None:
+        raise HTTPException(404, 'Progetto Studio non trovato.')
+    return draft
+
+
+@app.delete('/v1/studio/jobs/{job_id}')
+def studio_delete_job(job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    if not _studio_store().delete_draft(account['userId'], job_id):
+        raise HTTPException(404, 'Bozza Studio non trovata o non eliminabile.')
+    return {'jobId': job_id, 'deleted': True}
 
 def _render_dimensions(project: dict[str, Any], resolution: str) -> tuple[int, int]:
     """Scale the project's aspect ratio so its longer side matches the preset."""
