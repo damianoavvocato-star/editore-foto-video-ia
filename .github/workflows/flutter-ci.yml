@@ -119,7 +119,8 @@ jobs:
         run: ./gradlew --no-daemon help
 
   android-apk:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true
+    # Hard-disabled until the explicitly authorized final development phase (phase 6).
+    if: false
     needs: [flutter-test, backend-test, android-preflight]
     # Android scaffold is generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
