@@ -332,3 +332,30 @@ def test_login_success_audit_detects_new_client_network_without_raw_ip(tmp_path)
     assert login_events[0]["details"]["newIp"] is True
     assert "198.51.100.20" not in str(login_events)
     assert len(login_events[0]["details"]["ipHash"]) == 64
+
+
+def test_owner_can_recover_lost_authenticator_with_unused_recovery_code(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.totp import code_at
+    import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("recover_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    recovery_codes = store.confirm_totp_setup(
+        owner["userId"], code_at(secret, int(time.time()))
+    )
+
+    store.disable_totp(
+        owner["userId"], "owner password long enough", recovery_codes[0]
+    )
+    assert store.totp_enabled(owner["userId"]) is False
+    with store._connect() as db:
+        remaining = db.execute(
+            "SELECT COUNT(*) FROM totp_recovery_codes WHERE user_id=?",
+            (owner["userId"],),
+        ).fetchone()[0]
+    assert remaining == 0
