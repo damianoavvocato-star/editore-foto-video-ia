@@ -74,7 +74,11 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
         return;
       }
       _api?.close();
-      setState(() => _user = Map<String, dynamic>.from(response['user'] as Map));
+      final restoredUser = Map<String, dynamic>.from(response['user'] as Map);
+      setState(() {
+        _user = restoredUser;
+        _username.text = restoredUser['username']?.toString() ?? '';
+      });
       _api = api;
       if (!_mustChangePassword) await _loadConsoleData();
     } on AccountApiException catch (error) {
@@ -113,6 +117,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       if (!mounted) return;
       setState(() {
         _user = Map<String, dynamic>.from(response['user'] as Map);
+        _username.text = _user?['username']?.toString() ?? _username.text;
         _needsTotp = false;
         _loginCode.clear();
         _error = null;
@@ -558,7 +563,18 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Ho salvato i codici'))],
             ),
           );
-          await _loadTotpStatus();
+          // Enrollment revokes all existing sessions; prompt a fresh 2FA login.
+          await _sessions.clear();
+          _api?.close();
+          setState(() {
+            _api = null;
+            _user = null;
+            _totpEnabled = true;
+            _needsTotp = true;
+            _password.clear();
+            _loginCode.clear();
+            _error = 'Verifica in due passaggi attivata. Accedi nuovamente con il codice.';
+          });
         }
       }
       code.dispose();
@@ -581,7 +597,13 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password attuale')),
-            TextField(controller: code, decoration: const InputDecoration(labelText: 'Codice autenticatore')),
+            TextField(
+              controller: code,
+              keyboardType: TextInputType.visiblePassword,
+              textCapitalization: TextCapitalization.characters,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'Codice autenticatore o codice di recupero'),
+            ),
           ],
         ),
         actions: [
