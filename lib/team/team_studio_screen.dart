@@ -429,11 +429,9 @@ class _TeamStudioScreenState extends State<TeamStudioScreen> {
           padding: const EdgeInsets.all(16),
           child: RadioGroup<String>(
             groupValue: _selectedProjectId,
-            onChanged: _busy
-                ? null
-                : (value) {
-                    _selectProject(value);
-                  },
+            onChanged: (value) {
+              if (!_busy) _selectProject(value);
+            },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
