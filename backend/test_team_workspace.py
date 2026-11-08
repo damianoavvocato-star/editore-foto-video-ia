@@ -33,7 +33,7 @@ def test_only_project_owner_can_invite_or_revoke_and_only_collaborator_can_accep
     with pytest.raises(TeamWorkspaceError, match="proprietario"):
         team.invite_member(collaborator["userId"], project["projectId"], other["userId"])
     team.invite_member(owner["userId"], project["projectId"], collaborator["userId"])
-    with pytest.raises(TeamWorkspaceError, match="collaboratore invitato"):
+    with pytest.raises(TeamWorkspaceError, match="Invito non disponibile"):
         team.respond_invitation(other["userId"], project["projectId"], True)
     with pytest.raises(TeamWorkspaceError, match="proprietario"):
         team.revoke_member(other["userId"], project["projectId"], collaborator["userId"])
