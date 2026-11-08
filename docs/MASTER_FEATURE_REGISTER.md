@@ -106,8 +106,8 @@
 ## Prossimo ordine di lavoro
 
 1. Chiudere P0-09: scadenza delle password temporanee, compatibile con i database esistenti.
-2. Collegare la UI Proprietario alle API Premium e audit già presenti.
-3. Rendere il registro audit filtrabile e paginato, mantenendo l'accesso Owner-only.
+2. Verificare e completare con test dedicati la UI Proprietario per grant/revoca Premium e registro audit.
+3. Completare l'eventuale esportazione audit e la protezione antimanomissione, mantenendo l'accesso Owner-only.
 4. Separare davvero le console Admin, Support e Collaboratore con permessi server-side.
 5. Procedere con ticket, team access e hardening di storage/job recovery.
 
@@ -117,3 +117,12 @@
 - Registro maestro creato e salvato nel branch.
 - P0-09 implementato: password temporanee generate alla creazione account o al reset scadono dopo 24 ore; dopo la scadenza l'accesso e il cambio password con la vecchia credenziale sono rifiutati; un nuovo reset riattiva il flusso. La migrazione aggiunge una colonna nullable e non invalida credenziali temporanee preesistenti.
 - CI run `42517113363`, commit `04deff5155a11d6816919ac66f955c0bed126955`: backend **300 test superati**; Flutter **139 test superati** e analisi statica superata. Android preflight ancora in corso al momento dell'aggiornamento; APK disabilitato intenzionalmente.
+
+
+## Avanzamento verificato — 8 novembre 2026, blocco Proprietario Premium e audit
+
+- Collegata la gestione concessioni Premium alla console Proprietario: elenco, concessione individuale/famiglia, durate 30/90/365 giorni o senza scadenza, motivazione e revoca con conferma. Le API server esistenti applicano i permessi e registrano gli eventi.
+- Registro sicurezza aggiornato: ricerca testuale, filtro per azione, dettaglio evento e caricamento progressivo delle pagine.
+- Backend audit: filtri server-side per azione, attore, destinatario e intervallo temporale; offset/limit bounded e indicatore `hasMore`. Aggiunti test API per filtri, paginazione e intervallo non valido.
+- CI run `42519024360` sul commit `873c5917fa00b0fbecf1e29589f66027a53e8712`: **backend-test superato** e **flutter-test superato**; analisi statica Flutter superata. **Android preflight ancora in esecuzione**; non è stato creato alcun APK.
+- P0-07 e P1-02 restano `partial`: mancano ancora verifica completa, test UI dedicati e, per P0-07, audit antimanomissione/esportazione.
