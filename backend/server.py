@@ -773,6 +773,17 @@ def team_respond_invitation(project_id: str, body: TeamInvitationResponse, reque
         raise HTTPException(403, str(exc)) from exc
 
 
+@app.get('/v1/team/projects/{project_id}/members')
+def team_list_members(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"members": _team_store().list_members(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
 @app.delete('/v1/team/projects/{project_id}/members/{member_user_id}')
 def team_revoke_member(project_id: str, member_user_id: str, request: Request):
     actor = _require_permission(request, "team.manage")
