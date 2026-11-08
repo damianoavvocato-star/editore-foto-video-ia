@@ -190,9 +190,12 @@ def login_account(body: AuthCredentials, request: Request):
         # Never issue a password-only session when 2FA cannot be decrypted.
         raise HTTPException(503, 'Autenticazione a due fattori temporaneamente non disponibile.') from exc
     except AccountError as exc:
-        store.record_login_failure(client_ip, body.username)
+        newly_blocked = store.record_login_failure(client_ip, body.username)
         reason = "second_factor_required" if str(exc) == "Secondo fattore non valido o richiesto." else "invalid_credentials"
         store.record_audit_event(None, "auth.login_failed", details={"reason": reason})
+        if newly_blocked:
+            from backend.security_notifications import dispatch_security_alert
+            dispatch_security_alert("auth.login_rate_limited", None, None, "account_or_ip_threshold")
         if reason == "second_factor_required" and not body.totpCode:
             raise HTTPException(
                 401,
@@ -201,10 +204,11 @@ def login_account(body: AuthCredentials, request: Request):
             ) from exc
         raise HTTPException(401, 'Credenziali non valide.') from exc
     store.clear_login_failures(client_ip, body.username)
-    store.record_audit_event(
-        account["userId"], "auth.login_success", account["userId"],
-        {"role": account["role"]},
-    )
+    new_ip = store.record_login_success(account["userId"], account["role"], client_ip)
+    from backend.security_notifications import dispatch_security_alert
+    dispatch_security_alert("auth.new_session", account["userId"], account["role"])
+    if new_ip:
+        dispatch_security_alert("auth.new_ip", account["userId"], account["role"], "unseen_client_network")
     return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
 
 
