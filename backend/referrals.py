@@ -10,6 +10,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+from backend.accounts import _append_audit_event
+
 
 class ReferralError(ValueError):
     pass
@@ -116,12 +118,9 @@ class ReferralStore:
                    VALUES(?,?,?,?,?,?, 'pending')""",
                 (claim_id, normalized, inviter_id, invitee_user_id, current, eligible_at),
             )
-            db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (invitee_user_id, "referral.claimed", inviter_id,
-                 '{"status":"pending","maturationDays":7}', current),
+            _append_audit_event(
+                db, invitee_user_id, "referral.claimed", inviter_id,
+                {"status": "pending", "maturationDays": 7}, current,
             )
         return {
             "claimId": claim_id,
@@ -161,12 +160,9 @@ class ReferralStore:
                        WHERE claim_id=? AND status='pending'""",
                     (current, row["claim_id"]),
                 )
-                db.execute(
-                    """INSERT INTO account_audit_events
-                       (actor_user_id,action,target_user_id,details_json,created_at)
-                       VALUES(?,?,?,?,?)""",
-                    (row["inviter_user_id"], "referral.rewarded", row["invitee_user_id"],
-                     '{"rewardDays":30,"beneficiaries":2}', current),
+                _append_audit_event(
+                    db, row["inviter_user_id"], "referral.rewarded", row["invitee_user_id"],
+                    {"rewardDays": 30, "beneficiaries": 2}, current,
                 )
                 matured += 1
         return matured
