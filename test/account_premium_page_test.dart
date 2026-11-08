@@ -16,7 +16,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Usa il tuo account'), findsOneWidget);
-    expect(find.text('Piano gratuito'), findsOneWidget);
+    expect(find.text('Accedi per sincronizzare progetti e vantaggi'), findsOneWidget);
     expect(find.text('Scopri Premium'), findsOneWidget);
     expect(find.text('Condividi codice'), findsNothing);
   });
