@@ -50,6 +50,22 @@ revokes all owner sessions. Recovery codes can be used at login, but not to
 disable 2FA; if the authenticator is lost, use the organization's documented
 operator recovery process rather than bypassing the second factor.
 
+## Optional security alert delivery
+
+The backend writes authentication and security events to the audit trail and can
+also deliver minimal alerts to an external HTTPS webhook. Configure both
+`MEDIA_SECURITY_ALERT_WEBHOOK_URL` and `MEDIA_SECURITY_ALERT_WEBHOOK_TOKEN`
+in the backend deployment secret manager. The URL must use HTTPS; redirects are
+not followed. Delivery runs asynchronously and never blocks login. Events are
+limited to new sessions, previously unseen client-network fingerprints, and
+login throttling. Payloads contain an opaque user ID, role, event type and
+timestamp; raw IP addresses, usernames, passwords, bearer tokens, TOTP seeds
+and recovery codes are never sent.
+
+Without both deployment variables, webhook delivery is intentionally disabled.
+Email, push and SMS require a provider-specific adapter; the generic webhook
+does not claim to send those message types.
+
 ## Role permissions
 
 API handlers enforce permissions server-side using the authenticated session
