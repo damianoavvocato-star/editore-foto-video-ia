@@ -746,6 +746,7 @@ def test_support_ticket_owner_isolation_and_staff_reply(tmp_path, monkeypatch):
     first = store.register("ticket_first", "first password long enough")
     second = store.register("ticket_second", "second password long enough")
     store.change_password(support["userId"], None, "support changed password long enough")
+    store.change_password(admin["userId"], None, "admin changed password long enough")
     monkeypatch.setattr(server, "_account_store", lambda: store)
     client = TestClient(server.app)
     def headers(uid):
