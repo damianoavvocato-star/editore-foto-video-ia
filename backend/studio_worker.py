@@ -144,3 +144,41 @@ class StudioWorker:
             # If the lease expired or the response was malformed, a later reconciler
             # must determine whether the provider accepted the request.
             return self._fail(job_id, "submission_outcome_unknown")
+
+
+    def reconcile_once(self) -> dict[str, Any]:
+        """Poll one accepted provider job and persist only its validated status.
+
+        Provider download URLs are intentionally discarded here. A later
+        delivery stage must copy completed media into controlled object storage
+        before exposing a user-download URL.
+        """
+        pending = self.queue.list_processing(limit=1)
+        if not pending:
+            return {"claimed": False, "state": "idle"}
+        job = pending[0]
+        job_id = job["jobId"]
+        user_id = (job.get("_worker") or {}).get("userId")
+        provider_video_id = job.get("providerVideoId")
+        if not user_id or not provider_video_id:
+            return {"jobId": job_id, "state": "processing", "reconciled": False,
+                    "errorCode": "reconciliation_context_invalid"}
+        try:
+            remote = self.provider.retrieve_video(provider_video_id)
+            status = remote.get("providerStatus")
+            if remote.get("providerVideoId") != provider_video_id:
+                raise ValueError("Provider returned a mismatched video identifier.")
+        except Exception:
+            # A transient read failure is not a terminal video failure.
+            return {"jobId": job_id, "state": "processing", "reconciled": False,
+                    "errorCode": "provider_status_unavailable"}
+        try:
+            updated = self.queue.record_provider_status(user_id, job_id, status)
+        except (StudioQueueError, ValueError):
+            # Another reconciler may have won the race; return the persisted state.
+            latest = self.queue.get(user_id, job_id)
+            if latest is not None and latest["state"] in {"completed", "failed"}:
+                return latest
+            return {"jobId": job_id, "state": "processing", "reconciled": False,
+                    "errorCode": "provider_status_update_conflict"}
+        return updated

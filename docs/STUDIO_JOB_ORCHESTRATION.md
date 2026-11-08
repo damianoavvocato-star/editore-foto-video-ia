@@ -103,3 +103,19 @@ Other Studio task types remain queued for a future compatible provider.
 The worker is infrastructure code only: no background process is launched by
 this commit, no live provider credentials are added, and the default Synthesia
 configuration remains test mode.
+
+
+## Provider status reconciliation
+
+The supervised worker now exposes a one-job-at-a-time `reconcile_once()`
+operation. It selects accepted jobs from the internal processing queue, polls
+Synthesia through the provider adapter, validates the returned video ID and
+status, and atomically advances the local state to `processing`,
+`completed`, or `failed`. Temporary provider read failures leave the local
+job in `processing` so an external supervisor can retry the status check.
+
+The reconciliation path deliberately discards provider download URLs. They are
+temporary provider delivery details and are not copied into account-visible
+queue records. A separate controlled object-storage and media-delivery stage
+is still required before completed output can be safely downloaded by users.
+No polling loop or background service is started by the API process.

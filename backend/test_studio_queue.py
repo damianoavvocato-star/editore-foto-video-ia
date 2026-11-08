@@ -148,3 +148,16 @@ def test_database_permissions_are_private_on_posix(tmp_path):
     StudioJobQueue(database).enqueue("user-a", _request(), now=100)
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
     assert stat.S_IMODE(database.parent.stat().st_mode) == 0o700
+
+
+def test_list_processing_returns_only_worker_context_for_pending_jobs(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("worker-a", now=101)
+    queue.mark_submitted("worker-a", job["jobId"], "provider-video", now=102)
+    pending = queue.list_processing()
+    assert len(pending) == 1
+    assert pending[0]["jobId"] == job["jobId"]
+    assert pending[0]["_worker"] == {"userId": "user-a"}
+    assert queue.list_for_user("user-a")[0]["state"] == "processing"
+    assert "_worker" not in queue.list_for_user("user-a")[0]

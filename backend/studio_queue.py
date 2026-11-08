@@ -390,6 +390,24 @@ class StudioJobQueue:
             ).fetchone()
         return self._serialize(updated)
 
+    def list_processing(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return internal reconciliation context for provider-backed jobs."""
+        bounded = max(1, min(100, int(limit)))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT * FROM studio_queue_jobs
+                   WHERE state='processing' AND provider_video_id IS NOT NULL
+                   ORDER BY updated_at ASC LIMIT ?""",
+                (bounded,),
+            ).fetchall()
+        jobs = []
+        for row in rows:
+            job = self._serialize(row)
+            # This method is worker-internal; public API serializers never call it.
+            job["_worker"] = {"userId": row["user_id"]}
+            jobs.append(job)
+        return jobs
+
     def get(self, user_id: str, job_id: str) -> dict[str, Any] | None:
         with self._connection() as connection:
             row = connection.execute(

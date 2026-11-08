@@ -15,12 +15,25 @@ class FakeProvider:
     def __init__(self, fail=False):
         self.calls = []
         self.fail = fail
+        self.status = "in_progress"
+        self.retrievals = []
+        self.fail_retrieval = False
 
     def create_video(self, request, callback_id=None):
         self.calls.append((request, callback_id))
         if self.fail:
             raise RuntimeError("connection lost after request submission")
         return {"providerVideoId": str(uuid.uuid4()), "providerStatus": "in_progress"}
+
+    def retrieve_video(self, video_id):
+        self.retrievals.append(video_id)
+        if self.fail_retrieval:
+            raise RuntimeError("temporary provider status error")
+        return {
+            "providerVideoId": video_id,
+            "providerStatus": self.status,
+            "downloadUrl": "https://temporary.example/private-video.mp4",
+        }
 
 
 def _worker(tmp_path, request, *, consent_verifier=None, provider=None, reserve=True):
@@ -121,3 +134,34 @@ def test_worker_requires_both_explicit_switches_for_paid_provider_mode(tmp_path,
     assert result["state"] == "failed"
     assert result["lastErrorCode"] == "paid_provider_mode_disabled"
     assert provider.calls == []
+
+
+def test_worker_reconciles_provider_completion_without_persisting_download_url(tmp_path):
+    provider = FakeProvider()
+    worker, queue, queued = _worker(
+        tmp_path, StudioJobRequest(task="script_to_video", script="Reviewed script"),
+        provider=provider,
+    )
+    submitted = worker.process_once()
+    assert submitted["state"] == "processing"
+    provider.status = "complete"
+    result = worker.reconcile_once()
+    assert result["state"] == "completed"
+    assert result["providerStatus"] == "complete"
+    assert provider.retrievals == [submitted["providerVideoId"]]
+    assert "downloadUrl" not in result
+
+
+def test_worker_keeps_job_processing_when_provider_status_is_temporarily_unavailable(tmp_path):
+    provider = FakeProvider()
+    worker, queue, queued = _worker(
+        tmp_path, StudioJobRequest(task="script_to_video", script="Reviewed script"),
+        provider=provider,
+    )
+    submitted = worker.process_once()
+    provider.fail_retrieval = True
+    result = worker.reconcile_once()
+    assert result["state"] == "processing"
+    assert result["reconciled"] is False
+    assert result["errorCode"] == "provider_status_unavailable"
+    assert queue.get("user-a", queued["jobId"])["state"] == "processing"
