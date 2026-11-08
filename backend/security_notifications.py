@@ -36,9 +36,13 @@ def send_security_alert(
         return False
     endpoint = os.getenv("MEDIA_SECURITY_ALERT_WEBHOOK_URL", "").strip()
     secret = os.getenv("MEDIA_SECURITY_ALERT_WEBHOOK_TOKEN", "").strip()
-    parsed = urlsplit(endpoint)
-    if (not endpoint or not secret or parsed.scheme.lower() != "https"
-            or not parsed.hostname or parsed.username or parsed.password):
+    try:
+        parsed = urlsplit(endpoint)
+        if (not endpoint or not secret or parsed.scheme.lower() != "https"
+                or not parsed.hostname or parsed.username or parsed.password
+                or parsed.fragment):
+            return False
+    except ValueError:
         return False
 
     payload = {
