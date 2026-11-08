@@ -19,6 +19,7 @@ class AccountPremiumScreen extends StatelessWidget {
     required this.onRedeemReferral,
     this.usageSummary,
     this.creditBalance,
+    this.referralClaims = const [],
     this.apiBaseUrl = '',
   });
 
@@ -32,6 +33,7 @@ class AccountPremiumScreen extends StatelessWidget {
   final ValueChanged<String> onRedeemReferral;
   final Map<String, dynamic>? usageSummary;
   final int? creditBalance;
+  final List<dynamic> referralClaims;
   final String apiBaseUrl;
 
   @override
@@ -145,6 +147,36 @@ class AccountPremiumScreen extends StatelessWidget {
                         label: const Text('Condividi codice'),
                       ),
                     ),
+                  ],
+                  if (referralClaims.isNotEmpty) ...[
+                    const Divider(),
+                    const Text('Storico inviti'),
+                    ...referralClaims.take(20).map((claim) {
+                      if (claim is! Map) return const SizedBox.shrink();
+                      final status = claim['status']?.toString() ?? 'pending';
+                      final role = claim['role'] == 'inviter' ? 'Invitato da te' : 'Hai utilizzato un invito';
+                      final label = status == 'rewarded'
+                          ? 'Premio assegnato · 30 giorni Premium'
+                          : status == 'rejected'
+                              ? 'Non idoneo al premio'
+                              : 'In verifica · premio dopo 7 giorni';
+                      final eligibleAt = claim['eligibleAt'];
+                      final eligibleDate = eligibleAt is int
+                          ? DateTime.fromMillisecondsSinceEpoch(eligibleAt * 1000).toLocal()
+                          : null;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(status == 'rewarded'
+                            ? Icons.verified_outlined
+                            : status == 'rejected'
+                                ? Icons.cancel_outlined
+                                : Icons.hourglass_bottom),
+                        title: Text(role),
+                        subtitle: Text(eligibleDate == null
+                            ? label
+                            : '$label · verifica dal ${MaterialLocalizations.of(context).formatMediumDate(eligibleDate)}'),
+                      );
+                    }),
                   ],
                   const SizedBox(height: 8),
                   _ReferralRedeem(onRedeem: onRedeemReferral),
