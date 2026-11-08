@@ -193,6 +193,53 @@ jobs:
           dart run flutter_launcher_icons
           dart run flutter_native_splash:create
           python tool/configure_android_branding.py
+      - name: Verify generated MagicIAedit launcher and splash assets
+        run: |
+          python - <<'PY'
+          import json
+          import struct
+          from pathlib import Path
+
+          root = Path(".")
+          required = [
+              root / "assets/branding/app_icon.png",
+              root / "assets/branding/app_icon_foreground.png",
+              root / "assets/branding/splash_logo.png",
+          ]
+          for path in required:
+              if not path.is_file() or path.stat().st_size < 1024:
+                  raise SystemExit(f"Missing or empty generated branding asset: {path}")
+              with path.open("rb") as image:
+                  header = image.read(24)
+              if header[:8].hex() != "89504e470d0a1a0a":
+                  raise SystemExit(f"Generated asset is not a PNG: {path}")
+              width, height = struct.unpack(">II", header[16:24])
+              if width < 512 or height < 512:
+                  raise SystemExit(f"Branding asset resolution is too small: {path} ({width}x{height})")
+              print(f"Verified {path}: {width}x{height}")
+
+          android_icons = list((root / "android/app/src/main/res").glob("mipmap-*/ic_launcher.png"))
+          if len(android_icons) < 4:
+              raise SystemExit(f"Expected Android launcher icons in density buckets, found {len(android_icons)}")
+          manifest = (root / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          if 'android:label="MagicIAedit"' not in manifest or 'android:icon="@mipmap/ic_launcher"' not in manifest:
+              raise SystemExit("Android app label or launcher icon reference is incorrect.")
+
+          ios_info = root / "ios/Runner/Info.plist"
+          ios_text = ios_info.read_text(encoding="utf-8")
+          if "<key>CFBundleDisplayName</key>" not in ios_text or "<string>MagicIAedit</string>" not in ios_text:
+              raise SystemExit("iOS display name is not configured as MagicIAedit.")
+          ios_icons = root / "ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json"
+          if not ios_icons.is_file():
+              raise SystemExit("iOS AppIcon asset catalog was not generated.")
+          catalog = json.loads(ios_icons.read_text(encoding="utf-8"))
+          for item in catalog.get("images", []):
+              filename = item.get("filename")
+              if filename and not (ios_icons.parent / filename).is_file():
+                  raise SystemExit(f"iOS app icon file referenced but missing: {filename}")
+          print(f"Verified {len(android_icons)} Android launcher density icons and iOS AppIcon catalog.")
+          print("MagicIAedit Android/iOS branding verification passed.")
+          PY
       - name: Set Android compile SDK to 36
         run: |
           sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 36/" android/app/build.gradle.kts 2>/dev/null || true
@@ -288,6 +335,53 @@ jobs:
           dart run flutter_launcher_icons
           dart run flutter_native_splash:create
           python tool/configure_android_branding.py
+      - name: Verify generated MagicIAedit launcher and splash assets
+        run: |
+          python - <<'PY'
+          import json
+          import struct
+          from pathlib import Path
+
+          root = Path(".")
+          required = [
+              root / "assets/branding/app_icon.png",
+              root / "assets/branding/app_icon_foreground.png",
+              root / "assets/branding/splash_logo.png",
+          ]
+          for path in required:
+              if not path.is_file() or path.stat().st_size < 1024:
+                  raise SystemExit(f"Missing or empty generated branding asset: {path}")
+              with path.open("rb") as image:
+                  header = image.read(24)
+              if header[:8].hex() != "89504e470d0a1a0a":
+                  raise SystemExit(f"Generated asset is not a PNG: {path}")
+              width, height = struct.unpack(">II", header[16:24])
+              if width < 512 or height < 512:
+                  raise SystemExit(f"Branding asset resolution is too small: {path} ({width}x{height})")
+              print(f"Verified {path}: {width}x{height}")
+
+          android_icons = list((root / "android/app/src/main/res").glob("mipmap-*/ic_launcher.png"))
+          if len(android_icons) < 4:
+              raise SystemExit(f"Expected Android launcher icons in density buckets, found {len(android_icons)}")
+          manifest = (root / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          if 'android:label="MagicIAedit"' not in manifest or 'android:icon="@mipmap/ic_launcher"' not in manifest:
+              raise SystemExit("Android app label or launcher icon reference is incorrect.")
+
+          ios_info = root / "ios/Runner/Info.plist"
+          ios_text = ios_info.read_text(encoding="utf-8")
+          if "<key>CFBundleDisplayName</key>" not in ios_text or "<string>MagicIAedit</string>" not in ios_text:
+              raise SystemExit("iOS display name is not configured as MagicIAedit.")
+          ios_icons = root / "ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json"
+          if not ios_icons.is_file():
+              raise SystemExit("iOS AppIcon asset catalog was not generated.")
+          catalog = json.loads(ios_icons.read_text(encoding="utf-8"))
+          for item in catalog.get("images", []):
+              filename = item.get("filename")
+              if filename and not (ios_icons.parent / filename).is_file():
+                  raise SystemExit(f"iOS app icon file referenced but missing: {filename}")
+          print(f"Verified {len(android_icons)} Android launcher density icons and iOS AppIcon catalog.")
+          print("MagicIAedit Android/iOS branding verification passed.")
+          PY
 
       - name: Set Android compile SDK to 36
         run: |
