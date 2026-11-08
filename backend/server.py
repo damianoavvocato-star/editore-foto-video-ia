@@ -243,8 +243,14 @@ def current_account(request: Request):
 def logout_account(request: Request):
     store = _account_store()
     token = _bearer_token(request)
+    account = store.resolve_session(token)
     if not store.revoke_session(token):
         raise HTTPException(401, 'Sessione non valida o già revocata.')
+    if account is not None:
+        store.record_audit_event(
+            account["userId"], "auth.logout", account["userId"],
+            {"role": account["role"]},
+        )
     return {'ok': True}
 
 
