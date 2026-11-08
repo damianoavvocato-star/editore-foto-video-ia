@@ -103,6 +103,13 @@ class AccountStore:
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_created_idx ON account_audit_events(created_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS account_audit_actor_idx ON account_audit_events(actor_user_id, created_at DESC)")
+            db.execute("""CREATE TABLE IF NOT EXISTS permission_overrides (
+                user_id TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                effect TEXT NOT NULL CHECK(effect IN ('allow','deny')),
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY(user_id, permission)
+            )""")
             account_columns = {row["name"] for row in db.execute("PRAGMA table_info(accounts)").fetchall()}
             if "must_change_password" not in account_columns:
                 db.execute("ALTER TABLE accounts ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
