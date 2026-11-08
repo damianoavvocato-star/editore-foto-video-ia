@@ -52,3 +52,16 @@ def test_pop_removes_job_from_durable_registry(tmp_path):
     jobs.pop("e" * 32)
 
     assert "e" * 32 not in JobRegistry(database)
+
+
+def test_database_file_is_private_immediately_after_initialization(tmp_path):
+    import os
+    import stat
+
+    if os.name != "posix":
+        return
+
+    database = tmp_path / "private" / "jobs.sqlite3"
+    JobRegistry(database)
+
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600

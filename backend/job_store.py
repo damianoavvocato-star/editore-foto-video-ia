@@ -53,6 +53,10 @@ class JobRegistry(dict[str, dict[str, Any]]):
             rows = connection.execute(
                 "SELECT job_id, payload FROM media_jobs"
             ).fetchall()
+        # SQLite creates the database using the process umask, which may be
+        # more permissive than this service's private-media policy. Restrict it
+        # immediately, including on first startup before any job is written.
+        self._restrict_database_permissions()
         for job_id, payload in rows:
             try:
                 values = json.loads(payload)
@@ -72,6 +76,13 @@ class JobRegistry(dict[str, dict[str, Any]]):
                     message="Elaborazione interrotta dal riavvio del server. Ripeti l'operazione.",
                     error="worker_interrupted",
                 )
+
+    def _restrict_database_permissions(self) -> None:
+        try:
+            os.chmod(self.database, 0o600)
+        except OSError:
+            # Some filesystems do not expose POSIX permission bits.
+            pass
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database, timeout=10)
@@ -100,10 +111,7 @@ class JobRegistry(dict[str, dict[str, Any]]):
                 """,
                 (job_id, payload, time.time()),
             )
-        try:
-            os.chmod(self.database, 0o600)
-        except OSError:
-            pass
+        self._restrict_database_permissions()
 
     def __setitem__(self, job_id: str, values: dict[str, Any]) -> None:
         record = _PersistentJob(job_id, dict(values), self)
