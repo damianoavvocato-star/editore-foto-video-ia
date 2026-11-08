@@ -20,11 +20,13 @@ class RemoteExportPanel extends StatefulWidget {
     required this.project,
     required this.onClose,
     required this.onMessage,
+    this.sessionTokenProvider,
   });
 
   final EditorProject project;
   final VoidCallback onClose;
   final ValueChanged<String> onMessage;
+  final Future<String?> Function()? sessionTokenProvider;
 
   @override
   State<RemoteExportPanel> createState() => _RemoteExportPanelState();
@@ -70,7 +72,9 @@ class _RemoteExportPanelState extends State<RemoteExportPanel> {
       return;
     }
     try {
-      final sessionToken = await const AccountSessionStore().readToken();
+      final sessionToken = widget.sessionTokenProvider != null
+          ? await widget.sessionTokenProvider!()
+          : await const AccountSessionStore().readToken();
       if (sessionToken == null || sessionToken.isEmpty) {
         setState(() => _error =
             'Accedi prima dalla sezione Impostazioni: il server richiede una sessione personale.');
