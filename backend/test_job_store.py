@@ -172,3 +172,18 @@ def test_idempotency_reservation_survives_registry_restart(tmp_path):
     assert created is True
     assert replayed_created is False
     assert replayed_id == job_id
+
+
+
+def test_registry_get_refreshes_state_written_by_another_instance(tmp_path):
+    database = tmp_path / "jobs.sqlite3"
+    writer = JobRegistry(database)
+    reader = JobRegistry(database)
+    job_id = "9" * 32
+    writer[job_id] = {"state": "queued", "progress": 0.0}
+
+    assert reader.get(job_id)["state"] == "queued"
+
+    writer[job_id].update(state="completed", progress=1.0)
+    assert reader.get(job_id)["state"] == "completed"
+    assert reader.get(job_id)["progress"] == 1.0

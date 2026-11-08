@@ -122,6 +122,29 @@ class JobRegistry(dict[str, dict[str, Any]]):
         finally:
             connection.close()
 
+    def get(self, job_id: str, default: Any = None) -> Any:
+        """Refresh a job snapshot from SQLite before returning it.
+
+        This lets a process observe state transitions persisted by another
+        registry instance. Worker execution and cancellation events remain
+        process-local; this is not a distributed worker queue.
+        """
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM media_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        if row is None:
+            return dict.get(self, job_id, default)
+        try:
+            values = json.loads(row[0])
+            if not isinstance(values, dict):
+                return dict.get(self, job_id, default)
+        except (TypeError, ValueError):
+            return dict.get(self, job_id, default)
+        record = _PersistentJob(job_id, values, self)
+        dict.__setitem__(self, job_id, record)
+        return record
+
     def _save(self, job_id: str, values: dict[str, Any]) -> None:
         payload = json.dumps(values, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         with self._connection() as connection:
