@@ -55,10 +55,12 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             git diff --name-only "$PR_BASE_SHA...$HEAD_SHA" > changed-files.txt
           elif [[ "$EVENT_NAME" == "push" ]]; then
-            if [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
-              git diff --name-only "$BEFORE_SHA...$HEAD_SHA" > changed-files.txt
-            else
-              git diff-tree --no-commit-id --name-only -r "$HEAD_SHA" > changed-files.txt
+            # The commit API may push a single commit without a complete before
+            # range in webhook metadata. Classify the actual pushed commit.
+            git show --pretty="" --name-only "$HEAD_SHA" > changed-files.txt
+            if [[ ! -s changed-files.txt ]]; then
+              echo "No changed paths were detected; running the full validation set."
+              force_full=true
             fi
           else
             : > changed-files.txt
