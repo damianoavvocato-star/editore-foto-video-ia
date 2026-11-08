@@ -508,6 +508,44 @@ class AccountStore:
             """, (token_hash, now)).fetchone()
         return self._public(row) if row else None
 
+    def list_active_sessions(
+        self, user_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """List only non-revoked, unexpired sessions; token hashes are identifiers, not credentials."""
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            return []
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            limit = 50
+        limit = max(1, min(100, limit))
+        now = int(time.time())
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT s.token_hash,s.created_at,s.expires_at
+                   FROM sessions s JOIN accounts a ON a.user_id=s.user_id
+                   WHERE s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?
+                     AND a.disabled_at IS NULL
+                   ORDER BY s.created_at DESC LIMIT ?""",
+                (user_id, now, limit),
+            ).fetchall()
+        return [{
+            "sessionId": row["token_hash"],
+            "createdAt": row["created_at"],
+            "expiresAt": row["expires_at"],
+        } for row in rows]
+
+    def revoke_session_by_id(self, user_id: str, session_id: str) -> bool:
+        if (not isinstance(user_id, str) or not user_id or len(user_id) > 128
+                or not isinstance(session_id, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", session_id)):
+            return False
+        with self._connect() as db:
+            result = db.execute(
+                """UPDATE sessions SET revoked_at=?
+                   WHERE token_hash=? AND user_id=? AND revoked_at IS NULL AND expires_at>?""",
+                (int(time.time()), session_id, user_id, int(time.time())),
+            )
+        return result.rowcount == 1
+
     def revoke_session(self, token: str | None) -> bool:
         if not isinstance(token, str) or not token or len(token) > 512:
             return False
