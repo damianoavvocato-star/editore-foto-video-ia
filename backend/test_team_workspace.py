@@ -73,11 +73,13 @@ def test_comments_and_approval_are_audited_and_collaborator_can_decide(tmp_path)
 
 
 def test_disabled_or_non_collaborator_accounts_cannot_be_invited(tmp_path):
-    path, accounts, owner, _, _ = _accounts(tmp_path)
+    path, accounts, owner, collaborator, _ = _accounts(tmp_path)
     user = accounts.register("ordinary_user", "ordinary user password")
     team = TeamWorkspaceStore(path)
     project = team.create_project(owner["userId"], "Progetto")
     with pytest.raises(TeamWorkspaceError, match="Collaboratore attivo"):
         team.invite_member(owner["userId"], project["projectId"], user["userId"])
     with accounts._connect() as db:
-        db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (_,))
+        db.execute("UPDATE accounts SET disabled_at=1 WHERE user_id=?", (collaborator["userId"],))
+    with pytest.raises(TeamWorkspaceError, match="Collaboratore attivo"):
+        team.invite_member(owner["userId"], project["projectId"], collaborator["userId"])
