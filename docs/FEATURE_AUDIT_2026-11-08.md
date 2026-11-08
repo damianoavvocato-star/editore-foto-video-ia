@@ -83,3 +83,16 @@ La nuova suite Universal Video Studio IA, invece, è pianificata ma non implemen
 ## Criterio di avanzamento
 
 Una funzione sarà dichiarata completata solo quando codice, test, gestione degli errori, documentazione e verifica delle dipendenze reali sono presenti. Le voci della roadmap non sono conteggiate come implementazione.
+
+
+## Aggiornamento Synthesia Studio IA — fondazione iniziale
+
+Nel branch è stato aggiunto un primo livello di codice, distinto dalla roadmap delle funzioni complete:
+
+- backend/studio.py: schema di richiesta provider-neutral, validazione task, massimo 20 lingue, deduplicazione, consenso esplicito per avatar personale e voice cloning, archivio SQLite privato delle bozze.
+- backend/server.py: endpoint autenticati per capabilities, creazione/lista/lettura/eliminazione bozze Studio; ownership per account e chiave idempotenza.
+- backend/test_studio.py: test di validazione, persistenza, replay idempotente, isolamento utenti e lifecycle API.
+- lib/models/studio_job.dart, lib/services/remote_studio_api.dart e lib/studio/synthesia_studio_screen.dart: modello Flutter, client API e schermata raggiungibile dalla sidebar.
+- La schermata permette di preparare una bozza da script, selezionare lingue e configurare modalità avatar/voce con consenso.
+
+**Limite dichiarato:** le bozze sono salvate, ma non vengono ancora generate immagini, video, avatar, voci, traduzioni o output. Il backend espone esplicitamente generationAvailable=false e providerState=not_configured. Non è configurato né verificato un provider video reale; documenti/slide, caricamento da CSV, editing di avatar, lip-sync, streaming interattivo e pubblicazione restano da implementare. La sola presenza dei campi di richiesta non equivale a una funzione disponibile.

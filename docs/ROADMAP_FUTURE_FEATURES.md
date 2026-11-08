@@ -592,3 +592,26 @@ Questa estensione prende come riferimento le capacità pubbliche di Synthesia, m
 - Synthesia — Assistant e creazione da prompt/documenti: https://docs.synthesia.io/docs/assistant
 - Synthesia — API e avatar interattivi: https://developers.synthesia.io/docs/introduction
 - Synthesia — bulk personalization: https://docs.synthesia.io/docs/bulk-personalization
+
+
+## 9. Stato implementazione — Synthesia Studio IA
+
+### 9.1 Fondazione consegnata nel codice
+- Backend: schema provider-neutral per nove tipologie di progetto, script, sorgenti, lingue, avatar, voce, interattività e variabili di template.
+- Validazione: massimo 20 lingue per bozza, codici lingua normalizzati, no duplicati, lingua sorgente esclusa dalle destinazioni, massimo 20 asset, limiti script/variabili.
+- Sicurezza: avatar personale e clonazione vocale richiedono consenso esplicito; bozze persistenti in SQLite con permessi file privati; ogni query è scoped sull'account; chiave idempotenza per evitare bozze duplicate.
+- API: capabilities, create/list/get/delete draft; sessione account obbligatoria e verifica ownership degli asset sorgente.
+- Flutter: modello, client API, schermata Synthesia Studio IA raggiungibile dalla sidebar; bozza da script e impostazioni base di lingue/avatar/voce.
+- Test: suite backend e Flutter dedicate; esito CI da confermare sul commit corrente.
+
+### 9.2 Non ancora implementato
+- Provider video/Avatar/TTS reale, chiamate di generazione, polling e download degli output.
+- Importazione/estrazione contenuti PDF, DOCX e PPTX e conversione slide in scene.
+- Libreria avatar, avatar personale verificato, gestures, lip-sync e dialoghi multi-avatar.
+- Clonazione vocale reale, diarizzazione, pulizia audio e editing per segmento.
+- Traduzione/doppiaggio batch con worker durevole, output distinti per lingua e sottotitoli.
+- Video interattivi, quiz, roleplay, survey e avatar in streaming.
+- Brand Kit, collaborazione live, analytics, embed, SCORM, CSV bulk e API pubbliche/webhook.
+
+### 9.3 Regola di attivazione
+La schermata dichiara che la generazione non è disponibile finché un provider autorizzato non viene configurato e testato. Non inserire API key nel client. Ogni provider va integrato dietro un adapter server-side, con consenso, quote, stima costi, idempotenza, timeout, cancellazione, retention e test reali autorizzati. Le funzioni pianificate non incrementano la percentuale di completamento finché non sono operative e verificate.
