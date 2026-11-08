@@ -168,7 +168,7 @@ jobs:
           cache: true
           cache-key: flutter-android-preflight-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
       - name: Generate Android platform project
-        run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+        run: flutter create --platforms=android,ios --org com.editorefoto --project-name editore_foto_video_ia .
       - name: Add Google Maven Central mirror for Gradle dependencies
         run: |
           python - <<'PY'
@@ -237,7 +237,7 @@ jobs:
     # Manual opt-in only: build the APK after Flutter, backend and Android checks pass.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true && needs.flutter-test.result == 'success' && needs.backend-test.result == 'success' && needs.android-preflight.result == 'success' }}
     needs: [flutter-test, backend-test, android-preflight]
-    # Android scaffold is generated on the runner until platform files are
+    # Android and iOS scaffolds are generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -262,7 +262,7 @@ jobs:
           cache-key: flutter-android-${{ runner.os }}-${{ hashFiles('pubspec.yaml') }}
 
       - name: Generate Android platform project
-        run: flutter create --platforms=android --org com.editorefoto --project-name editore_foto_video_ia .
+        run: flutter create --platforms=android,ios --org com.editorefoto --project-name editore_foto_video_ia .
       - name: Add Google Maven Central mirror for Gradle dependencies
         run: |
           python - <<'PY'
