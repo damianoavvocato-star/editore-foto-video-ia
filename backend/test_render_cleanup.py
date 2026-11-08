@@ -89,6 +89,7 @@ def test_render_rejects_non_uuid_asset_ids_before_creating_job():
                 }
             ),
             request,
+            idempotency_key=None,
         )
 
     assert error.value.status_code == 422
