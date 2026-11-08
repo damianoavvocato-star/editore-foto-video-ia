@@ -191,7 +191,9 @@ def login_account(body: AuthCredentials, request: Request):
         raise HTTPException(503, 'Autenticazione a due fattori temporaneamente non disponibile.') from exc
     except AccountError as exc:
         store.record_login_failure(client_ip, body.username)
-        if str(exc) == "Secondo fattore non valido o richiesto." and not body.totpCode:
+        reason = "second_factor_required" if str(exc) == "Secondo fattore non valido o richiesto." else "invalid_credentials"
+        store.record_audit_event(None, "auth.login_failed", details={"reason": reason})
+        if reason == "second_factor_required" and not body.totpCode:
             raise HTTPException(
                 401,
                 detail={"code": "two_factor_required",
@@ -199,6 +201,10 @@ def login_account(body: AuthCredentials, request: Request):
             ) from exc
         raise HTTPException(401, 'Credenziali non valide.') from exc
     store.clear_login_failures(client_ip, body.username)
+    store.record_audit_event(
+        account["userId"], "auth.login_success", account["userId"],
+        {"role": account["role"]},
+    )
     return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
 
 
@@ -361,8 +367,12 @@ def owner_reset_account_password(user_id: str, request: Request):
             owner['userId'], user_id
         )
     except AccountError as exc:
-        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) or 'riservata' in str(exc) else 422
-        raise HTTPException(status, str(exc)) from exc
+        message = str(exc)
+        status = 404 if 'non trovato' in message else 403 if (
+            'proprietario' in message or 'riservata' in message
+            or 'insufficiente' in message or 'può reimpostare' in message
+        ) else 422
+        raise HTTPException(status, message) from exc
     # This is the only response containing the generated temporary credential.
     return {'userId': user_id, 'temporaryPassword': temporary, 'mustChangePassword': True}
 
