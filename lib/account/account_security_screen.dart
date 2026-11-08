@@ -40,6 +40,22 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   bool get _canReset => _canManage || _user?['role'] == 'support';
   bool get _mustChangePassword => _user?['mustChangePassword'] == true;
 
+  String get _rolePanelTitle => switch (_user?['role']) {
+        'owner' => 'Pannello Proprietario',
+        'admin' => 'Pannello Amministratore',
+        'support' => 'Pannello Assistenza',
+        'collaborator' => 'Pannello Collaboratore',
+        _ => 'Area Account',
+      };
+
+  String get _rolePanelDescription => switch (_user?['role']) {
+        'owner' => 'Controllo completo: account, ruoli, permessi, sicurezza e registro attività.',
+        'admin' => 'Gestione operativa degli account e delle attività consentite. Le funzioni esclusive del Proprietario restano bloccate.',
+        'support' => 'Assistenza account e reimpostazione password secondo i permessi assegnati.',
+        'collaborator' => 'Accesso alle sole funzioni abilitate per il tuo profilo.',
+        _ => 'Gestisci le tue sessioni e le impostazioni di sicurezza.',
+      };
+
   @override
   void initState() {
     super.initState();
@@ -857,6 +873,16 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
           ),
         ),
         Card(
+          child: ListTile(
+            leading: Icon(
+              _isOwner ? Icons.admin_panel_settings : _canManage ? Icons.manage_accounts : Icons.account_circle_outlined,
+              size: 30,
+            ),
+            title: Text(_rolePanelTitle, style: Theme.of(context).textTheme.titleLarge),
+            subtitle: Text(_rolePanelDescription),
+          ),
+        ),
+        Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -901,6 +927,11 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
           ),
         if (_canReset) ...[
           const SizedBox(height: 12),
+          Text(
+            _isOwner ? 'Console Proprietario · Gestione completa' : 'Console Amministratore · Gestione consentita',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
