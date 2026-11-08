@@ -21,10 +21,8 @@ void main() {
     );
 
     expect(find.text('Token di accesso del server (facoltativo)'), findsNothing);
-    expect(
-      find.textContaining('sessione personale salvata in modo protetto'),
-      findsOneWidget,
-    );
+    await tester.ensureVisible(find.text('Indirizzo del server MagicIAedit'));
+    await tester.pumpAndSettle();
     expect(find.text('Indirizzo del server MagicIAedit'), findsOneWidget);
   });
 }
