@@ -306,3 +306,35 @@ def test_magic_ai_jobs_are_private_to_their_account(tmp_path, monkeypatch):
         with server.lock:
             server.jobs.pop(job_id, None)
             server.cancel_events.pop(job_id, None)
+
+
+def test_ai_endpoint_rejects_unsupported_task_and_malformed_asset_ids(monkeypatch):
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    client = TestClient(server.app)
+    unsupported = client.post(
+        "/v1/ai/jobs", json={"task": "unrelated-task", "assetIds": ["a" * 32]},
+    )
+    malformed = client.post(
+        "/v1/ai/jobs", json={"task": "magicIAedit", "assetIds": ["../outside"]},
+    )
+    excessive = client.post(
+        "/v1/ai/jobs",
+        json={"task": "magicIAedit", "assetIds": [f"{index:032x}" for index in range(21)]},
+    )
+    assert unsupported.status_code == 422
+    assert malformed.status_code == 422
+    assert excessive.status_code == 422
+
+
+def test_ai_endpoint_rejects_non_object_options_before_creating_job(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "ASSETS", tmp_path)
+    asset_id = "9" * 32
+    (tmp_path / f"{asset_id}.jpg").write_bytes(b"placeholder")
+    before = set(server.jobs)
+    response = TestClient(server.app).post(
+        "/v1/ai/jobs",
+        json={"task": "magicIAedit", "assetIds": [asset_id], "options": ["not", "an", "object"]},
+    )
+    assert response.status_code == 422
+    assert set(server.jobs) == before
