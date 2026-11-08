@@ -825,6 +825,12 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           actions: [
+            if (selectedTab != 2)
+              IconButton(
+                tooltip: 'Apri MagicIAedit',
+                icon: const Icon(Icons.auto_awesome),
+                onPressed: () => setState(() => selectedTab = 2),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: DropdownButton<AppLanguage>(
