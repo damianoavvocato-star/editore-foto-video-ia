@@ -742,6 +742,7 @@ def test_support_ticket_owner_isolation_and_staff_reply(tmp_path, monkeypatch):
     store = AccountStore(tmp_path / "accounts.sqlite3")
     owner = store.bootstrap_owner("ticket_owner", "owner password long enough")
     support = store.create_managed_account(owner["userId"], "ticket_support", "support password long enough", "support")
+    admin = store.create_managed_account(owner["userId"], "ticket_admin", "admin password long enough", "admin")
     first = store.register("ticket_first", "first password long enough")
     second = store.register("ticket_second", "second password long enough")
     store.change_password(support["userId"], None, "support changed password long enough")
@@ -757,6 +758,19 @@ def test_support_ticket_owner_isolation_and_staff_reply(tmp_path, monkeypatch):
     assert client.get(f"/v1/support/tickets/{ticket_id}", headers=headers(second["userId"])).status_code == 404
     assert client.get("/v1/support/tickets", headers=headers(second["userId"])).json()["tickets"] == []
     assert client.get("/v1/support/tickets", headers=headers(support["userId"])).status_code == 200
+    assert client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(support["userId"]), json={"assigneeUserId": support["userId"]}).status_code == 403
+    assigned = client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(admin["userId"]), json={"assigneeUserId": support["userId"]})
+    assert assigned.status_code == 200
+    assert assigned.json()["ticket"]["assignedToUserId"] == support["userId"]
+    assert client.get("/v1/support/tickets", headers=headers(support["userId"])).json()["tickets"][0]["assignedToUserId"] == support["userId"]
+    assert client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(admin["userId"]), json={"assigneeUserId": first["userId"]}).status_code == 422
+    unassigned = client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(owner["userId"]), json={"assigneeUserId": None})
+    assert unassigned.status_code == 200
+    assert unassigned.json()["ticket"]["assignedToUserId"] is None
     reply = client.post(f"/v1/support/tickets/{ticket_id}/messages", headers=headers(support["userId"]),
         json={"message": "Stiamo verificando il problema.", "status": "waiting_user"})
     assert reply.status_code == 200 and reply.json()["ticket"]["status"] == "waiting_user"
