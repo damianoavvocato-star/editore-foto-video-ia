@@ -1,3 +1,4 @@
+import pytest
 """API safety regression tests: upload extension validation and health endpoint."""
 import io
 from fastapi.testclient import TestClient
