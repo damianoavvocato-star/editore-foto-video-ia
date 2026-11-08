@@ -1707,7 +1707,7 @@ def _entitlement_store() -> EntitlementStore:
 
 
 def _referral_store() -> ReferralStore:
-    return ReferralStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+    return ReferralStore(_account_store().database)
 
 
 def _usage_store() -> UsageStore:
