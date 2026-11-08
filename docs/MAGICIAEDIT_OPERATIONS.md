@@ -59,6 +59,18 @@ Video analysis samples up to three frames from each clip using FFprobe/FFmpeg.
   return; cancellation is checked again before a proposal is accepted.
 - Provider response bodies and credentials are not returned in client errors.
 
+## Temporary-file retention
+
+The media backend performs a conservative cleanup during startup:
+
+- `MEDIA_TEMP_RETENTION_HOURS` controls the age threshold (default 24 hours; accepted range 1–720).
+- Only incomplete upload files ending in `.part` and inactive per-job work directories are eligible.
+- Jobs recorded as queued or rendering are excluded from work-directory cleanup.
+- Original uploaded assets and completed exports are never deleted by this startup cleanup.
+- This is startup cleanup, not a periodic scheduler. Operators should monitor disk capacity and separately define a retention policy for user assets and exported videos.
+
+The monthly MagicIAedit quota is reserved before job acceptance. If the server cannot register the job's account ownership, the reservation is released; a failed analysis after a job is accepted remains counted as an attempted AI job.
+
 ## Operational verification
 
 Before enabling MagicIAedit for production users:
