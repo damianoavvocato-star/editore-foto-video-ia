@@ -113,7 +113,7 @@ class AccountPremiumScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _FamilyManagementCard(
               apiBaseUrl: apiBaseUrl,
-              canCreateFamily: entitlement?.plan == 'family',
+              widget.canCreateFamily: entitlement?.plan == 'family',
             ),
           ],
           const SizedBox(height: 12),
@@ -242,9 +242,9 @@ class _UsageSummaryCard extends StatelessWidget {
 
 
 class _FamilyManagementCard extends StatefulWidget {
-  const _FamilyManagementCard({required this.apiBaseUrl, required this.canCreateFamily});
+  const _FamilyManagementCard({required this.apiBaseUrl, required this.widget.canCreateFamily});
   final String apiBaseUrl;
-  final bool canCreateFamily;
+  final bool widget.canCreateFamily;
   @override
   State<_FamilyManagementCard> createState() => _FamilyManagementCardState();
 }
@@ -302,10 +302,10 @@ class _FamilyManagementCardState extends State<_FamilyManagementCard> {
         if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
         if (_loading) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator())),
         if (!_loading && !hasFamily) ...[
-          Text(canCreateFamily
+          Text(widget.canCreateFamily
               ? 'Il tuo piano famiglia è attivo. Crea il gruppo e genera il primo invito.'
               : 'Non fai ancora parte di una famiglia Premium. Per crearla serve un piano famiglia attivo.'),
-          if (canCreateFamily) ...[
+          if (widget.canCreateFamily) ...[
             const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: _busy ? null : () => _action(() async {
