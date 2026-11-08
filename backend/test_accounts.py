@@ -172,6 +172,8 @@ def test_owner_totp_requires_second_factor_and_recovery_codes_are_one_time(tmp_p
     from cryptography.fernet import Fernet
     from backend.totp import code_at
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
 
     monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
     store = AccountStore(tmp_path / "accounts.sqlite3")
@@ -208,6 +210,8 @@ def test_owner_totp_secret_is_encrypted_and_missing_key_fails_closed(tmp_path, m
     from backend.accounts import SecurityConfigurationError
     from backend.totp import code_at
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
 
     key = Fernet.generate_key().decode("ascii")
     monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", key)
@@ -234,6 +238,8 @@ def test_disabling_owner_totp_requires_password_and_second_factor_and_revokes_se
     from cryptography.fernet import Fernet
     from backend.totp import code_at
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
 
     monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
     store = AccountStore(tmp_path / "accounts.sqlite3")
@@ -283,6 +289,8 @@ def test_owner_totp_pending_enrollment_expires_after_ten_minutes(tmp_path, monke
     from cryptography.fernet import Fernet
     from backend.totp import code_at
     import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
 
     monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
     store = AccountStore(tmp_path / "accounts.sqlite3")
