@@ -253,10 +253,10 @@ def test_disabling_owner_totp_requires_password_and_second_factor_and_revokes_se
     clock += 30
 
     with pytest.raises(AccountError, match="Password"):
-        store.disable_totp(owner["userId"], "wrong password", code_at(secret, int(time.time()) + 60))
+        store.disable_totp(owner["userId"], "wrong password", code_at(secret, int(time.time()) + 30))
     store.disable_totp(
         owner["userId"], "owner password long enough",
-        code_at(secret, int(time.time()) + 60),
+        code_at(secret, int(time.time()) + 30),
     )
     assert store.totp_enabled(owner["userId"]) is False
     assert store.resolve_session(token) is None
