@@ -547,33 +547,282 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     final api = _api;
     if (api == null || !_isOwner) return;
     try {
-      final response = await api.request('GET', '/v1/owner/audit?limit=50');
-      final events = response['events'] as List? ?? const [];
+      final response = await api.request('GET', '/v1/owner/audit?limit=100');
+      final events = (response['events'] as List? ?? const [])
+          .whereType<Map>()
+          .map((event) => Map<String, dynamic>.from(event))
+          .toList();
+      if (!mounted) return;
+      final search = TextEditingController();
+      String action = 'Tutte';
+      final actions = ['Tutte', ...{for (final event in events) event['action']?.toString() ?? ''}.where((value) => value.isNotEmpty)];
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, refresh) {
+            final term = search.text.trim().toLowerCase();
+            final filtered = events.where((event) {
+              final matchesAction = action == 'Tutte' || event['action'] == action;
+              final haystack = [
+                event['action'], event['actorUserId'], event['targetUserId'],
+                event['details'], event['createdAt'],
+              ].join(' ').toLowerCase();
+              return matchesAction && (term.isEmpty || haystack.contains(term));
+            }).toList();
+            return AlertDialog(
+              title: const Text('Registro sicurezza'),
+              content: SizedBox(
+                width: 560,
+                height: 520,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: search,
+                      decoration: const InputDecoration(
+                        labelText: 'Cerca azione, attore, account o dettagli',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (_) => refresh(() {}),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: action,
+                      decoration: const InputDecoration(labelText: 'Filtra per azione'),
+                      items: actions.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+                      onChanged: (value) => refresh(() => action = value ?? 'Tutte'),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('${filtered.length} eventi · massimo 100 più recenti'),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(child: Text('Nessun evento corrispondente.'))
+                          : ListView.builder(
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final item = filtered[index];
+                                final timestamp = int.tryParse(item['createdAt']?.toString() ?? '');
+                                final date = timestamp == null
+                                    ? 'Data non disponibile'
+                                    : DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toLocal().toString();
+                                return ListTile(
+                                  dense: true,
+                                  leading: const Icon(Icons.security),
+                                  title: Text(item['action']?.toString() ?? ''),
+                                  subtitle: Text('Attore: ${item['actorUserId'] ?? 'sistema'}\nDestinatario: ${item['targetUserId'] ?? 'sistema'}\n$date'),
+                                  isThreeLine: true,
+                                  onTap: () => showDialog<void>(
+                                    context: context,
+                                    builder: (detailContext) => AlertDialog(
+                                      title: Text(item['action']?.toString() ?? 'Evento'),
+                                      content: SingleChildScrollView(
+                                        child: SelectableText(
+                                          'ID: ${item['eventId']}\nAttore: ${item['actorUserId']}\nDestinatario: ${item['targetUserId']}\nData: $date\nDettagli: ${item['details']}',
+                                        ),
+                                      ),
+                                      actions: [TextButton(onPressed: () => Navigator.pop(detailContext), child: const Text('Chiudi'))],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Chiudi')),
+              ],
+            );
+          },
+        ),
+      );
+      search.dispose();
+    } catch (error) {
+      _notify(error.toString());
+    }
+  }
+
+  Future<void> _managePremium(Map<String, dynamic> account) async {
+    final api = _api;
+    if (api == null || !_isOwner) return;
+    final userId = Uri.encodeComponent(account['userId']?.toString() ?? '');
+    if (userId.isEmpty) return;
+    try {
+      var response = await api.request('GET', '/v1/owner/accounts/$userId/premium-grants?limit=100');
+      var grants = (response['grants'] as List? ?? const [])
+          .whereType<Map>()
+          .map((grant) => Map<String, dynamic>.from(grant))
+          .toList();
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Registro sicurezza'),
-          content: SizedBox(
-            width: 480,
-            child: ListView(
-              shrinkWrap: true,
-              children: events.map((event) {
-                final item = event as Map;
-                return ListTile(
-                  dense: true,
-                  title: Text(item['action']?.toString() ?? ''),
-                  subtitle: Text('Account: ${item['targetUserId'] ?? 'sistema'} · ${item['createdAt']}'),
-                );
-              }).toList(),
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, refresh) => AlertDialog(
+            title: Text('Premium · ${account['username']}'),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final grant = await _promptPremiumGrant();
+                        if (grant == null) return;
+                        try {
+                          await api.request('POST', '/v1/owner/accounts/$userId/premium-grants', body: grant);
+                          response = await api.request('GET', '/v1/owner/accounts/$userId/premium-grants?limit=100');
+                          grants = (response['grants'] as List? ?? const [])
+                              .whereType<Map>()
+                              .map((item) => Map<String, dynamic>.from(item))
+                              .toList();
+                          refresh(() {});
+                          _notify('Concessione Premium registrata e auditata.');
+                        } catch (error) {
+                          _notify(error.toString());
+                        }
+                      },
+                      icon: const Icon(Icons.workspace_premium),
+                      label: const Text('Concedi Premium'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: grants.isEmpty
+                        ? const Center(child: Text('Nessuna concessione Premium registrata.'))
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: grants.length,
+                            itemBuilder: (context, index) {
+                              final grant = grants[index];
+                              final revoked = grant['revoked_at'] != null;
+                              final expiry = grant['expires_at'];
+                              final expiryLabel = expiry == null
+                                  ? 'Senza scadenza'
+                                  : DateTime.fromMillisecondsSinceEpoch(
+                                      (int.tryParse(expiry.toString()) ?? 0) * 1000,
+                                    ).toLocal().toString();
+                              return ListTile(
+                                dense: true,
+                                title: Text('${grant['plan'] == 'family' ? 'Premium famiglia' : 'Premium individuale'} · ${revoked ? 'revocato' : 'registrato'}'),
+                                subtitle: Text('Dal: ${grant['starts_at']}\nScadenza: $expiryLabel\nMotivo: ${grant['reason'] ?? ''}'),
+                                isThreeLine: true,
+                                trailing: revoked
+                                    ? const Icon(Icons.block, color: Colors.grey)
+                                    : IconButton(
+                                        tooltip: 'Revoca concessione',
+                                        icon: const Icon(Icons.remove_circle_outline),
+                                        onPressed: () async {
+                                          final grantId = grant['grant_id']?.toString() ?? '';
+                                          if (grantId.isEmpty) return;
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (confirmContext) => AlertDialog(
+                                              title: const Text('Revocare Premium?'),
+                                              content: const Text('L’accesso Premium concesso da questa promozione verrà revocato.'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Annulla')),
+                                                FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Revoca')),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed != true) return;
+                                          try {
+                                            await api.request('DELETE', '/v1/owner/accounts/$userId/premium-grants/${Uri.encodeComponent(grantId)}');
+                                            response = await api.request('GET', '/v1/owner/accounts/$userId/premium-grants?limit=100');
+                                            grants = (response['grants'] as List? ?? const [])
+                                                .whereType<Map>()
+                                                .map((item) => Map<String, dynamic>.from(item))
+                                                .toList();
+                                            refresh(() {});
+                                            _notify('Concessione Premium revocata.');
+                                          } catch (error) {
+                                            _notify(error.toString());
+                                          }
+                                        },
+                                      ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
+            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Chiudi'))],
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Chiudi'))],
         ),
       );
     } catch (error) {
       _notify(error.toString());
     }
+  }
+
+  Future<Map<String, Object?>?> _promptPremiumGrant() async {
+    var plan = 'premium';
+    var duration = '30';
+    final reason = TextEditingController(text: 'Promozione concessa dal Proprietario');
+    final result = await showDialog<Map<String, Object?>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('Nuova concessione Premium'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: plan,
+                decoration: const InputDecoration(labelText: 'Piano'),
+                items: const [
+                  DropdownMenuItem(value: 'premium', child: Text('Premium individuale')),
+                  DropdownMenuItem(value: 'family', child: Text('Premium famiglia')),
+                ],
+                onChanged: (value) => refresh(() => plan = value ?? plan),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: duration,
+                decoration: const InputDecoration(labelText: 'Durata'),
+                items: const [
+                  DropdownMenuItem(value: '30', child: Text('30 giorni')),
+                  DropdownMenuItem(value: '90', child: Text('90 giorni')),
+                  DropdownMenuItem(value: '365', child: Text('1 anno')),
+                  DropdownMenuItem(value: '0', child: Text('Senza scadenza')),
+                ],
+                onChanged: (value) => refresh(() => duration = value ?? duration),
+              ),
+              TextField(
+                controller: reason,
+                maxLength: 240,
+                decoration: const InputDecoration(labelText: 'Motivo / riferimento'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Annulla')),
+            FilledButton(
+              onPressed: () {
+                if (reason.text.trim().isEmpty) return;
+                final days = int.parse(duration);
+                Navigator.pop(dialogContext, {
+                  'plan': plan,
+                  'reason': reason.text.trim(),
+                  'expiresAt': days == 0
+                      ? null
+                      : DateTime.now().millisecondsSinceEpoch ~/ 1000 + days * 86400,
+                });
+              },
+              child: const Text('Conferma'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reason.dispose();
+    return result;
   }
 
   Future<void> _startTotpSetup() async {
@@ -815,6 +1064,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             if (action == 'disable') _setDisabled(account, true);
             if (action == 'enable') _setDisabled(account, false);
             if (action == 'permissions') _showPermissions(account);
+            if (action == 'premium') _managePremium(account);
           },
           itemBuilder: (context) => [
             if (_canReset && role != 'owner' && (_isOwner || role != 'admin'))
@@ -827,6 +1077,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
               const PopupMenuItem(value: 'enable', child: Text('Riattiva account')),
             if (_isOwner)
               const PopupMenuItem(value: 'permissions', child: Text('Permessi effettivi')),
+            if (_isOwner)
+              const PopupMenuItem(value: 'premium', child: Text('Gestisci Premium')),
           ],
         ),
       ),
