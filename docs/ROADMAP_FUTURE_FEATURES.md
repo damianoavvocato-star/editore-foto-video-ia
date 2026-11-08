@@ -89,3 +89,72 @@ Una funzione è completata solo quando implementazione, test, documentazione, ge
 - Mantenere le modifiche sul branch `feature/magiciaedit-cloud-foundation` e nella PR draft esistente.
 - **Non modificare `main` e non unire la PR senza autorizzazione esplicita.**
 - **La creazione dell'APK resta esclusivamente la fase 6 e ultima**, dopo completamento delle implementazioni, test, correzioni, verifiche di sicurezza e controlli multipiattaforma.
+
+
+## 7. Estensione approvata: Universal Video Studio IA e traduzione multilingue
+
+Questa sezione amplia il prodotto prendendo Vidnoz come riferimento funzionale, senza dipendere da esso né copiarne il prodotto. **Le funzioni seguenti sono pianificate, non implementate per effetto della sola documentazione.**
+
+### 7.1 Universal Video Studio IA
+Centro unico integrato con MagicIAedit, VoiceStudio, MultiSocial e timeline per traduzione/localizzazione, doppiaggio, sottotitoli, avatar e presentatori virtuali, video da testo/script, video da presentazioni e documenti, corsi, tutorial, presentazioni aziendali e contenuti promozionali. Ogni risultato resta modificabile e revisionabile.
+
+### 7.2 MultiTraduzione IA: batch multilingue
+Da un video sorgente l'utente può selezionare più lingue nella stessa operazione (obiettivo architetturale: almeno 20 lingue selezionabili, subordinato a provider, qualità, quote e costi). Il sistema rileva/conferma la lingua sorgente, trascrive con timestamp, separa gli interlocutori, traduce mantenendo contesto e glossario, genera audio e sottotitoli, applica lip-sync quando disponibile e produce **un file video distinto per ciascuna lingua**. Download singolo o ZIP. Ogni lingua ha stato indipendente, retry/cancellazione separati e avanzamento visibile; un errore in una lingua non blocca le altre. Coda asincrona, ripresa dopo interruzione, idempotenza, limiti di concorrenza e stima costi prima dell'avvio.
+
+### 7.3 Funzioni linguistiche
+- Universal Voice: trascrizione, traduzione, TTS/doppiaggio, tono/registro, pronuncia e glossari.
+- Clonazione vocale solo con consenso verificabile e diritti; disclosure della voce sintetica e protezioni anti-impersonificazione.
+- Diarizzazione multi-speaker con tracce vocali distinte; nessuna identificazione personale presunta.
+- Lip-sync opzionale con anteprima e indicazione dei limiti qualitativi.
+- Sottotitoli generati, tradotti, modificabili e sincronizzati; esportazione SRT, VTT, ASS o incorporamento nel video.
+- OCR e traduzione delle scritte visibili nel video, con sostituzione grafica quando possibile e correzione manuale; segnalare testi animati/coperti non ricostruibili.
+- Localizzazione RTL per arabo: shaping, punteggiatura, numeri e layout verificati.
+- Riassunti, highlight e clip brevi per ciascuna lingua.
+- Traduzione di lezioni/corsi, capitoli, glossari e materiali associati.
+- Trascrizione completa con timestamp e speaker label.
+- Pulizia audio, riduzione rumore, silenzi configurabili, bilanciamento voce/musica e controllo clipping.
+
+### 7.4 Localizzazione MultiSocial
+Da un master produrre varianti per lingua e piattaforma: verticale/quadrato/orizzontale, ritaglio intelligente, safe area, durata, ritmo, copertine, titoli, descrizioni, doppiaggio o sottotitoli. Esportazione multipla/ZIP e collegamento master-derivati per aggiornamenti selettivi. Pubblicazione diretta solo tramite API ufficiali e autorizzate, sempre con approvazione esplicita; altrimenti share sheet.
+
+### 7.5 Generazione video e avatar (riferimento Vidnoz)
+- Script-to-Video: testo/brief in storyboard, scene, media, narrazione, musica con licenza e montaggio proposto.
+- Avatar Studio: avatar predefiniti/personalizzati, presentatori virtuali, sfondi e layout.
+- Talking Photo: animazione parlante di foto con diritti e consenso verificati.
+- Document-to-Video: trasformazione guidata di documenti/presentazioni in video, con tracciabilità delle fonti.
+- AdCreator: campagne, cataloghi e annunci localizzati, controllo delle affermazioni e dei diritti.
+- Template e brand kit: loghi, colori, font e modelli con licenze tracciate.
+
+### 7.6 Innovazioni distintive già discusse
+- Regista IA/SmartDirector: storyboard narrativo, ordine scene, ritmo e stile in base all'obiettivo.
+- VideoDoctor Evolution: diagnosi assistita di sfocatura, tremolio, esposizione, rumore, audio e continuità.
+- Privacy Director: rilevamento e oscuramento selettivo di volti, targhe, documenti, indirizzi e dati sensibili.
+- CreativeMemory: preferenze creative controllabili, esportabili e cancellabili dall'utente.
+- SmartCamera Director: sincronizzazione multi-camera e proposta dell'inquadratura migliore.
+- VoiceEdit: comandi vocali/testuali per la timeline, anteprima e conferma per azioni distruttive.
+- TeamStudio: commenti, revisioni, versioni, ruoli e approvazioni, dopo isolamento multiutente.
+- MemoryRestorer: restauro foto/video con confronto non distruttivo.
+- AdCreator: contenuti e campagne commerciali.
+
+### 7.7 Architettura, sicurezza e criteri di completamento
+- Modello dati per master, varianti lingua, segmenti temporali, speaker, tracce audio, sottotitoli, job e output.
+- Provider intercambiabili per ASR, traduzione, TTS, lip-sync, OCR e generazione; chiavi solo server-side, HTTPS.
+- Job asincroni con progressi per lingua, retry limitati, idempotenza, cancellazione, ripresa e pulizia temporanei.
+- Preventivo di minuti/crediti/costi, quote per piano, rate limiting e limiti anti-abuso; Premium omaggio non elimina i costi infrastrutturali.
+- Consenso per upload cloud, retention chiara, cancellazione e controllo accessi; verifica diritti su voce, volto, musica, immagini, documenti e marchi.
+- Test con rumore, accenti, speaker sovrapposti, video lunghi, frame rate variabile, testi animati, arabo RTL, provider indisponibile e fallimenti parziali.
+- Revisione umana prima di applicare traduzioni, avatar, lip-sync o pubblicare; nessuna pubblicazione automatica.
+- Completamento solo dopo test automatizzati, prove con provider reali autorizzati, valutazione linguistica, test dispositivi e misurazione di costo/tempo. Mock e demo non equivalgono a provider reale.
+
+### 7.8 Priorità
+1. Fondazioni: autenticazione/ownership, media storage, job queue, quote, preventivo costi, cancellazione e privacy.
+2. Trascrizione, sottotitoli e traduzione con timestamp.
+3. Doppiaggio multilingue e batch di file separati.
+4. Diarizzazione, glossari, gestione voci e qualità audio.
+5. OCR/sostituzione testi e RTL arabo.
+6. Lip-sync e clonazione vocale autorizzata.
+7. MultiSocial localizzato, riassunti e clip brevi.
+8. Script-to-Video, Avatar Studio, Talking Photo e Document-to-Video.
+9. Collaborazione e campagne avanzate.
+
+Le nuove attività ampliano il lavoro residuo e non aumentano automaticamente la percentuale completata. Mantenere branch della PR draft; non modificare `main`, non unire la PR e non creare l'APK prima della fase 6.
