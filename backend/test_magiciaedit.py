@@ -252,3 +252,57 @@ def test_plan_rejects_non_numeric_timeline_values_cleanly():
             assert "tempi non validi" in str(exc)
         else:
             raise AssertionError("Malformed timeline values must be rejected")
+
+
+def test_magic_ai_cannot_analyse_another_users_media(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.register("media_owner", "media owner password long")
+    stranger = store.register("media_stranger", "media stranger password long")
+    _, owner_token, _ = store.login("media_owner", "media owner password long")
+    _, stranger_token, _ = store.login("media_stranger", "media stranger password long")
+    asset_id = "e" * 32
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "ASSETS", tmp_path / "assets")
+    server.ASSETS.mkdir()
+    (server.ASSETS / f"{asset_id}.jpg").write_bytes(b"test image")
+    store.claim_media_resource("asset", asset_id, owner["userId"])
+    client = TestClient(server.app)
+    response = client.post(
+        "/v1/ai/jobs",
+        headers={"Authorization": f"Bearer {stranger_token}"},
+        json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+    assert response.status_code == 404
+
+
+def test_magic_ai_jobs_are_private_to_their_account(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.register("job_owner", "job owner password long")
+    stranger = store.register("job_stranger", "job stranger password long")
+    _, owner_token, _ = store.login("job_owner", "job owner password long")
+    _, stranger_token, _ = store.login("job_stranger", "job stranger password long")
+    job_id = "f" * 32
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    store.claim_media_resource("job", job_id, owner["userId"])
+    with server.lock:
+        server.jobs[job_id] = {"state": "rendering", "progress": 0.2, "message": "Analisi"}
+        server.cancel_events[job_id] = threading.Event()
+    client = TestClient(server.app)
+    stranger_headers = {"Authorization": f"Bearer {stranger_token}"}
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    try:
+        assert client.get(f"/v1/jobs/{job_id}", headers=stranger_headers).status_code == 404
+        assert client.delete(f"/v1/jobs/{job_id}", headers=stranger_headers).status_code == 404
+        own_status = client.get(f"/v1/jobs/{job_id}", headers=owner_headers)
+        assert own_status.status_code == 200
+        assert client.delete(f"/v1/jobs/{job_id}", headers=owner_headers).status_code == 200
+        assert server.jobs[job_id]["state"] == "cancelled"
+    finally:
+        with server.lock:
+            server.jobs.pop(job_id, None)
+            server.cancel_events.pop(job_id, None)
