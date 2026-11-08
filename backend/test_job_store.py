@@ -336,3 +336,40 @@ def test_concurrent_retries_share_one_new_job_after_interruption(tmp_path):
     assert len(results) == 2
     assert results[0][0] == results[1][0]
     assert sorted(created for _, created in results) == [False, True]
+
+
+
+def test_interrupted_job_retry_still_rejects_changed_fingerprint(tmp_path):
+    import uuid
+    import pytest
+    from backend.job_store import IdempotencyConflict
+
+    database = tmp_path / "jobs.sqlite3"
+    first = JobRegistry(database)
+    first.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "rendering", "progress": 0.3},
+        "account-scope",
+        "interrupted-changed-payload",
+        "original-fingerprint",
+    )
+
+    restored = JobRegistry(database)
+    with pytest.raises(IdempotencyConflict):
+        restored.create_idempotent_job(
+            uuid.uuid4().hex,
+            {"state": "queued", "progress": 0.0},
+            "account-scope",
+            "interrupted-changed-payload",
+            "different-fingerprint",
+        )
+
+    replayed_id, created = restored.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "interrupted-changed-payload",
+        "original-fingerprint",
+    )
+    assert created is True
+    assert restored[replayed_id]["state"] == "queued"
