@@ -24,6 +24,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>> _accounts = [];
   List<Map<String, dynamic>> _activeSessions = [];
+  Map<String, dynamic>? _adminStats;
   bool _busy = false;
   bool _needsTotp = false;
   bool _totpEnabled = false;
@@ -36,6 +37,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   }
 
   bool get _isOwner => _user?['role'] == 'owner';
+  bool get _isAdmin => _user?['role'] == 'admin';
   bool get _canManage => _isOwner || _user?['role'] == 'admin';
   bool get _canReset => _canManage || _user?['role'] == 'support';
   bool get _mustChangePassword => _user?['mustChangePassword'] == true;
@@ -207,6 +209,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     if (user == null || _mustChangePassword) return;
     await _refreshSessions();
     if (_canReset) await _refreshAccounts();
+    if (_isAdmin) await _loadAdminDashboard();
     if (_isOwner) await _loadTotpStatus();
   }
 
@@ -263,6 +266,20 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             .whereType<Map>()
             .map((row) => Map<String, dynamic>.from(row))
             .toList());
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _loadAdminDashboard() async {
+    final api = _api;
+    if (api == null || !_isAdmin) return;
+    try {
+      final response = await api.request('GET', '/v1/admin/dashboard');
+      final data = response['dashboard'];
+      if (mounted && data is Map) {
+        setState(() => _adminStats = Map<String, dynamic>.from(data));
       }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -1119,6 +1136,26 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     );
   }
 
+  Widget _adminMetric(String label, Object? value) {
+    return SizedBox(
+      width: 145,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value?.toString() ?? '—',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_baseUri == null) {
@@ -1194,6 +1231,48 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             ),
           ),
         ),
+        if (_isAdmin) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.admin_panel_settings_outlined),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Dashboard Amministratore',
+                            style: Theme.of(context).textTheme.titleLarge),
+                      ),
+                      IconButton(
+                        tooltip: 'Aggiorna statistiche',
+                        onPressed: _loadAdminDashboard,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const Text('Statistiche aggregate: nessun dato personale o credenziale è esposto in questa scheda.'),
+                  const SizedBox(height: 12),
+                  if (_adminStats == null)
+                    const LinearProgressIndicator()
+                  else
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _adminMetric('Account totali', _adminStats!['totalAccounts']),
+                        _adminMetric('Attivi', _adminStats!['activeAccounts']),
+                        _adminMetric('Sospesi', _adminStats!['disabledAccounts']),
+                        _adminMetric('Nuovi · 30 giorni', _adminStats!['createdLast30Days']),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (_isOwner) Card(
           child: ListTile(
             leading: Icon(_totpEnabled ? Icons.lock : Icons.lock_open),
