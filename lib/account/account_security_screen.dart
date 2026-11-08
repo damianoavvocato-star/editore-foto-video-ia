@@ -548,10 +548,12 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     if (api == null || !_isOwner) return;
     try {
       final response = await api.request('GET', '/v1/owner/audit?limit=100');
-      final events = (response['events'] as List? ?? const [])
+      var events = (response['events'] as List? ?? const [])
           .whereType<Map>()
           .map((event) => Map<String, dynamic>.from(event))
           .toList();
+      var hasMore = response['hasMore'] == true;
+      var loadingMore = false;
       if (!mounted) return;
       final search = TextEditingController();
       String action = 'Tutte';
@@ -630,6 +632,37 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                               },
                             ),
                     ),
+                    if (hasMore)
+                      Align(
+                        alignment: Alignment.center,
+                        child: TextButton.icon(
+                          onPressed: loadingMore ? null : () async {
+                            refresh(() => loadingMore = true);
+                            try {
+                              final next = await api.request(
+                                'GET',
+                                '/v1/owner/audit?limit=100&offset=${events.length}',
+                              );
+                              final added = (next['events'] as List? ?? const [])
+                                  .whereType<Map>()
+                                  .map((event) => Map<String, dynamic>.from(event))
+                                  .toList();
+                              refresh(() {
+                                events = [...events, ...added];
+                                hasMore = next['hasMore'] == true;
+                                loadingMore = false;
+                              });
+                            } catch (error) {
+                              refresh(() => loadingMore = false);
+                              _notify(error.toString());
+                            }
+                          },
+                          icon: loadingMore
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.expand_more),
+                          label: Text(loadingMore ? 'Caricamento…' : 'Carica altri eventi'),
+                        ),
+                      ),
                   ],
                 ),
               ),
