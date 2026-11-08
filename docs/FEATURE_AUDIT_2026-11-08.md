@@ -70,16 +70,15 @@ La nuova suite Universal Video Studio IA, invece, è pianificata ma non implemen
 
 ## Verifica CI e vincoli di progetto
 
-- Workflow run verificato: `42464237850`.
-- `android-preflight`: SUCCESS.
-- `backend-test`: SUCCESS.
-- `flutter-test`: SUCCESS.
+- Ultimo workflow run verificato: [`42473184516`](https://github.com/damianoavvocato-star/editore-foto-video-ia/actions/runs/42473184516), commit `1f5151788f115bf0d6be120f289652785033298c`.
+- `backend-test`: SUCCESS — **176 test superati**, con un solo warning di deprecazione Starlette/httpx.
+- `flutter-test`: SUCCESS — `flutter analyze` senza problemi e **128 test Flutter superati**.
+- `android-preflight`: SUCCESS — `./gradlew --no-daemon help` completato con BUILD SUCCESSFUL; è stata verificata la configurazione Gradle, non compilato un APK.
 - `changes`: SUCCESS.
-- `android-apk`: SKIPPED, coerente con la regola che riserva la generazione APK alla fase 6.
-- PR #1 resta aperta e draft.
-- Le modifiche restano sul branch `feature/magiciaedit-cloud-foundation`.
-- Nessuna modifica a `main`; nessun merge.
-- Nessun APK generato.
+- La job `android-apk` resta intenzionalmente disabilitata fino alla fase 6; nessun APK è stato generato.
+- PR #1 resta aperta e non unita; le modifiche restano sul branch `feature/magiciaedit-cloud-foundation`.
+- SHA di `main` verificato: `93870b529d2244f4efd4e25a5108ae00375b37ca`; nessuna modifica a `main`.
+- Il run ha conclusione complessiva SUCCESS.
 
 ## Criterio di avanzamento
 
