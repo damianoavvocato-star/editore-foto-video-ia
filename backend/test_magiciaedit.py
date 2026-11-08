@@ -1,5 +1,6 @@
 """MagicIAedit provider and API contract tests."""
 import threading
+import sqlite3
 import time
 
 from fastapi.testclient import TestClient
@@ -436,3 +437,51 @@ def test_authenticated_ai_jobs_enforce_monthly_free_quota(monkeypatch, tmp_path)
     )
     assert second.status_code == 429
     assert second.json()["detail"]["code"] == "monthly_ai_quota_exceeded"
+
+
+def test_ai_job_claim_failure_does_not_consume_monthly_quota(monkeypatch, tmp_path):
+    from fastapi import HTTPException
+    from backend.accounts import AccountStore
+    from backend.usage_store import UsageStore
+
+    database = tmp_path / "accounts.sqlite3"
+    accounts = AccountStore(database)
+    user = accounts.register("quota_claim_user", "quota claim user password long")
+    token, _ = accounts.issue_session(user["userId"])
+    asset_id = "8" * 32
+    accounts.claim_media_resource("asset", asset_id, user["userId"])
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"placeholder")
+    usage = UsageStore(database)
+
+    class FreePlan:
+        @staticmethod
+        def has_premium(_user_id):
+            return False
+
+    monkeypatch.setattr(server, "_account_store", lambda: accounts)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: FreePlan())
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setenv("MEDIA_FREE_AI_MONTHLY_LIMIT", "1")
+
+    def reject_job_claim(*_args):
+        raise HTTPException(409, "simulated job claim failure")
+
+    monkeypatch.setattr(server, "_claim_resource", reject_job_claim)
+    client = TestClient(server.app)
+    response = client.post(
+        "/v1/ai/jobs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+
+    assert response.status_code == 409
+    with sqlite3.connect(database) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    assert count == 0
