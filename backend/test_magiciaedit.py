@@ -1,4 +1,5 @@
 """MagicIAedit provider and API contract tests."""
+import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -177,3 +178,31 @@ def test_magic_plan_rejects_more_than_twenty_media(monkeypatch, tmp_path):
         assert "1 a 20" in str(exc)
     else:
         raise AssertionError("More than twenty media must be rejected")
+
+
+def test_magic_media_preprocessing_stops_immediately_when_cancelled(tmp_path):
+    cancelled = threading.Event()
+    cancelled.set()
+    missing_asset = tmp_path / "not-created.jpg"
+    try:
+        magiciaedit._media_parts({"a" * 32: missing_asset}, cancelled)
+    except magiciaedit.MagicIAError as exc:
+        assert "annullata" in str(exc)
+    else:
+        raise AssertionError("Cancelled preprocessing must stop before reading media")
+
+
+def test_video_frame_extraction_checks_cancellation_before_ffprobe(monkeypatch, tmp_path):
+    cancelled = threading.Event()
+    cancelled.set()
+
+    def unexpected_subprocess(*args, **kwargs):
+        raise AssertionError("ffprobe must not start after cancellation")
+
+    monkeypatch.setattr(magiciaedit.subprocess, "run", unexpected_subprocess)
+    try:
+        magiciaedit._video_frames(tmp_path / "clip.mp4", cancelled)
+    except magiciaedit.MagicIAError as exc:
+        assert "annullata" in str(exc)
+    else:
+        raise AssertionError("Cancelled frame extraction must stop immediately")
