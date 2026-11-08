@@ -314,3 +314,19 @@ def test_account_search_is_bounded_and_matches_username_or_id(tmp_path):
     assert [item["username"] for item in store.list_accounts(100, "ALPHA")] == ["search_alpha"]
     assert [item["userId"] for item in store.list_accounts(100, first["userId"])] == [first["userId"]]
     assert len(store.list_accounts(1, "")) == 1
+
+
+def test_login_success_audit_detects_new_client_network_without_raw_ip(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("network_owner", "owner password long enough")
+
+    assert store.record_login_success(owner["userId"], "owner", "203.0.113.10") is True
+    assert store.record_login_success(owner["userId"], "owner", "203.0.113.10") is False
+    assert store.record_login_success(owner["userId"], "owner", "198.51.100.20") is True
+
+    events = store.list_audit_events(10)
+    login_events = [event for event in events if event["action"] == "auth.login_success"]
+    assert len(login_events) == 3
+    assert login_events[0]["details"]["newIp"] is True
+    assert "198.51.100.20" not in str(login_events)
+    assert len(login_events[0]["details"]["ipHash"]) == 64
