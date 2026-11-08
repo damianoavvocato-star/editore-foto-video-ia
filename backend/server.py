@@ -126,18 +126,42 @@ def studio_enqueue_job(job_id: str, request: Request):
             for path in ASSETS.glob(asset_id + '.*')
         ):
             raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+    # Apply the same free/premium monthly allowance used by MagicIAedit.
+    # The stable draft-scoped key makes retries and repeated taps idempotent.
+    is_premium = _entitlement_store().has_premium(account['userId'])
+    usage_key = f'studio-{job_id}'
+    try:
+        usage = _usage_store().reserve(
+            account['userId'], usage_key, _ai_monthly_limit(is_premium)
+        )
+    except UsageLimitError as exc:
+        raise HTTPException(
+            429,
+            detail={
+                'code': 'monthly_ai_quota_exceeded',
+                'message': 'Hai raggiunto il limite mensile di elaborazioni IA del tuo piano.',
+                'limit': exc.limit,
+                'period': exc.period,
+            },
+        ) from exc
     try:
         queued, created = _studio_queue().enqueue(
             account['userId'], body, idempotency_key=f'studio-draft:{job_id}'
         )
-    except StudioRequestError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    except StudioQueueError as exc:
-        raise HTTPException(409, str(exc)) from exc
+    except (StudioRequestError, StudioQueueError) as exc:
+        # Do not consume quota when durable queue persistence was rejected.
+        try:
+            _usage_store().release(account['userId'], usage_key, usage['period'])
+        except Exception:
+            logging.exception('Unable to release Studio quota after queue rejection')
+        status = 422 if isinstance(exc, StudioRequestError) else 409
+        raise HTTPException(status, str(exc)) from exc
     return {
         **queued,
         'created': created,
         'sourceDraftId': job_id,
+        'tier': 'premium' if is_premium else 'free',
+        'usage': usage,
         'providerSubmissionEnabled': False,
         'message': 'Richiesta salvata nella coda; nessuna chiamata al provider è stata avviata.',
     }

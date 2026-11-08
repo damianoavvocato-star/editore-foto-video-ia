@@ -65,3 +65,19 @@ now include lease owner, state, and expiry in the atomic SQL predicate so an
 expired worker cannot resurrect a job after reconciliation. SQLite uses FULL
 synchronous mode, and database/WAL/SHM files are restricted to owner-only
 permissions where the operating system supports POSIX modes.
+
+
+## Monthly quota and entitlement enforcement
+
+The authenticated enqueue endpoint now reserves the same account-scoped monthly
+AI allowance used by MagicIAedit. Active Premium/family grants are resolved via
+the existing entitlement ledger; otherwise the free allowance applies. Defaults
+remain aligned with the existing backend policy (10 monthly free requests and
+100 Premium requests), configurable with
+`MEDIA_FREE_AI_MONTHLY_LIMIT` and `MEDIA_PREMIUM_AI_MONTHLY_LIMIT`.
+
+The reservation key is stable per account and reviewed draft, so a retry does
+not consume a second monthly request. Quota exhaustion returns HTTP 429 with
+`monthly_ai_quota_exceeded`; if queue persistence rejects the request, the
+reservation is released. The queue still does not invoke a video provider:
+quota acceptance is not a claim that paid generation has started.
