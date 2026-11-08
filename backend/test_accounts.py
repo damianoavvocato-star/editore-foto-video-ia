@@ -250,6 +250,7 @@ def test_disabling_owner_totp_requires_password_and_second_factor_and_revokes_se
         "secure_owner", "owner password long enough",
         code_at(secret, int(time.time()) + 30),
     )
+    clock += 30
 
     with pytest.raises(AccountError, match="Password"):
         store.disable_totp(owner["userId"], "wrong password", code_at(secret, int(time.time()) + 60))
