@@ -160,6 +160,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     final body = <String, Object?>{'newPassword': _newPassword.text};
     if (!_mustChangePassword) body['currentPassword'] = _password.text;
     try {
+      final passwordJustSet = _newPassword.text;
       final response = await api.request('POST', '/v1/auth/change-password', body: body);
       final token = response['accessToken']?.toString() ?? '';
       if (token.isEmpty) throw const FormatException('Nuova sessione non restituita.');
@@ -169,6 +170,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       if (!mounted) return;
       setState(() {
         _user = Map<String, dynamic>.from(response['user'] as Map);
+        _password.text = passwordJustSet;
         _newPassword.clear();
         _error = null;
       });
@@ -627,7 +629,13 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             TextField(controller: _username, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Nome utente')),
             TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
             if (_needsTotp)
-              TextField(controller: _loginCode, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Codice 2FA o codice di recupero')),
+              TextField(
+                controller: _loginCode,
+                keyboardType: TextInputType.visiblePassword,
+                textCapitalization: TextCapitalization.characters,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: 'Codice 2FA o codice di recupero'),
+              ),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _busy ? null : _login,
