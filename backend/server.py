@@ -16,6 +16,7 @@ from backend.accounts import AccountError, AccountStore, SecurityConfigurationEr
 from backend.authorization import PermissionError as PolicyError, PermissionPolicy
 from backend.entitlements import EntitlementError, EntitlementStore
 from backend.referrals import ReferralError, ReferralStore
+from backend.credits import CreditError, CreditStore
 from backend.job_store import JobRegistry
 from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
@@ -582,6 +583,12 @@ class OwnerPremiumGrant(BaseModel):
 
 class ReferralClaimRequest(BaseModel):
     code: str = Field(min_length=6, max_length=12)
+
+
+class OwnerCreditGrant(BaseModel):
+    amount: int = Field(ge=1, le=1_000_000)
+    referenceId: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=240)
 
 
 def _require_owner(request: Request) -> dict[str, Any]:
@@ -1710,6 +1717,10 @@ def _referral_store() -> ReferralStore:
     return ReferralStore(_account_store().database)
 
 
+def _credit_store() -> CreditStore:
+    return CreditStore(_account_store().database)
+
+
 def _usage_store() -> UsageStore:
     return UsageStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
 
@@ -1897,6 +1908,41 @@ def account_referral_history(request: Request):
         return _referral_store().history(account['userId'])
     except ReferralError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.get('/v1/account/credits')
+def account_get_credits(request: Request, limit: int = 50):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _credit_store()
+    try:
+        return {
+            'balance': store.balance(account['userId']),
+            'transactions': store.history(account['userId'], limit),
+        }
+    except CreditError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/accounts/{user_id}/credits')
+def owner_grant_credits(user_id: str, body: OwnerCreditGrant, request: Request):
+    owner = _require_owner(request)
+    target = _account_store().get_account(user_id)
+    if target is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        result = _credit_store().grant(
+            'owner', owner['userId'], user_id, body.amount,
+            body.referenceId, body.reason,
+        )
+    except CreditError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        owner['userId'], 'credits.granted', user_id,
+        {'amount': body.amount, 'referenceId': body.referenceId, 'reason': body.reason.strip()},
+    )
+    return result
 
 
 @app.get('/v1/account/usage')
