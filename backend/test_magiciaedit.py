@@ -206,3 +206,35 @@ def test_video_frame_extraction_checks_cancellation_before_ffprobe(monkeypatch, 
         assert "annullata" in str(exc)
     else:
         raise AssertionError("Cancelled frame extraction must stop immediately")
+
+
+def test_ai_job_can_be_cancelled_before_provider_finishes(monkeypatch, tmp_path):
+    asset_id = "c" * 32
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "ASSETS", tmp_path)
+    (tmp_path / f"{asset_id}.jpg").write_bytes(b"placeholder")
+    provider_started = threading.Event()
+
+    def slow_plan(paths, options, cancel_event):
+        provider_started.set()
+        assert cancel_event.wait(timeout=2), "Cancellation was not propagated to provider"
+        raise magiciaedit.MagicIAError("Elaborazione annullata.")
+
+    monkeypatch.setattr(server, "create_magic_plan", slow_plan)
+    client = TestClient(server.app)
+    response = client.post(
+        "/v1/ai/jobs", json={"task": "magicIAedit", "assetIds": [asset_id]},
+    )
+    assert response.status_code == 200
+    job_id = response.json()["jobId"]
+    assert provider_started.wait(timeout=2)
+
+    cancelled = client.delete(f"/v1/jobs/{job_id}")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["ok"] is True
+    for _ in range(100):
+        status = client.get(f"/v1/jobs/{job_id}").json()
+        if status["state"] in {"succeeded", "failed", "cancelled"}:
+            break
+        time.sleep(0.01)
+    assert status["state"] == "cancelled"
