@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'account_premium_screen.dart';
 import '../models/account_entitlement.dart';
@@ -22,7 +23,7 @@ class AccountPremiumPage extends StatefulWidget {
 }
 
 class _AccountPremiumPageState extends State<AccountPremiumPage> {
-  late Future<({String? userId, UserEntitlement? entitlement})> _load;
+  late Future<({String? userId, UserEntitlement? entitlement, String? referralCode})> _load;
 
   @override
   void initState() {
@@ -30,10 +31,10 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
     _load = _loadEntitlement();
   }
 
-  Future<({String? userId, UserEntitlement? entitlement})>
+  Future<({String? userId, UserEntitlement? entitlement, String? referralCode})>
       _loadEntitlement() async {
     final baseUrl = widget.apiBaseUrl.trim();
-    if (baseUrl.isEmpty) return (userId: null, entitlement: null);
+    if (baseUrl.isEmpty) return (userId: null, entitlement: null, referralCode: null);
 
     final token = await const AccountSessionStore().readToken();
     if (token == null || token.isEmpty) {
@@ -74,7 +75,53 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
             : null,
         source: source,
       );
-      return (userId: userId, entitlement: entitlement);
+      String? referralCode;
+      try {
+        final referral = await api.request('GET', '/v1/account/referrals');
+        referralCode = referral['code'] as String?;
+      } on AccountApiException {
+        // Entitlement remains usable if the referral endpoint is temporarily unavailable.
+      }
+      return (userId: userId, entitlement: entitlement, referralCode: referralCode);
+    } finally {
+      api.close();
+    }
+  }
+
+  Future<void> _shareReferral(String? code) async {
+    if (code == null || code.isEmpty) {
+      _notice('Il codice invito non è disponibile.');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: code));
+    _notice('Codice invito copiato.');
+  }
+
+  Future<void> _redeemReferral(String code) async {
+    final token = await const AccountSessionStore().readToken();
+    if (token == null || token.isEmpty || widget.apiBaseUrl.trim().isEmpty) {
+      _notice('Accedi e configura il server per riscattare un invito.');
+      return;
+    }
+    final api = RemoteAccountApi(
+      baseUri: Uri.parse(widget.apiBaseUrl.trim()),
+      bearerToken: token,
+    );
+    try {
+      final result = await api.request(
+        'POST',
+        '/v1/account/referrals/claim',
+        body: {'code': code.trim().toUpperCase()},
+      );
+      final eligibleAt = result['eligibleAt'];
+      _notice(eligibleAt is int
+          ? 'Invito registrato. Entrambi riceverete 30 giorni Premium dopo 7 giorni di verifica.'
+          : 'Invito registrato e in verifica.');
+      if (mounted) setState(() => _load = _loadEntitlement());
+    } on AccountApiException catch (error) {
+      _notice(error.message);
+    } catch (_) {
+      _notice('Impossibile riscattare il codice. Riprova.');
     } finally {
       api.close();
     }
@@ -88,7 +135,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({String? userId, UserEntitlement? entitlement})>(
+    return FutureBuilder<({String? userId, UserEntitlement? entitlement, String? referralCode})>(
       future: _load,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -129,7 +176,7 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
         return AccountPremiumScreen(
           userId: data.userId,
           entitlement: data.entitlement,
-          referralCode: null,
+          referralCode: data.referralCode,
           onSignIn: widget.onSignIn,
           onUpgrade: () => _notice(
             'Acquisti Premium non ancora attivi: il sistema di pagamento '
@@ -139,13 +186,8 @@ class _AccountPremiumPageState extends State<AccountPremiumPage> {
             'Ripristino acquisti non disponibile finché non viene collegato '
             'il sistema di pagamento.',
           ),
-          onShareReferral: () => _notice(
-            'Il programma inviti sarà disponibile dopo l’attivazione '
-            'del servizio referral.',
-          ),
-          onRedeemReferral: (_) => _notice(
-            'Il riscatto dei codici invito non è ancora attivo sul server.',
-          ),
+          onShareReferral: () => _shareReferral(data.referralCode),
+          onRedeemReferral: _redeemReferral,
         );
       },
     );
