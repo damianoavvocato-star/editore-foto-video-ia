@@ -19,7 +19,7 @@ _SUPPORTED_LANGUAGES = {
     "ko", "nl", "tr", "pl", "uk", "id", "vi", "th", "sv", "da", "no",
     "fi", "el", "he", "cs", "ro", "hu", "bn", "ur",
 }
-_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}(?:-[A-Za-z]{2}|-[A-Z][a-z]{3})?$")
+_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}(?:-[A-Za-z]{2}|-[A-Za-z]{4})?$", re.IGNORECASE)
 _SEGMENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
