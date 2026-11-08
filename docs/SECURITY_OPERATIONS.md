@@ -94,6 +94,17 @@ Without both deployment variables, webhook delivery is intentionally disabled.
 Email, push and SMS require a provider-specific adapter; the generic webhook
 does not claim to send those message types.
 
+## Session management
+
+Authenticated users can inspect their own active sessions through
+`GET /v1/auth/sessions` and revoke a selected session through
+`DELETE /v1/auth/sessions/{sessionId}`. The returned session identifier is a
+SHA-256 token digest used only as a revocation handle; it is not a bearer
+credential. A user cannot inspect or revoke another account's sessions.
+Logging out, password changes, role changes, account suspension, and 2FA
+enrollment/disablement revoke the applicable sessions. Owner sessions expire
+after 12 hours; standard account sessions expire after 30 days.
+
 ## Role permissions
 
 API handlers enforce permissions server-side using the authenticated session
