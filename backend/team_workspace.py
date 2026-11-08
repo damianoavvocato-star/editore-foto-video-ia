@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from backend.accounts import _append_audit_event
+
 
 class TeamWorkspaceError(ValueError):
     pass
@@ -75,12 +77,7 @@ class TeamWorkspaceStore:
     @staticmethod
     def _audit(db: sqlite3.Connection, actor: str, action: str,
                target: str | None, details: dict[str, Any]) -> None:
-        db.execute(
-            """INSERT INTO account_audit_events
-               (actor_user_id,action,target_user_id,details_json,created_at)
-               VALUES(?,?,?,?,?)""",
-            (actor, action, target, json.dumps(details, separators=(",", ":")), int(time.time())),
-        )
+        _append_audit_event(db, actor, action, target, details, int(time.time()))
 
     @staticmethod
     def _actor(db: sqlite3.Connection, actor_id: str) -> sqlite3.Row:
