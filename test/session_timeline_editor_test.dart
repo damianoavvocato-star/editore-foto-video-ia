@@ -106,7 +106,7 @@ void main() {
     expect(changed, isNotNull);
     expect(changed!.tracks.single.clips.single.keyframes, hasLength(1));
     expect(changed!.tracks.single.clips.single.keyframes.single.property, KeyframeProperty.scale);
-    await tester.tap(find.byType(InputChip).first);
+    await tester.tap(find.byIcon(Icons.cancel).first);
     await tester.pumpAndSettle();
     expect(changed!.tracks.single.clips.single.keyframes, isEmpty);
   });
