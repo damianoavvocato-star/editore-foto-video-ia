@@ -88,4 +88,50 @@ void main() {
     expect(find.text('حذف'), findsOneWidget);
     expect(find.text('الخط الزمني'), findsOneWidget);
   });
-}
+
+  testWidgets('ripple delete closes the gap on the selected track', (tester) async {
+    const rippleProject = EditorProject(
+      id: 'ripple',
+      name: 'Ripple edit',
+      tracks: [
+        EditorTrack(
+          id: 'video',
+          name: 'Video',
+          kind: MediaKind.video,
+          clips: [
+            EditorClip(
+              id: 'first', source: 'first.mp4', kind: MediaKind.video,
+              startMs: 0, durationMs: 2000, title: 'First',
+            ),
+            EditorClip(
+              id: 'second', source: 'second.mp4', kind: MediaKind.video,
+              startMs: 5000, durationMs: 1000, title: 'Second',
+            ),
+          ],
+        ),
+      ],
+    );
+    EditorProject? changed;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 760,
+          child: SessionTimelineEditor(
+            project: rippleProject,
+            languageCode: 'en',
+            onProjectChanged: (value) => changed = value,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('First').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete and close gap'));
+    await tester.pumpAndSettle();
+    expect(changed, isNotNull);
+    expect(changed!.tracks.single.clips, hasLength(1));
+    expect(changed!.tracks.single.clips.single.id, 'second');
+    expect(changed!.tracks.single.clips.single.startMs, 3000);
+  });
+\n}
