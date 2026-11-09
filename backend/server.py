@@ -4,7 +4,7 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib, json
+import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib, json, math
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Query
@@ -1397,11 +1397,15 @@ def _render_job(job_id: str, project: dict, settings: dict):
                     f"y='max(0,min(ih-oh,{crop_y}))'"
                 )
             elif position_x_expr is not None or position_y_expr is not None:
-                # Position offsets are applied to the normalized frame without scaling.
+                # Add a transparent-free safety canvas so a position animation
+                # can move the image in either direction without changing output size.
+                filters.append(
+                    f'pad={width * 3}:{height * 3}:{width}:{height}:color=black'
+                )
                 filters.append(
                     f"crop={width}:{height}:"
-                    f"x='max(0,min(iw-ow,(iw-ow)/2-({position_x_expr or '0'})))':"
-                    f"y='max(0,min(ih-oh,(ih-oh)/2-({position_y_expr or '0'})))'"
+                    f"x='max(0,min(iw-ow,{width}-({position_x_expr or '0'})))':"
+                    f"y='max(0,min(ih-oh,{height}-({position_y_expr or '0'})))'"
                 )
             if rotation_expr is not None:
                 filters.append(
