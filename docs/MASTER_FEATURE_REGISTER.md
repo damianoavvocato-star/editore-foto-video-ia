@@ -324,3 +324,6 @@
 
 
 > **Transizioni nel compositing alpha — 9 novembre 2026:** aggiunto un primo percorso di transizione tra clip principali sullo stesso livello: dissolvenza e dissolvenza incrociata tramite sovrapposizione temporale e inviluppi alpha complementari. Inserito un test d'integrazione che campiona il frame intermedio del video esportato e un test che verifica il rifiuto esplicito delle tendine non ancora implementate nel percorso alpha. P1-10 resta `partial`: la nuova implementazione deve superare CI e richiede ulteriori test su transizioni concatenate, clip sovrapposte intenzionalmente, audio, overlay e anteprima.
+
+
+> **Transizioni alpha spaziali — 9 novembre 2026:** esteso il compositing alpha alle transizioni `wipeleft`, `wiperight`, `slideleft` e `slideright`, oltre a `fade`/`dissolve`. Aggiunti test d'integrazione che campionano punti distinti del fotogramma intermedio per verificare direzione e permanenza della clip sottostante. Il supporto resta `partial` fino al superamento CI e alla verifica di transizioni concatenate, clip sovrapposte intenzionalmente, overlay e audio.
