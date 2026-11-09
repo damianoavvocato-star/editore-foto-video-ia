@@ -459,7 +459,7 @@ class RenderEffectsTest(unittest.TestCase):
             )
             output = server.OUTPUTS / f'{job_id}.mp4'
             audio_probe = subprocess.run(
-                [server.FFPROBE, '-v', 'error', '-select_streams', 'a:0',
+                ['ffprobe', '-v', 'error', '-select_streams', 'a:0',
                  '-show_entries', 'stream=codec_name', '-of',
                  'default=noprint_wrappers=1:nokey=1', str(output)],
                 check=True, capture_output=True, text=True,
