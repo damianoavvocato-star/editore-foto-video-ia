@@ -245,13 +245,6 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     };
     final relativeTime = (_session.playheadMs - clip.startMs)
         .clamp(0, clip.durationMs);
-    final propertyName = switch (_keyframeProperty) {
-      KeyframeProperty.positionX => 'Position X',
-      KeyframeProperty.positionY => 'Position Y',
-      KeyframeProperty.scale => 'Scale',
-      KeyframeProperty.rotation => 'Rotation',
-      KeyframeProperty.opacity => 'Opacity',
-    };
     final keyframes = [...clip.keyframes]
       ..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     return Material(
