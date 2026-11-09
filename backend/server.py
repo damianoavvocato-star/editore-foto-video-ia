@@ -1605,7 +1605,11 @@ def _render_job(job_id: str, project: dict, settings: dict):
         primary_opacity_requested = any(
             str(track.get('kind', '')).lower() not in {'audio', 'overlay', 'sticker', 'text'}
             and any(
-                isinstance(point, dict) and point.get('property') == 'opacity'
+                isinstance(point, dict)
+                and point.get('property') == 'opacity'
+                and isinstance(point.get('value'), (int, float))
+                and not isinstance(point.get('value'), bool)
+                and not math.isclose(float(point['value']), 1.0, rel_tol=0.0, abs_tol=1e-9)
                 for clip in track.get('clips', [])
                 if isinstance(clip, dict)
                 for point in (clip.get('keyframes') or [])
