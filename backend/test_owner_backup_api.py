@@ -143,3 +143,31 @@ def test_restore_prepare_endpoint_is_owner_only_and_does_not_replace_live_databa
         f"/v1/owner/backups/{backup_id}/restore/prepare"
     ).status_code == 401
 
+def test_restore_staging_retention_endpoint_is_owner_only_and_preview_first(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("stage_owner", "owner password long enough")
+    user = store.register("stage_user", "user password long enough")
+    stage_dir = tmp_path / "backups" / "restore-staging"
+    stage_dir.mkdir(parents=True)
+    staged = stage_dir / ("d" * 32 + ".sqlite3")
+    staged.write_bytes(b"temporary")
+    import os
+    os.utime(staged, (1000, 1000))
+    client = TestClient(server.app)
+    url = "/v1/owner/backups/restore-staging/retention?max_age_seconds=300&dry_run=true"
+
+    preview = client.post(url, headers=_headers(store, owner["userId"]))
+    assert preview.status_code == 200
+    assert preview.json()["eligibleCount"] == 1
+    assert preview.json()["deletedCount"] == 0
+    assert staged.exists()
+
+    denied = client.post(url, headers=_headers(store, user["userId"]))
+    assert denied.status_code == 403
+    assert client.post(url).status_code == 401
+
