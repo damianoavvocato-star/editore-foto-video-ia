@@ -24,6 +24,8 @@ class SessionTimelineEditor extends StatefulWidget {
 class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   late EditorSession _session;
   ClipColorGrade? _draftColorGrade;
+  KeyframeProperty _keyframeProperty = KeyframeProperty.scale;
+  double _keyframeValue = 1;
 
   static const Map<String, Map<String, String>> _translations = {
     'it': {
@@ -232,6 +234,148 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     );
   }
 
+
+  Widget _buildKeyframePanel(EditorClip clip, bool locked) {
+    final theme = Theme.of(context);
+    final bounds = switch (_keyframeProperty) {
+      KeyframeProperty.positionX || KeyframeProperty.positionY => (-1000.0, 1000.0),
+      KeyframeProperty.scale => (0.1, 5.0),
+      KeyframeProperty.rotation => (-180.0, 180.0),
+      KeyframeProperty.opacity => (0.0, 1.0),
+    };
+    final relativeTime = (_session.playheadMs - clip.startMs)
+        .clamp(0, clip.durationMs);
+    final propertyName = switch (_keyframeProperty) {
+      KeyframeProperty.positionX => 'Position X',
+      KeyframeProperty.positionY => 'Position Y',
+      KeyframeProperty.scale => 'Scale',
+      KeyframeProperty.rotation => 'Rotation',
+      KeyframeProperty.opacity => 'Opacity',
+    };
+    final keyframes = [...clip.keyframes]
+      ..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+    return Material(
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.65)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 8),
+          leading: Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2D9DAB), Color(0xFF8D69F4)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.auto_awesome_motion, color: Colors.white, size: 18),
+          ),
+          title: Text(
+            widget.languageCode == 'it' ? 'Animazione e keyframe' : 'Animation & keyframes',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '${keyframes.length} · ${(relativeTime / 1000).toStringAsFixed(2)} s',
+            style: theme.textTheme.labelSmall,
+          ),
+          children: [
+            DropdownButtonFormField<KeyframeProperty>(
+              initialValue: _keyframeProperty,
+              decoration: InputDecoration(
+                labelText: widget.languageCode == 'it' ? 'Proprietà animata' : 'Animated property',
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: KeyframeProperty.values.map((property) {
+                final label = switch (property) {
+                  KeyframeProperty.positionX => 'Position X',
+                  KeyframeProperty.positionY => 'Position Y',
+                  KeyframeProperty.scale => 'Scale',
+                  KeyframeProperty.rotation => 'Rotation',
+                  KeyframeProperty.opacity => 'Opacity',
+                };
+                return DropdownMenuItem(value: property, child: Text(label));
+              }).toList(),
+              onChanged: locked ? null : (property) {
+                if (property == null) return;
+                setState(() {
+                  _keyframeProperty = property;
+                  _keyframeValue = switch (property) {
+                    KeyframeProperty.scale || KeyframeProperty.opacity => 1,
+                    _ => 0,
+                  };
+                });
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: Slider(
+                min: bounds.$1,
+                max: bounds.$2,
+                value: _keyframeValue.clamp(bounds.$1, bounds.$2).toDouble(),
+                onChanged: locked ? null : (value) => setState(() => _keyframeValue = value),
+              )),
+              SizedBox(
+                width: 58,
+                child: Text(_keyframeValue.toStringAsFixed(2), textAlign: TextAlign.end),
+              ),
+            ]),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                onPressed: locked ? null : () => _session.setSelectedKeyframe(
+                  EditorKeyframe(
+                    timeMs: relativeTime,
+                    property: _keyframeProperty,
+                    value: _keyframeValue,
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(widget.languageCode == 'it' ? 'Aggiungi / aggiorna al cursore' : 'Add / update at playhead'),
+              ),
+            ),
+            if (keyframes.isNotEmpty) ...[
+              const Divider(),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(widget.languageCode == 'it' ? 'Fotogrammi chiave' : 'Keyframes',
+                  style: theme.textTheme.labelLarge),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: keyframes.map((keyframe) {
+                  final label = '${keyframe.property.name} · ${(keyframe.timeMs / 1000).toStringAsFixed(2)}s';
+                  return InputChip(
+                    label: Text(label),
+                    onDeleted: locked ? null : () => _session.removeSelectedKeyframe(
+                      timeMs: keyframe.timeMs,
+                      property: keyframe.property,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            const SizedBox(height: 4),
+            Text(
+              widget.languageCode == 'it'
+                ? 'I valori sono salvati nel progetto; l’applicazione al rendering finale è ancora da completare.'
+                : 'Values are saved in the project; applying them to final rendering is still pending.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   ClipColorGrade _copyGrade(ClipColorGrade source, String key, double value) =>
       ClipColorGrade(
         exposure: key == 'exposure' ? value : source.exposure,
@@ -321,6 +465,8 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                 if (selected != null && (selected.kind == MediaKind.video || selected.kind == MediaKind.image)) ...[
                   const SizedBox(height: 14),
                   _buildColorGradePanel(context, visibleGrade ?? selected.colorGrade, locked),
+                  const SizedBox(height: 10),
+                  _buildKeyframePanel(selected, locked),
                 ],
                 if (selected != null) ...[
                   const SizedBox(height: 12),
