@@ -82,6 +82,35 @@ void main() {
     expect(changed!.tracks.single.clips.single.colorGrade.exposure, greaterThan(0));
   });
 
+  testWidgets('selected clip can add and remove animation keyframes', (tester) async {
+    EditorProject? changed;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 760,
+          child: SessionTimelineEditor(
+            project: project,
+            languageCode: 'en',
+            onProjectChanged: (value) => changed = value,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sample').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Animation & keyframes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add / update at playhead'));
+    await tester.pumpAndSettle();
+    expect(changed, isNotNull);
+    expect(changed!.tracks.single.clips.single.keyframes, hasLength(1));
+    expect(changed!.tracks.single.clips.single.keyframes.single.property, KeyframeProperty.scale);
+    await tester.tap(find.byType(InputChip).first);
+    await tester.pumpAndSettle();
+    expect(changed!.tracks.single.clips.single.keyframes, isEmpty);
+  });
+
   testWidgets('timeline controls follow the selected Arabic language', (tester) async {
     await showEditor(tester, 'ar');
     expect(find.text('تراجع'), findsOneWidget);
