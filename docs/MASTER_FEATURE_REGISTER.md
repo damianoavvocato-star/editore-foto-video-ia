@@ -295,3 +295,11 @@
 - Demo web aggiornata con lo stesso indicatore LIVE, mantenendo layout responsive.
 - Verifica CI precedente: analisi statica Flutter superata e backend test superati; un test widget del pannello colore è fallito. È stata applicata la correzione Material, da riconvalidare nel run successivo. Android preflight era ancora in corso.
 - La grafica LIVE indica l'area di anteprima, non certifica una riproduzione live per file non caricati. Nessuna nuova funzionalità viene promossa a completata; conteggio e percentuale restano 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%.
+
+
+## Controllo di riproduzione nella preview — 9 novembre 2026
+
+- Nell'anteprima video Flutter aggiunta una barra di avanzamento con colori coerenti con il tema MagicIAedit e supporto allo scrubbing tramite trascinamento; il controllo usa direttamente `VideoProgressIndicator` del controller video già attivo.
+- La demo web mostra ora il corrispondente indicatore di avanzamento come elemento grafico della preview. La barra web è dimostrativa e non controlla un file video.
+- Verifica sul commit precedente `8d5843b6e3f5e61318652c5c2c87d0902aa1d5b7`: analisi statica Flutter, test Flutter e test backend superati; il controllo Android Gradle preflight è ancora in esecuzione. Il nuovo commit deve superare la propria CI.
+- Nessuna voce del registro viene promossa a completata: conteggio invariato, 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%. Nessun APK generato; fase 6 resta l'ultima.

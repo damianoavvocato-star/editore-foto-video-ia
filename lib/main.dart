@@ -1188,6 +1188,31 @@ class _HomePageState extends State<HomePage> {
                 },
                 icon: Icon(controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
               ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Color(0xDD080912), Color(0x00080912)],
+                    ),
+                  ),
+                  child: VideoProgressIndicator(
+                    controller,
+                    allowScrubbing: true,
+                    colors: const VideoProgressColors(
+                      playedColor: Color(0xFF9B86FF),
+                      bufferedColor: Color(0x887C78A4),
+                      backgroundColor: Color(0x557B7890),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
