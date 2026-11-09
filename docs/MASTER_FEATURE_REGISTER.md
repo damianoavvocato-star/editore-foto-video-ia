@@ -227,3 +227,13 @@
 - Collegata alla schermata Account e Premium una sezione famiglia autenticata: mostra i membri e i posti occupati, permette al titolare di creare un invito monouso e copiarlo, consultare gli inviti, revocare quelli pendenti e rimuovere membri; il membro può accettare un codice o lasciare il gruppo.
 - Le operazioni usano le API backend esistenti e rispettano i controlli server-side; i token invito vengono mostrati solo al momento della creazione e non vengono recuperati dallo storico.
 - La UI resta `partial` fino a test Flutter dedicati, verifica CI e prova su dispositivo. Il piano famiglia richiede ancora pagamenti reali/store billing e verifica del flusso acquisto.
+
+
+## Verifica CI Premium famiglia, referral e quota AI — 9 novembre 2026
+
+- CI sul commit `5a167aef59fe32156982abb44a40ced2b003b57e`: run #915 e #914 concluse con esito **success**. In entrambe risultano superati `flutter-test`, `backend-test` e `android-preflight`; `android-apk` è stato intenzionalmente saltato perché la build APK appartiene alla fase 6.
+- **P1-06 Premium famiglia:** i test backend e widget presenti sono inclusi nella CI verde. La schermata resta `partial`: non sono ancora verificati acquisto/store billing, notifiche e prova su dispositivi reali.
+- **P1-05 Referral:** verificata la corrispondenza del contratto backend/frontend: lo storico restituisce `claims` con `role` (`inviter`/`invitee`), `status` (`pending`/`rewarded`/`rejected`), `claimedAt`, `eligibleAt`, `maturedAt` e `rewardDays`. La UI legge `claims` e presenta stato e premio; test widget incluso nella CI verde. Restano antifrode avanzata e notifiche.
+- **P1-04 Quote:** il riepilogo mostra usato, limite e residuo; quando il residuo è zero presenta un avviso esplicito. Il test widget relativo al limite raggiunto è incluso nella CI verde. Restano matrice per singola funzione e paywall.
+- Nessuna delle tre voci passa a `done`: i criteri di accettazione complessivi non sono ancora soddisfatti. Registro invariato: **2 done, 31 partial, 21 missing, 3 blocked su 57** (30,7% con ponderazione uniforme).
+- Nessun APK creato; `main` non modificato; PR non unita.
