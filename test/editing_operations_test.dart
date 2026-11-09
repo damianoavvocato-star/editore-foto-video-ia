@@ -290,6 +290,45 @@ void main() {
     expect(result.tracks.first.clips.single.startMs, 7000);
   });
 
+  test('color grade and keyframes update only unlocked target clip', () {
+    final graded = operations.setClipColorGrade(
+      project: sample(), trackId: 'v1', clipId: 'c1',
+      colorGrade: const ClipColorGrade(exposure: 1.5, saturation: 1.2),
+    );
+    expect(graded.tracks.first.clips.first.colorGrade.exposure, 1.5);
+    final keyed = operations.setClipKeyframe(
+      project: graded, trackId: 'v1', clipId: 'c1',
+      keyframe: const EditorKeyframe(timeMs: 1200, property: KeyframeProperty.scale, value: 1.4),
+    );
+    expect(keyed.tracks.first.clips.first.keyframes.single.value, 1.4);
+    final replaced = operations.setClipKeyframe(
+      project: keyed, trackId: 'v1', clipId: 'c1',
+      keyframe: const EditorKeyframe(timeMs: 1200, property: KeyframeProperty.scale, value: 1.8),
+    );
+    expect(replaced.tracks.first.clips.first.keyframes, hasLength(1));
+    expect(replaced.tracks.first.clips.first.keyframes.single.value, 1.8);
+    final removed = operations.removeClipKeyframe(
+      project: replaced, trackId: 'v1', clipId: 'c1',
+      timeMs: 1200, property: KeyframeProperty.scale,
+    );
+    expect(removed.tracks.first.clips.first.keyframes, isEmpty);
+  });
+
+  test('locked track and out-of-clip keyframe do not change project', () {
+    final locked = sample().tracks.first.copyWith(locked: true);
+    final lockedProject = EditorProject(id: 'p1', name: 'Locked', tracks: [locked]);
+    final lockedResult = operations.setClipColorGrade(
+      project: lockedProject, trackId: 'v1', clipId: 'c1',
+      colorGrade: const ClipColorGrade(exposure: 2),
+    );
+    expect(lockedResult.encode(), lockedProject.encode());
+    final outOfRange = operations.setClipKeyframe(
+      project: sample(), trackId: 'v1', clipId: 'c1',
+      keyframe: const EditorKeyframe(timeMs: 5001, property: KeyframeProperty.opacity, value: 0.5),
+    );
+    expect(outOfRange.tracks.first.clips.first.keyframes, isEmpty);
+  });
+
   test('locked track cannot delete clips', () {
     final lockedTrack = sample().tracks.first.copyWith(locked: true);
     final lockedProject = EditorProject(
