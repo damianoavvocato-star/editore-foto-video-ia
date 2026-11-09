@@ -10,6 +10,7 @@ class TimelinePanel extends StatelessWidget {
     required this.onClipSelected,
     required this.onPlayheadChanged,
     this.title = 'Timeline',
+    this.selectedClipId,
   });
 
   final List<EditorTrack> tracks;
@@ -17,6 +18,7 @@ class TimelinePanel extends StatelessWidget {
   final ValueChanged<EditorClip> onClipSelected;
   final ValueChanged<int> onPlayheadChanged;
   final String title;
+  final String? selectedClipId;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +71,7 @@ class TimelinePanel extends StatelessWidget {
               ...tracks.map((track) => _TrackRow(
                 track: track, totalMs: totalMs, playheadMs: safePlayhead,
                 onClipSelected: onClipSelected,
+                selectedClipId: selectedClipId,
               )),
               const SizedBox(height: 4),
               const Wrap(spacing: 12, runSpacing: 4, children: [
@@ -108,11 +111,12 @@ class _TimeRuler extends StatelessWidget {
 }
 
 class _TrackRow extends StatelessWidget {
-  const _TrackRow({required this.track, required this.totalMs, required this.playheadMs, required this.onClipSelected});
+  const _TrackRow({required this.track, required this.totalMs, required this.playheadMs, required this.onClipSelected, required this.selectedClipId});
   final EditorTrack track;
   final int totalMs;
   final int playheadMs;
   final ValueChanged<EditorClip> onClipSelected;
+  final String? selectedClipId;
 
   @override
   Widget build(BuildContext context) {
@@ -143,19 +147,67 @@ class _TrackRow extends StatelessWidget {
                   left: timelineWidth * clip.startMs / totalMs,
                   width: (timelineWidth * clip.durationMs / totalMs).clamp(34, timelineWidth),
                   top: 4, bottom: 4,
-                  child: Material(
-                    color: _clipColor(clip.kind),
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          _clipColor(clip.kind),
+                          Color.lerp(_clipColor(clip.kind), Colors.black, 0.24)!,
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(8),
-                      onTap: () => onClipSelected(clip),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        child: Align(alignment: Alignment.centerLeft, child: Text(
-                          clip.title.isEmpty ? clip.kind.name : clip.title,
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                        )),
+                      border: Border.all(
+                        color: selectedClipId == clip.id
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.20),
+                        width: selectedClipId == clip.id ? 2 : 0.7,
+                      ),
+                      boxShadow: selectedClipId == clip.id
+                          ? [BoxShadow(color: _clipColor(clip.kind).withValues(alpha: 0.35), blurRadius: 8)]
+                          : const [],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => onClipSelected(clip),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  clip.title.isEmpty ? clip.kind.name : clip.title,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              )),
+                              Row(children: [
+                                Icon(_clipIcon(clip.kind), size: 10, color: Colors.white70),
+                                const SizedBox(width: 4),
+                                Expanded(child: Text(
+                                  '${(clip.durationMs / 1000).toStringAsFixed(1)} s',
+                                  maxLines: 1,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                )),
+                                if (clip.keyframes.isNotEmpty)
+                                  const Icon(Icons.auto_awesome, size: 10, color: Colors.white),
+                                if (clip.colorGrade.exposure != 0 ||
+                                    clip.colorGrade.contrast != 1 ||
+                                    clip.colorGrade.saturation != 1)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 3),
+                                    child: Icon(Icons.tune, size: 10, color: Colors.white),
+                                  ),
+                              ]),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -170,6 +222,13 @@ class _TrackRow extends StatelessWidget {
   }
 
   IconData _trackIcon(MediaKind kind) => switch (kind) {
+    MediaKind.video => Icons.movie_outlined,
+    MediaKind.image => Icons.image_outlined,
+    MediaKind.audio => Icons.graphic_eq,
+    MediaKind.text => Icons.title,
+  };
+
+  IconData _clipIcon(MediaKind kind) => switch (kind) {
     MediaKind.video => Icons.movie_outlined,
     MediaKind.image => Icons.image_outlined,
     MediaKind.audio => Icons.graphic_eq,
