@@ -1534,13 +1534,17 @@ def _render_job(job_id: str, project: dict, settings: dict):
             supported_properties={'positionX','positionY','scale','rotation','opacity'}
             if any(not isinstance(point,dict) or point.get('property') not in supported_properties for point in overlay_keyframes):
                 raise RuntimeError('Proprietà keyframe overlay non supportata')
-            local_t=f'(t-{start:.6f})'
-            local_T=f'(T-{start:.6f})'
-            scale_expr=_keyframe_expression(overlay_keyframes,'scale',local_t)
-            x_expr=_keyframe_expression(overlay_keyframes,'positionX',local_t)
-            y_expr=_keyframe_expression(overlay_keyframes,'positionY',local_t)
-            rotation_expr=_keyframe_expression(overlay_keyframes,'rotation',local_t)
-            opacity_expr=_keyframe_expression(overlay_keyframes,'opacity',local_T)
+            # Overlay inputs are timestamped from zero; their own scale,
+            # rotation and alpha filters therefore use local stream time.
+            # Overlay x/y expressions are evaluated on the main timeline.
+            overlay_local_t='t'
+            overlay_local_T='T'
+            timeline_t=f'(t-{start:.6f})'
+            scale_expr=_keyframe_expression(overlay_keyframes,'scale',overlay_local_t)
+            x_expr=_keyframe_expression(overlay_keyframes,'positionX',timeline_t)
+            y_expr=_keyframe_expression(overlay_keyframes,'positionY',timeline_t)
+            rotation_expr=_keyframe_expression(overlay_keyframes,'rotation',overlay_local_t)
+            opacity_expr=_keyframe_expression(overlay_keyframes,'opacity',overlay_local_T)
             scale_w=f"'{width_px}*({scale_expr})'" if scale_expr else str(width_px)
             scale_h=f"'{height_px}*({scale_expr})'" if scale_expr else str(height_px)
             overlay_chain=f'scale=w={scale_w}:h={scale_h}:eval=frame,format=rgba'
