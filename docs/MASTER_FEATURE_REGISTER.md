@@ -237,3 +237,12 @@
 - **P1-04 Quote:** il riepilogo mostra usato, limite e residuo; quando il residuo è zero presenta un avviso esplicito. Il test widget relativo al limite raggiunto è incluso nella CI verde. Restano matrice per singola funzione e paywall.
 - Nessuna delle tre voci passa a `done`: i criteri di accettazione complessivi non sono ancora soddisfatti. Registro invariato: **2 done, 31 partial, 21 missing, 3 blocked su 57** (30,7% con ponderazione uniforme).
 - Nessun APK creato; `main` non modificato; PR non unita.
+
+
+## Console backup Owner e test API — 9 novembre 2026
+
+- Aggiunta nella console Proprietario la scheda **Backup e integrità**: caricamento elenco, creazione di snapshot cifrato, aggiornamento elenco e verifica di un backup selezionato.
+- La UI esplicita che `MEDIA_BACKUP_ENCRYPTION_KEY` deve essere configurata sul server e non simula un ripristino che il backend non offre ancora.
+- Aggiunti test API per creazione/lista/verifica, rifiuto di utente e anonimo e comportamento fail-closed quando manca la chiave di cifratura.
+- **P0-11 resta partial**: restore sicuro con staging/rollback, media assets, retention automatica e replica remota non sono implementati.
+- La verifica CI della precedente modifica audit sul commit `826f093` ha completato con successo backend e Flutter; Android preflight risultava ancora in esecuzione durante questo batch. La nuova modifica deve essere validata dalla propria CI.

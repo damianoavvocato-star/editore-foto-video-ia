@@ -25,7 +25,10 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   List<Map<String, dynamic>> _accounts = [];
   List<Map<String, dynamic>> _activeSessions = [];
   List<Map<String, dynamic>> _supportTickets = [];
+  List<Map<String, dynamic>> _backups = [];
   Map<String, dynamic>? _adminStats;
+  bool _loadingBackups = false;
+  bool _creatingBackup = false;
   bool _busy = false;
   bool _needsTotp = false;
   bool _totpEnabled = false;
@@ -215,7 +218,74 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     if (_canReset) await _refreshAccounts();
     if (_isAdmin) await _loadAdminDashboard();
     await _refreshSupportTickets();
-    if (_isOwner) await _loadTotpStatus();
+    if (_isOwner) {
+      await _loadTotpStatus();
+      await _loadBackups();
+    }
+  }
+
+  Future<void> _loadBackups() async {
+    final api = _api;
+    if (api == null || !_isOwner) return;
+    if (mounted) setState(() => _loadingBackups = true);
+    try {
+      final response = await api.request('GET', '/v1/owner/backups?limit=50');
+      final rows = response['backups'] as List? ?? const [];
+      if (mounted) {
+        setState(() {
+          _backups = rows.whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row)).toList();
+          _loadingBackups = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _loadingBackups = false);
+      _notify('Impossibile caricare i backup: $error');
+    }
+  }
+
+  Future<void> _createBackup() async {
+    final api = _api;
+    if (api == null || !_isOwner || _creatingBackup) return;
+    setState(() => _creatingBackup = true);
+    try {
+      final created = await api.request('POST', '/v1/owner/backups');
+      await _loadBackups();
+      _notify('Backup cifrato creato · ${created['backupId'] ?? 'OK'}');
+    } catch (error) {
+      _notify('Creazione backup non riuscita: $error');
+    } finally {
+      if (mounted) setState(() => _creatingBackup = false);
+    }
+  }
+
+  Future<void> _verifyBackup(Map<String, dynamic> backup) async {
+    final api = _api;
+    final id = backup['backupId']?.toString() ?? '';
+    if (api == null || !_isOwner || id.isEmpty) return;
+    try {
+      final result = await api.request(
+        'POST',
+        '/v1/owner/backups/${Uri.encodeComponent(id)}/verify',
+      );
+      _notify(result['valid'] == true
+          ? 'Backup verificato: database integro e cifratura valida.'
+          : 'Verifica backup non superata.');
+    } catch (error) {
+      _notify('Verifica backup non riuscita: $error');
+    }
+  }
+
+  String _backupDescription(Map<String, dynamic> backup) {
+    final timestamp = int.tryParse(backup['createdAt']?.toString() ?? '');
+    final date = timestamp == null
+        ? 'Data non disponibile'
+        : DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toLocal().toString();
+    final size = int.tryParse(backup['sizeBytes']?.toString() ?? '') ?? 0;
+    final sizeLabel = size >= 1024 * 1024
+        ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
+        : '${(size / 1024).toStringAsFixed(1)} KB';
+    return '$date · $sizeLabel · cifrato';
   }
 
   Future<void> _refreshSessions() async {
@@ -1613,6 +1683,66 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             onPressed: _showAudit,
             icon: const Icon(Icons.receipt_long),
             label: const Text('Registro sicurezza'),
+          ),
+        if (_isOwner)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.backup_outlined),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Backup e integrità',
+                            style: Theme.of(context).textTheme.titleLarge),
+                      ),
+                      IconButton(
+                        tooltip: 'Aggiorna backup',
+                        onPressed: _loadingBackups ? null : _loadBackups,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const Text(
+                    'Crea snapshot cifrati del database account e verifica che siano ripristinabili a livello di integrità. La chiave MEDIA_BACKUP_ENCRYPTION_KEY deve essere configurata sul server.',
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _creatingBackup ? null : _createBackup,
+                      icon: _creatingBackup
+                          ? const SizedBox(width: 18, height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_to_drive_outlined),
+                      label: Text(_creatingBackup
+                          ? 'Creazione backup…'
+                          : 'Crea backup cifrato'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_loadingBackups && _backups.isEmpty)
+                    const LinearProgressIndicator()
+                  else if (_backups.isEmpty)
+                    const Text('Nessun backup disponibile.')
+                  else
+                    ..._backups.map((backup) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.encrypted_outlined),
+                      title: Text(backup['backupId']?.toString() ?? 'Backup'),
+                      subtitle: Text(_backupDescription(backup)),
+                      trailing: IconButton(
+                        tooltip: 'Verifica backup',
+                        onPressed: () => _verifyBackup(backup),
+                        icon: const Icon(Icons.verified_user_outlined),
+                      ),
+                    )),
+                ],
+              ),
+            ),
           ),
         if (_canReset) ...[
           const SizedBox(height: 12),
