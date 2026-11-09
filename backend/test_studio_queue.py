@@ -203,3 +203,42 @@ def test_stale_reconciliation_token_cannot_update_provider_status(tmp_path):
         reconciliation_token=current["_worker"]["reconciliationToken"],
     )
     assert updated["state"] == "completed"
+
+def test_expired_submission_is_recovered_after_worker_process_restart(tmp_path):
+    database = tmp_path / "queue.sqlite3"
+    first_process = StudioJobQueue(database, lease_seconds=15)
+    job, _ = first_process.enqueue("user-a", _request(), now=100)
+    claimed = first_process.claim_next("worker-before-restart", now=101)
+    assert claimed["jobId"] == job["jobId"]
+    assert claimed["state"] == "submitting"
+
+    # A new process opens the same durable database after the old worker died.
+    restarted_process = StudioJobQueue(database, lease_seconds=15)
+    assert restarted_process.claim_next("worker-after-restart", now=117) is None
+    recovered = restarted_process.get("user-a", job["jobId"])
+    assert recovered["state"] == "failed"
+    assert recovered["lastErrorCode"] == "submission_outcome_unknown"
+    assert recovered["leaseOwner"] is None
+    assert recovered["leaseExpiresAt"] is None
+
+
+def test_expired_reconciliation_lease_is_reclaimed_after_process_restart(tmp_path):
+    database = tmp_path / "queue.sqlite3"
+    first_process = StudioJobQueue(database, lease_seconds=15)
+    job, _ = first_process.enqueue("user-a", _request(), now=100)
+    first_process.claim_next("submitter", now=101)
+    first_process.mark_submitted("submitter", job["jobId"], "provider-video", now=102)
+    stale = first_process.claim_reconciliation("reconciler-before-restart", now=103)
+    assert stale is not None
+
+    restarted_process = StudioJobQueue(database, lease_seconds=15)
+    current = restarted_process.claim_reconciliation("reconciler-after-restart", now=119)
+    assert current is not None
+    assert current["jobId"] == job["jobId"]
+    assert current["_worker"]["reconciliationToken"] != stale["_worker"]["reconciliationToken"]
+    with pytest.raises(StudioQueueError, match="[Ll]ease"):
+        restarted_process.record_provider_status(
+            "user-a", job["jobId"], "complete", now=120,
+            reconciliation_token=stale["_worker"]["reconciliationToken"],
+        )
+
