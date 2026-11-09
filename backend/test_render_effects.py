@@ -314,11 +314,13 @@ class RenderEffectsTest(unittest.TestCase):
             Image.new('RGB', (160, 90), (220, 20, 20)).save(server.ASSETS / f'{first_id}.png')
             Image.new('RGB', (160, 90), (20, 210, 30)).save(server.ASSETS / f'{second_id}.png')
 
+            # p720 output is 1280x720; sample both sides of the
+            # transition front, not merely the tiny source-image coordinates.
             samples = {
-                'wipeleft': ((20, 45), (140, 45)),
-                'wiperight': ((140, 45), (20, 45)),
-                'slideleft': ((120, 45), (20, 45)),
-                'slideright': ((20, 45), (120, 45)),
+                'wipeleft': ((20, 360), (1200, 360)),
+                'wiperight': ((1200, 360), (20, 360)),
+                'slideleft': ((1000, 360), (200, 360)),
+                'slideright': ((200, 360), (1000, 360)),
             }
             for transition_type, (green_point, red_point) in samples.items():
                 with self.subTest(transition=transition_type):
