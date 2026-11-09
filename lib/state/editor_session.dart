@@ -142,6 +142,39 @@ class EditorSession extends ChangeNotifier {
     ));
   }
 
+  void setSelectedColorGrade(ClipColorGrade colorGrade) {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    _commit(_operations.setClipColorGrade(
+      project: _project, trackId: track.id, clipId: clip.id,
+      colorGrade: colorGrade,
+    ));
+  }
+
+  void setSelectedKeyframe(EditorKeyframe keyframe) {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    _commit(_operations.setClipKeyframe(
+      project: _project, trackId: track.id, clipId: clip.id,
+      keyframe: keyframe,
+    ));
+  }
+
+  void removeSelectedKeyframe({
+    required int timeMs,
+    required KeyframeProperty property,
+  }) {
+    final clip = selectedClip;
+    final track = selectedTrack;
+    if (clip == null || track == null || track.locked) return;
+    _commit(_operations.removeClipKeyframe(
+      project: _project, trackId: track.id, clipId: clip.id,
+      timeMs: timeMs, property: property,
+    ));
+  }
+
   void toggleSelectedTrackMuted() {
     final track = selectedTrack;
     if (track == null) return;
