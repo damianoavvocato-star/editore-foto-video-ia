@@ -1542,7 +1542,13 @@ def _magic_job(job_id: str, asset_paths: dict[str, Path], options: dict[str, Any
 
 
 @app.post('/v1/ai/jobs')
-def create_ai_job(body: dict[str, Any], request: Request):
+def create_ai_job(
+    body: dict[str, Any],
+    request: Request,
+    idempotency_key: str | None = Header(
+        default=None, alias='Idempotency-Key', max_length=128
+    ),
+):
     account = _request_account(request)
     if not provider_configured():
         raise HTTPException(
@@ -1580,7 +1586,52 @@ def create_ai_job(body: dict[str, Any], request: Request):
     options = body.get('options', {})
     if not isinstance(options, dict):
         raise HTTPException(422, 'Opzioni MagicIAedit non valide.')
+
+    idempotent = idempotency_key is not None
     job_id = uuid.uuid4().hex
+    if idempotent:
+        if (
+            not 8 <= len(idempotency_key) <= 128
+            or any(ord(character) < 33 or ord(character) > 126 for character in idempotency_key)
+        ):
+            raise HTTPException(400, 'Header Idempotency-Key non valido.')
+        try:
+            canonical_request = json.dumps(
+                {'task': task, 'assetIds': asset_ids, 'options': options},
+                ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, 'Richiesta MagicIAedit non valida.') from exc
+        fingerprint = hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+        scope_identity = account['userId'] if account is not None else 'local-development'
+        scope = hashlib.sha256(('magiciaedit:' + scope_identity).encode('utf-8')).hexdigest()
+        job_record = {
+            'state': 'queued',
+            'progress': 0.0,
+            'message': 'In coda',
+            '_idempotency_scope': scope,
+            '_idempotency_key': idempotency_key,
+            '_request_fingerprint': fingerprint,
+            # A restarted AI request has no resumable provider execution context.
+            # Keep the original failed job instead of silently charging a second
+            # quota reservation; the user can explicitly retry with a new key.
+            '_retry_infra_failure': False,
+        }
+        try:
+            job_id, created = jobs.create_idempotent_job(
+                job_id, job_record, scope, idempotency_key, fingerprint,
+            )
+        except ValueError as exc:
+            from backend.job_store import IdempotencyConflict
+            if isinstance(exc, IdempotencyConflict):
+                raise HTTPException(
+                    409,
+                    'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
+                ) from exc
+            raise
+        if not created:
+            return {'jobId': job_id, 'replayed': True}
+
     usage = None
     if account is not None:
         is_premium = _entitlement_store().has_premium(account['userId'])
@@ -1588,6 +1639,8 @@ def create_ai_job(body: dict[str, Any], request: Request):
         try:
             usage = _usage_store().reserve(account['userId'], job_id, limit)
         except UsageLimitError as exc:
+            if idempotent:
+                jobs.pop(job_id, None)
             raise HTTPException(
                 429,
                 detail={
@@ -1607,9 +1660,12 @@ def create_ai_job(body: dict[str, Any], request: Request):
                 _usage_store().release(account['userId'], job_id, usage['period'])
             except Exception:
                 logging.exception('Unable to release MagicIAedit quota reservation')
+        if idempotent:
+            jobs.pop(job_id, None)
         raise
     with lock:
-        jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
+        if not idempotent:
+            jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
         cancel_events[job_id] = threading.Event()
     try:
         worker = threading.Thread(
@@ -1638,6 +1694,8 @@ def create_ai_job(body: dict[str, Any], request: Request):
     response = {'jobId': job_id}
     if usage is not None:
         response['usage'] = usage
+    if idempotent:
+        response['replayed'] = False
     return response
 
 

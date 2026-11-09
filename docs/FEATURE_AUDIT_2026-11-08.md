@@ -96,3 +96,12 @@ Nel branch è stato aggiunto un primo livello di codice, distinto dalla roadmap 
 - La schermata permette di preparare una bozza da script, selezionare lingue e configurare modalità avatar/voce con consenso.
 
 **Limite dichiarato:** le bozze sono salvate, ma non vengono ancora generate immagini, video, avatar, voci, traduzioni o output. Il backend espone esplicitamente generationAvailable=false e providerState=not_configured. Non è configurato né verificato un provider video reale; documenti/slide, caricamento da CSV, editing di avatar, lip-sync, streaming interattivo e pubblicazione restano da implementare. La sola presenza dei campi di richiesta non equivale a una funzione disponibile.
+
+
+## Aggiornamento 9 novembre 2026 — idempotenza MagicIAedit
+
+- `POST /v1/ai/jobs` accetta ora `Idempotency-Key` con fingerprint canonico di task, asset selezionati e opzioni, isolato per account.
+- Una ripetizione identica restituisce il job già registrato e non avvia un secondo worker né riserva una seconda quota mensile; il riuso della stessa chiave con contenuti differenti restituisce HTTP 409.
+- Se il processo server si riavvia mentre il worker MagicIAedit è attivo, il job viene ancora marcato `worker_interrupted`. La ripetizione della stessa chiave non lo riavvia automaticamente e non addebita una seconda quota: per un nuovo tentativo esplicito il client deve usare una nuova chiave.
+- Questo migliora la protezione da richieste duplicate, ma **non implementa la ripresa durevole dei worker**. Render FFmpeg e MagicIAedit continuano a usare thread locali; la coda distribuita con lease, heartbeat e recupero dei payload resta da realizzare.
+- Aggiunta regressione API che verifica replay, conflitto fingerprint, singola prenotazione quota e comportamento dopo riavvio.

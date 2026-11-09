@@ -228,6 +228,7 @@ class JobRegistry(dict[str, dict[str, Any]]):
                 # and all active/completed jobs keep normal idempotent replay.
                 if (
                     isinstance(existing_values, dict)
+                    and existing_values.get("_retry_infra_failure", True)
                     and existing_values.get("state") == "failed"
                     and existing_values.get("error") in {
                         "worker_interrupted", "worker_start_failed"

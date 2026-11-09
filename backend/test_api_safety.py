@@ -611,6 +611,95 @@ def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_pat
 
 
 
+
+def test_magic_ai_idempotency_prevents_duplicate_quota_and_restart_recharge(tmp_path, monkeypatch):
+    import sqlite3
+    from types import SimpleNamespace
+
+    from backend.accounts import AccountStore
+    from backend.job_store import JobRegistry
+    from backend.usage_store import UsageStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("magic_idem", "magic idempotency password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "e" * 32
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"test-image")
+    store.claim_media_resource("asset", asset_id, user["userId"])
+
+    usage = UsageStore(tmp_path / "accounts.sqlite3")
+    database = tmp_path / "jobs.sqlite3"
+    registry = JobRegistry(database)
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: SimpleNamespace(
+        has_premium=lambda _user_id: False
+    ))
+    monkeypatch.setattr(server, "_ai_monthly_limit", lambda _premium: 5)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "jobs", registry)
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    starts = []
+
+    class DeferredThread:
+        def __init__(self, target, args, daemon):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def start(self):
+            starts.append(self)
+
+    client = TestClient(server.app)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": "magic-ia-idempotency-01",
+    }
+    body = {"task": "magicIAedit", "assetIds": [asset_id], "options": {}}
+    with client:
+        # Keep the TestClient portal alive before replacing the worker thread.
+        monkeypatch.setattr(server.threading, "Thread", DeferredThread)
+        first = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert first.status_code == 200
+        first_job_id = first.json()["jobId"]
+
+        replay = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert replay.status_code == 200
+        assert replay.json()["jobId"] == first_job_id
+        assert replay.json()["replayed"] is True
+
+        changed = client.post(
+            "/v1/ai/jobs",
+            json={**body, "options": {"style": "cinematic"}},
+            headers=headers,
+        )
+        assert changed.status_code == 409
+
+        assert len(starts) == 1
+        assert usage.summary(user["userId"], 5)["used"] == 1
+
+        # A process restart marks the old daemon job interrupted. Replaying
+        # its key must not silently enqueue a second job or consume quota again.
+        restored = JobRegistry(database)
+        monkeypatch.setattr(server, "jobs", restored)
+        assert restored[first_job_id]["error"] == "worker_interrupted"
+        after_restart = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert after_restart.status_code == 200
+        assert after_restart.json()["jobId"] == first_job_id
+        assert after_restart.json()["replayed"] is True
+
+    assert len(starts) == 1
+    assert usage.summary(user["userId"], 5)["used"] == 1
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM media_jobs").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM render_idempotency").fetchone()[0] == 1
+
+
+
 def test_render_worker_start_failure_releases_claim_and_allows_idempotent_retry(tmp_path, monkeypatch):
     import json
     import sqlite3
