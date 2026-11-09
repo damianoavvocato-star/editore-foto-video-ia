@@ -150,6 +150,61 @@ class RenderEffectsTest(unittest.TestCase):
                 os.environ['MEDIA_DATA_DIR'] = previous
             shutil.rmtree(root, ignore_errors=True)
 
+    def test_primary_alpha_composite_preserves_absolute_clip_start(self):
+        root = tempfile.mkdtemp(prefix='editore_alpha_timing_')
+        previous = os.environ.get('MEDIA_DATA_DIR')
+        try:
+            os.environ['MEDIA_DATA_DIR'] = root
+            from backend import server
+            server.ROOT = Path(root)
+            server.ASSETS = server.ROOT / 'assets'
+            server.OUTPUTS = server.ROOT / 'outputs'
+            server.ASSETS.mkdir(parents=True, exist_ok=True)
+            server.OUTPUTS.mkdir(parents=True, exist_ok=True)
+            from PIL import Image
+            asset_id, job_id = (uuid.uuid4().hex for _ in range(2))
+            Image.new('RGB', (160, 90), (210, 30, 20)).save(server.ASSETS / f'{asset_id}.png')
+            server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'queued'}
+            project = {
+                'width': 160, 'height': 90, 'fps': 24,
+                'tracks': [{
+                    'kind': 'video',
+                    'clips': [{
+                        'kind': 'image', 'assetId': asset_id,
+                        'startMs': 500, 'durationMs': 1000,
+                        'keyframes': [
+                            {'timeMs': 0, 'property': 'opacity', 'value': 0.0},
+                            {'timeMs': 500, 'property': 'opacity', 'value': 1.0},
+                        ],
+                    }],
+                }],
+            }
+            server._render_job(job_id, project, {
+                'resolution': 'p720', 'fps': 24, 'container': 'mp4',
+                'codec': 'h264', 'includeAudio': False,
+            })
+            self.assertEqual(server.jobs[job_id]['state'], 'completed', server.jobs[job_id])
+            output = server.OUTPUTS / f'{job_id}.mp4'
+            samples = []
+            for label, timestamp in [('gap', '0.20'), ('visible', '1.20')]:
+                frame = Path(root) / f'{label}.png'
+                subprocess.run(
+                    ['ffmpeg', '-y', '-ss', timestamp, '-i', str(output),
+                     '-frames:v', '1', str(frame)],
+                    check=True, capture_output=True,
+                )
+                samples.append(Image.open(frame).convert('RGB').getpixel((80, 45)))
+            self.assertLess(max(samples[0]), 35,
+                            f'La clip è visibile prima del suo startMs: {samples[0]}')
+            self.assertGreater(samples[1][0], samples[1][1] * 2,
+                               f'La clip non è visibile dopo il suo startMs: {samples[1]}')
+        finally:
+            if previous is None:
+                os.environ.pop('MEDIA_DATA_DIR', None)
+            else:
+                os.environ['MEDIA_DATA_DIR'] = previous
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_alpha_multitrack_path_rejects_unimplemented_clip_transitions(self):
         from backend import server
 
