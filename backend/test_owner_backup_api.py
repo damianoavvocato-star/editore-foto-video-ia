@@ -61,3 +61,46 @@ def test_backup_creation_fails_closed_without_encryption_key(tmp_path, monkeypat
     )
     assert response.status_code == 503
     assert "MEDIA_BACKUP_ENCRYPTION_KEY" in response.json()["detail"]
+
+def test_backup_retention_endpoint_is_owner_only_and_preview_is_non_destructive(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv(
+        "MEDIA_BACKUP_ENCRYPTION_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("retention_owner", "owner password long enough")
+    user = store.register("retention_user", "user password long enough")
+    client = TestClient(server.app)
+    owner_headers = _headers(store, owner["userId"])
+    user_headers = _headers(store, user["userId"])
+
+    created = client.post("/v1/owner/backups", headers=owner_headers)
+    assert created.status_code == 200
+    backup_id = created.json()["backupId"]
+
+    preview = client.post(
+        "/v1/owner/backups/retention?retention_days=1&min_keep=1&dry_run=true",
+        headers=owner_headers,
+    )
+    assert preview.status_code == 200
+    assert preview.json()["dryRun"] is True
+    assert preview.json()["deletedCount"] == 0
+    assert (tmp_path / "backups" / f"{backup_id}.mibak").is_file()
+
+    denied = client.post(
+        "/v1/owner/backups/retention?dry_run=false",
+        headers=user_headers,
+    )
+    assert denied.status_code == 403
+    assert client.post("/v1/owner/backups/retention").status_code == 401
+
+    invalid = client.post(
+        "/v1/owner/backups/retention?retention_days=0",
+        headers=owner_headers,
+    )
+    assert invalid.status_code == 422
+
