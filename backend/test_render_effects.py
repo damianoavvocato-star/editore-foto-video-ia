@@ -385,6 +385,106 @@ class RenderEffectsTest(unittest.TestCase):
                 os.environ['MEDIA_DATA_DIR'] = previous
             shutil.rmtree(root, ignore_errors=True)
 
+    def test_alpha_transition_keeps_overlay_and_audio_in_final_export(self):
+        root = tempfile.mkdtemp(prefix='editore_alpha_av_')
+        previous = os.environ.get('MEDIA_DATA_DIR')
+        previous_server_paths = None
+        try:
+            os.environ['MEDIA_DATA_DIR'] = root
+            from backend import server
+            previous_server_paths = (server.ROOT, server.ASSETS, server.OUTPUTS)
+            server.ROOT = Path(root)
+            server.ASSETS = server.ROOT / 'assets'
+            server.OUTPUTS = server.ROOT / 'outputs'
+            server.ASSETS.mkdir(parents=True, exist_ok=True)
+            server.OUTPUTS.mkdir(parents=True, exist_ok=True)
+            from PIL import Image
+
+            first_id, second_id, overlay_id, audio_id, job_id = (
+                uuid.uuid4().hex for _ in range(5)
+            )
+            Image.new('RGB', (160, 90), (220, 20, 20)).save(
+                server.ASSETS / f'{first_id}.png'
+            )
+            Image.new('RGB', (160, 90), (20, 210, 30)).save(
+                server.ASSETS / f'{second_id}.png'
+            )
+            Image.new('RGBA', (24, 24), (20, 40, 230, 255)).save(
+                server.ASSETS / f'{overlay_id}.png'
+            )
+            audio_path = server.ASSETS / f'{audio_id}.wav'
+            subprocess.run(
+                [server.FFMPEG, '-y', '-f', 'lavfi', '-i',
+                 'sine=frequency=440:duration=1.2', '-c:a', 'pcm_s16le',
+                 str(audio_path)],
+                check=True, capture_output=True,
+            )
+            server.jobs[job_id] = {
+                'state': 'queued', 'progress': 0.0, 'message': 'queued',
+            }
+            project = {
+                'width': 160, 'height': 90, 'fps': 24,
+                'tracks': [
+                    {'kind': 'video', 'clips': [
+                        {
+                            'kind': 'image', 'assetId': first_id,
+                            'startMs': 0, 'durationMs': 1000,
+                            'transitionAfterMs': 400, 'transitionAfter': 'fade',
+                            'keyframes': [
+                                {'timeMs': 0, 'property': 'opacity', 'value': 1.0},
+                            ],
+                        },
+                        {
+                            'kind': 'image', 'assetId': second_id,
+                            'startMs': 1000, 'durationMs': 1000,
+                        },
+                    ]},
+                    {'kind': 'audio', 'clips': [{
+                        'kind': 'audio', 'assetId': audio_id,
+                        'startMs': 0, 'durationMs': 1200, 'volume': 0.8,
+                    }]},
+                    {'kind': 'overlay', 'clips': [{
+                        'kind': 'image', 'assetId': overlay_id,
+                        'startMs': 0, 'durationMs': 1200,
+                        'x': 0, 'y': 0, 'width': 24, 'height': 24,
+                    }]},
+                ],
+            }
+            server._render_job(job_id, project, {
+                'resolution': 'p720', 'fps': 24, 'container': 'mp4',
+                'codec': 'h264', 'includeAudio': True,
+            })
+            self.assertEqual(
+                server.jobs[job_id]['state'], 'completed', server.jobs[job_id],
+            )
+            output = server.OUTPUTS / f'{job_id}.mp4'
+            audio_probe = subprocess.run(
+                [server.FFPROBE, '-v', 'error', '-select_streams', 'a:0',
+                 '-show_entries', 'stream=codec_name', '-of',
+                 'default=noprint_wrappers=1:nokey=1', str(output)],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            self.assertEqual(audio_probe, 'aac', 'Traccia audio assente dall’export alpha')
+            frame = Path(root) / 'alpha-with-overlay.png'
+            subprocess.run(
+                [server.FFMPEG, '-y', '-ss', '0.80', '-i', str(output),
+                 '-frames:v', '1', str(frame)],
+                check=True, capture_output=True,
+            )
+            overlay_pixel = Image.open(frame).convert('RGB').getpixel((8, 8))
+            self.assertGreater(
+                overlay_pixel[2], overlay_pixel[1] * 2,
+                f'Overlay non conservato nel percorso alpha con audio: {overlay_pixel}',
+            )
+        finally:
+            if previous_server_paths is not None:
+                server.ROOT, server.ASSETS, server.OUTPUTS = previous_server_paths
+            if previous is None:
+                os.environ.pop('MEDIA_DATA_DIR', None)
+            else:
+                os.environ['MEDIA_DATA_DIR'] = previous
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
         from backend.server import _keyframe_expression
         points = [
