@@ -189,7 +189,7 @@ class BackupStore:
         cutoff = timestamp - max_age_seconds
         eligible = []
         for path in stage_dir.iterdir():
-            if not re.fullmatch(r"[a-f0-9]{32}\\.sqlite3", path.name):
+            if not re.fullmatch(r"[a-f0-9]{32}\.sqlite3", path.name):
                 continue
             try:
                 stat = path.stat(follow_symlinks=False)
