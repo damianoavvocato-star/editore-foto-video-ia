@@ -1317,18 +1317,95 @@ def _render_primary_alpha_layers(
         if visual_clips:
             visual_tracks.append(visual_clips)
     flattened = [clip for track in visual_tracks for clip in track]
-    if any(int(clip.get('transitionAfterMs', 0)) > 0 for clip in flattened):
-        raise RuntimeError(
-            'Le transizioni tra clip principali non sono ancora supportate '
-            'nel nuovo rendering alpha multitraccia. Rimuovi temporaneamente '
-            'le transizioni per esportare questo progetto.'
-        )
     if not flattened:
         raise RuntimeError('Nessuna clip video principale da comporre.')
+
+    # Prepare timeline positions and alpha envelopes for same-track
+    # cross-fades. The next clip is moved left by the transition duration,
+    # matching the overlap produced by the legacy xfade export path.
+    prepared_tracks = []
+    for track_clips in visual_tracks:
+        ordered = sorted(
+            track_clips,
+            key=lambda item: max(0, int(item.get('startMs', 0))),
+        )
+        prepared = []
+        for clip_index, clip in enumerate(ordered):
+            duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+            start = max(0, int(clip.get('startMs', 0))) / 1000.0
+            fade_in = 0.0
+            fade_out = 0.0
+            if clip_index < len(ordered) - 1:
+                raw_ms = clip.get('transitionAfterMs', 0)
+                if isinstance(raw_ms, bool) or not isinstance(raw_ms, int) or raw_ms < 0:
+                    raise RuntimeError('Durata transizione non valida')
+                if raw_ms:
+                    transition_type = str(clip.get('transitionAfter', 'fade')).lower()
+                    if transition_type not in {'fade', 'dissolve'}:
+                        raise RuntimeError(
+                            f'Transizione {transition_type} non ancora supportata '
+                            'nel compositing alpha multitraccia; usa dissolvenza o dissolvenza incrociata.'
+                        )
+                    next_clip = ordered[clip_index + 1]
+                    next_duration = max(
+                        0.1, int(next_clip.get('durationMs', 3000)) / 1000.0
+                    )
+                    transition = min(
+                        raw_ms / 1000.0,
+                        duration * 0.45,
+                        next_duration * 0.45,
+                    )
+                    fade_out = transition
+                    next_start = max(0, int(next_clip.get('startMs', 0))) / 1000.0
+                    # Preserve intentional overlaps; otherwise create the
+                    # overlap requested by transitionAfterMs.
+                    effective_next_start = min(next_start, start + duration - transition)
+                    prepared.append((clip, start, fade_in, fade_out))
+                    # The incoming clip receives a matching alpha ramp.
+                    # Store its adjusted start and fade-in for the next loop.
+                    if clip_index + 1 < len(ordered):
+                        next_item = (next_clip, max(start, effective_next_start), transition, 0.0)
+                        # Replace the next item's default entry when it is visited.
+                        prepared.append(next_item)
+                        continue
+            if clip_index == 0 or not prepared or prepared[-1][0] is not clip:
+                prepared.append((clip, start, fade_in, fade_out))
+        # Normalize adjacent transition metadata into one entry per clip.
+        normalized = []
+        for item in prepared:
+            if normalized and normalized[-1][0] is item[0]:
+                normalized[-1] = item
+            else:
+                normalized.append(item)
+        # A clip may be pre-added as the incoming side of the previous
+        # transition. Carry its own outgoing transition onto that same entry.
+        by_identity = {id(item[0]): item for item in normalized}
+        for clip_index, clip in enumerate(ordered):
+            if id(clip) not in by_identity:
+                by_identity[id(clip)] = (clip, max(0, int(clip.get('startMs', 0))) / 1000.0, 0.0, 0.0)
+            if clip_index < len(ordered) - 1 and int(clip.get('transitionAfterMs', 0)) > 0:
+                current_item = by_identity[id(clip)]
+                by_identity[id(clip)] = (clip, current_item[1], current_item[2], min(
+                    int(clip['transitionAfterMs']) / 1000.0,
+                    max(0.1, int(clip.get('durationMs', 3000)) / 1000.0) * 0.45,
+                    max(0.1, int(ordered[clip_index + 1].get('durationMs', 3000)) / 1000.0) * 0.45,
+                ))
+                next_clip = ordered[clip_index + 1]
+                next_item = by_identity.get(id(next_clip))
+                transition = by_identity[id(clip)][3]
+                requested_start = max(0, int(next_clip.get('startMs', 0))) / 1000.0
+                adjusted_start = min(requested_start, current_item[1] + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0) - transition)
+                by_identity[id(next_clip)] = (
+                    next_clip, max(current_item[1], adjusted_start),
+                    max(transition, next_item[2] if next_item else 0.0),
+                    next_item[3] if next_item else 0.0,
+                )
+        prepared_tracks.append([by_identity[id(clip)] for clip in ordered])
+
+    prepared_flattened = [item for track in prepared_tracks for item in track]
     total_duration = max(
-        (max(0, int(clip.get('startMs', 0))) +
-         max(100, int(clip.get('durationMs', 3000)))) / 1000.0
-        for clip in flattened
+        start + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+        for clip, start, _fade_in, _fade_out in prepared_flattened
     )
     cmd = [FFMPEG, '-y']
     graph = [
@@ -1338,8 +1415,8 @@ def _render_primary_alpha_layers(
     input_index = 0
     layer_number = 0
 
-    for track_clips in visual_tracks:
-        for clip in sorted(track_clips, key=lambda item: max(0, int(item.get('startMs', 0)))):
+    for track_clips in prepared_tracks:
+        for clip, start, transition_fade_in, transition_fade_out in track_clips:
             asset_id = clip.get('assetId')
             if not isinstance(asset_id, str) or not _valid_id(asset_id):
                 raise RuntimeError('Clip senza assetId valido')
@@ -1351,7 +1428,6 @@ def _render_primary_alpha_layers(
                 raise RuntimeError(f'Asset non trovato: {asset_id}')
             source = matches[0]
             duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
-            start = max(0, int(clip.get('startMs', 0))) / 1000.0
             if str(clip.get('kind', '')).lower() == 'image':
                 cmd += ['-loop', '1', '-t', f'{duration:.6f}', '-i', str(source)]
             else:
@@ -1442,10 +1518,23 @@ def _render_primary_alpha_layers(
                 filters.append(
                     f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black@0"
                 )
-            if opacity_expr is not None:
+            alpha_factors = [opacity_expr or '1']
+            if transition_fade_in > 0:
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"max(0,T/{transition_fade_in:.6f}),1)"
+                )
+            if transition_fade_out > 0:
+                fade_out_start = max(0.0, duration - transition_fade_out)
+                alpha_factors.append(
+                    f"if(gt(T,{fade_out_start:.6f}),"
+                    f"max(0,({duration:.6f}-T)/{transition_fade_out:.6f}),1)"
+                )
+            if opacity_expr is not None or transition_fade_in > 0 or transition_fade_out > 0:
+                alpha_expression = '*'.join(f'({factor})' for factor in alpha_factors)
                 filters.append(
                     f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
-                    f"a='alpha(X,Y)*({opacity_expr})'"
+                    f"a='alpha(X,Y)*({alpha_expression})'"
                 )
             filters.append(f'setpts=PTS-STARTPTS+{start:.6f}/TB')
             layer_label = f'[primary{layer_number}]'
