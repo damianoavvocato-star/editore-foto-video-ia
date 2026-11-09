@@ -88,3 +88,44 @@ def test_retention_rejects_invalid_policy_and_does_not_follow_symlinks(tmp_path,
     assert result["deletedCount"] == 0
     assert outside.read_bytes() == b"do-not-delete"
 
+def test_restore_preparation_stages_verified_database_without_overwriting_live_database(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    accounts = AccountStore(database)
+    accounts.register("restore_user", "restore user password long")
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    created = backups.create()
+
+    accounts.register("new_live_user", "new live user password long")
+    before = database.read_bytes()
+    prepared = backups.prepare_restore(created["backupId"])
+
+    assert prepared["prepared"] is True
+    assert prepared["applied"] is False
+    assert prepared["databaseIntegrity"] == "ok"
+    assert "accounts" in prepared["tables"]
+    assert database.read_bytes() == before
+
+    staged = tmp_path / "backups" / "restore-staging" / f"{prepared['restoreStageId']}.sqlite3"
+    assert staged.is_file()
+    with sqlite3.connect(staged) as restored:
+        usernames = {row[0] for row in restored.execute("SELECT username FROM accounts")}
+    assert "restore_user" in usernames
+    assert "new_live_user" not in usernames
+
+
+def test_restore_preparation_rejects_tampered_or_unknown_backup(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    with pytest.raises(BackupError, match="non trovato"):
+        backups.prepare_restore("a" * 32)
+    created = backups.create()
+    path = tmp_path / "backups" / f"{created['backupId']}.mibak"
+    damaged = bytearray(path.read_bytes())
+    damaged[-1] ^= 1
+    path.write_bytes(damaged)
+    with pytest.raises(BackupError, match="alterato"):
+        backups.prepare_restore(created["backupId"])
+
