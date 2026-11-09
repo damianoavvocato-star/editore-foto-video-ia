@@ -1735,6 +1735,10 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 transitions.append((trans_type, trans_duration))
             else:
                 transitions.append((None, 0.0))
+        video_duration = max(
+            0.1,
+            sum(clip_durations) - sum(duration for _, duration in transitions),
+        )
         container=str(settings.get('container','mp4')).lower()
         ext=container if container in {'mp4','mov','avi','webm'} else 'mp4'
         codec=str(settings.get('codec','h264')).lower()
@@ -1860,7 +1864,13 @@ def _render_job(job_id: str, project: dict, settings: dict):
         cmd += ['-c:v',vcodec,'-threads','1','-r',str(fps)]
         if audio_filters:
             labels=''.join(f'[a{i}]' for i in range(audio_input_start,audio_input_start+len(audio_clips)))
-            audio_filters.append(f'{labels}amix=inputs={len(audio_clips)}:duration=longest:dropout_transition=2,apad[aout]')
+            # Bound audio padding to the actual video timeline. An unbounded
+            # apad can keep producing samples after the video ends; FFmpeg may
+            # then exhaust its internal filter FIFO while -shortest is flushing.
+            audio_filters.append(
+                f'{labels}amix=inputs={len(audio_clips)}:duration=longest:'
+                f'dropout_transition=2,apad=whole_dur={video_duration:.6f}[aout]'
+            )
         all_filters=graph+overlay_filters+audio_filters
         if all_filters:
             # Keep the final overlay/audio graph within predictable memory
