@@ -1412,10 +1412,13 @@ def _render_job(job_id: str, project: dict, settings: dict):
                     f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black"
                 )
             if opacity_expr is not None:
-                filters.extend([
-                    'format=rgba',
-                    f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity_expr})'",
-                ])
+                # The segment is encoded as opaque H.264 before tracks are
+                # composed, so apply clip opacity as a per-frame fade to black.
+                filters.append(
+                    f"geq=r='r(X,Y)*({opacity_expr})':"
+                    f"g='g(X,Y)*({opacity_expr})':"
+                    f"b='b(X,Y)*({opacity_expr})'"
+                )
             filters.append(f'fps={fps}')
             common=['-vf',','.join(filters), '-an','-t',str(duration),'-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast']
             if clip.get('kind') == 'image':
