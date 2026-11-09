@@ -1997,6 +1997,16 @@ def owner_list_backups(request: Request, limit: int = 50):
     return {'backups': _backup_store().list_backups(limit)}
 
 
+@app.post('/v1/owner/backups/{backup_id}/restore/prepare')
+def owner_prepare_backup_restore(backup_id: str, request: Request):
+    """Owner-only verified restore staging; never replaces the live database."""
+    _require_owner(request)
+    try:
+        return _backup_store().prepare_restore(backup_id)
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.post('/v1/owner/backups/retention')
 def owner_prune_backups(
     request: Request,
