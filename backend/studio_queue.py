@@ -282,9 +282,9 @@ class StudioJobQueue:
         provider_status: str = "in_progress",
         now: float | None = None,
     ) -> dict[str, Any]:
-        if not provider_video_id or len(provider_video_id) > 128:
+        if not isinstance(provider_video_id, str) or not provider_video_id or len(provider_video_id) > 128:
             raise StudioQueueError("Identificativo video provider non valido.")
-        if provider_status not in PROVIDER_STATES:
+        if not isinstance(provider_status, str) or provider_status not in PROVIDER_STATES:
             raise StudioQueueError("Stato provider non valido.")
         timestamp = time.time() if now is None else float(now)
         with self._connection() as connection:
@@ -317,7 +317,7 @@ class StudioJobQueue:
         now: float | None = None,
     ) -> dict[str, Any]:
         """Fail a claimed job without permitting a stale worker to change it."""
-        if not ERROR_CODE_PATTERN.fullmatch(error_code or ""):
+        if not isinstance(error_code, str) or not ERROR_CODE_PATTERN.fullmatch(error_code):
             raise StudioQueueError("Codice errore non valido.")
         timestamp = time.time() if now is None else float(now)
         with self._connection() as connection:
@@ -344,7 +344,7 @@ class StudioJobQueue:
         now: float | None = None,
         reconciliation_token: str | None = None,
     ) -> dict[str, Any]:
-        if provider_status not in PROVIDER_STATES:
+        if not isinstance(provider_status, str) or provider_status not in PROVIDER_STATES:
             raise StudioQueueError("Stato provider non valido.")
         timestamp = time.time() if now is None else float(now)
         state = (
