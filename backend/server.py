@@ -1239,6 +1239,57 @@ def create_render(
         ) from exc
     return {'jobId': job_id}
 
+
+def _keyframe_expression(keyframes: list[dict[str, Any]], property_name: str, variable: str) -> str | None:
+    """Build a bounded, piecewise-linear FFmpeg expression for one clip property."""
+    points = []
+    limits = {
+        'positionX': (-1000.0, 1000.0),
+        'positionY': (-1000.0, 1000.0),
+        'scale': (0.1, 5.0),
+        'rotation': (-180.0, 180.0),
+        'opacity': (0.0, 1.0),
+    }
+    minimum, maximum = limits[property_name]
+    for point in keyframes:
+        if not isinstance(point, dict) or point.get('property') != property_name:
+            continue
+        time_ms, raw_value = point.get('timeMs'), point.get('value')
+        if (isinstance(time_ms, bool) or not isinstance(time_ms, int) or time_ms < 0
+                or isinstance(raw_value, bool) or not isinstance(raw_value, (int, float))
+                or not math.isfinite(float(raw_value)) or not minimum <= float(raw_value) <= maximum):
+            raise RuntimeError(f'Keyframe non valido: {property_name}')
+        points.append((time_ms / 1000.0, float(raw_value)))
+    if not points:
+        return None
+    # Stable sort preserves input order so the last duplicate timestamp wins.
+    points.sort(key=lambda item: item[0])
+    unique = []
+    for point in points:
+        if unique and unique[-1][0] == point[0]:
+            unique[-1] = point
+        else:
+            unique.append(point)
+    expression = f'{unique[-1][1]:.8f}'
+    for index in range(len(unique) - 2, -1, -1):
+        left_time, left_value = unique[index]
+        right_time, right_value = unique[index + 1]
+        if right_time == left_time:
+            expression = f'{right_value:.8f}'
+            continue
+        interpolated = (
+            f'({left_value:.8f}+({right_value-left_value:.8f})*'
+            f'({variable}-{left_time:.6f})/{right_time-left_time:.6f})'
+        )
+        expression = (
+            f'if(lt({variable},{right_time:.6f}),{interpolated},{expression})'
+        )
+    first_time, first_value = unique[0]
+    if first_time > 0:
+        expression = f'if(lt({variable},{first_time:.6f}),{first_value:.8f},{expression})'
+    return expression
+
+
 def _render_job(job_id: str, project: dict, settings: dict):
     work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -1318,6 +1369,49 @@ def _render_job(job_id: str, project: dict, settings: dict):
             if rotation:
                 import math
                 filters.append(f'rotate={math.radians(rotation):.6f}:ow={width}:oh={height}:c=black')
+            keyframes = clip.get('keyframes') or []
+            if not isinstance(keyframes, list) or len(keyframes) > 100:
+                raise RuntimeError('Numero di keyframe non valido (massimo 100 per clip)')
+            supported_properties = {'positionX', 'positionY', 'scale', 'rotation', 'opacity'}
+            if any(not isinstance(point, dict) or point.get('property') not in supported_properties for point in keyframes):
+                raise RuntimeError('Proprietà keyframe non supportata')
+            scale_expr = _keyframe_expression(keyframes, 'scale', 't')
+            position_x_expr = _keyframe_expression(keyframes, 'positionX', 't')
+            position_y_expr = _keyframe_expression(keyframes, 'positionY', 't')
+            rotation_expr = _keyframe_expression(keyframes, 'rotation', 't')
+            opacity_expr = _keyframe_expression(keyframes, 'opacity', 'T')
+            if scale_expr is not None:
+                filters.append(
+                    f"scale=w='max(2,ceil({width}*({scale_expr})/2)*2)':"
+                    f"h='max(2,ceil({height}*({scale_expr})/2)*2)':eval=frame"
+                )
+                filters.append(
+                    f"pad=w='max(iw,{width})':h='max(ih,{height})':"
+                    "x='(ow-iw)/2':y='(oh-ih)/2':color=black"
+                )
+                crop_x = f'(iw-ow)/2-({position_x_expr or "0"})'
+                crop_y = f'(ih-oh)/2-({position_y_expr or "0"})'
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{crop_x}))':"
+                    f"y='max(0,min(ih-oh,{crop_y}))'"
+                )
+            elif position_x_expr is not None or position_y_expr is not None:
+                # Position offsets are applied to the normalized frame without scaling.
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,(iw-ow)/2-({position_x_expr or '0'})))':"
+                    f"y='max(0,min(ih-oh,(ih-oh)/2-({position_y_expr or '0'})))'"
+                )
+            if rotation_expr is not None:
+                filters.append(
+                    f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black"
+                )
+            if opacity_expr is not None:
+                filters.extend([
+                    'format=rgba',
+                    f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity_expr})'",
+                ])
             filters.append(f'fps={fps}')
             common=['-vf',','.join(filters), '-an','-t',str(duration),'-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast']
             if clip.get('kind') == 'image':
