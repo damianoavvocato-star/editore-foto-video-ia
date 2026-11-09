@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:editore_foto_video_ia/models/editor_project.dart';
 
@@ -42,7 +43,7 @@ void main() {
     );
 
     final restored = EditorProject.fromJson(
-      project.toJson() as Map<String, dynamic>,
+      jsonDecode(project.encode()) as Map<String, dynamic>,
     );
     final keyframes = restored.tracks.single.clips.single.keyframes;
     expect(keyframes, hasLength(3));
