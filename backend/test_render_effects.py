@@ -93,18 +93,62 @@ class RenderEffectsTest(unittest.TestCase):
             shutil.rmtree(root,ignore_errors=True)
 
 
-    def test_primary_clip_opacity_is_rejected_until_alpha_track_compositing_exists(self):
-        from backend.server import _reject_unsupported_primary_opacity
-
-        _reject_unsupported_primary_opacity([
-            {'timeMs': 0, 'property': 'scale', 'value': 1.0},
-            {'timeMs': 900, 'property': 'positionX', 'value': 12.0},
-        ])
-        with self.assertRaisesRegex(RuntimeError, 'Opacità animata della clip principale'):
-            _reject_unsupported_primary_opacity([
-                {'timeMs': 0, 'property': 'opacity', 'value': 0.0},
-                {'timeMs': 900, 'property': 'opacity', 'value': 1.0},
-            ])
+    def test_primary_clip_opacity_composites_over_lower_video_track(self):
+        root = tempfile.mkdtemp(prefix='editore_alpha_tracks_')
+        previous = os.environ.get('MEDIA_DATA_DIR')
+        try:
+            os.environ['MEDIA_DATA_DIR'] = root
+            from backend import server
+            server.ROOT = Path(root)
+            server.ASSETS = server.ROOT / 'assets'
+            server.OUTPUTS = server.ROOT / 'outputs'
+            server.ASSETS.mkdir(parents=True, exist_ok=True)
+            server.OUTPUTS.mkdir(parents=True, exist_ok=True)
+            from PIL import Image
+            lower_id, upper_id, job_id = (uuid.uuid4().hex for _ in range(3))
+            Image.new('RGB', (160, 90), (220, 20, 20)).save(server.ASSETS / f'{lower_id}.png')
+            Image.new('RGB', (160, 90), (20, 210, 30)).save(server.ASSETS / f'{upper_id}.png')
+            server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'queued'}
+            project = {
+                'width': 160, 'height': 90, 'fps': 24,
+                'tracks': [
+                    {'kind': 'video', 'clips': [
+                        {'kind': 'image', 'assetId': lower_id, 'startMs': 0, 'durationMs': 1000},
+                    ]},
+                    {'kind': 'video', 'clips': [
+                        {'kind': 'image', 'assetId': upper_id, 'startMs': 0, 'durationMs': 1000,
+                         'keyframes': [
+                             {'timeMs': 0, 'property': 'opacity', 'value': 0.0},
+                             {'timeMs': 500, 'property': 'opacity', 'value': 1.0},
+                         ]},
+                    ]},
+                ],
+            }
+            server._render_job(job_id, project, {
+                'resolution': 'p720', 'fps': 24, 'container': 'mp4',
+                'codec': 'h264', 'includeAudio': False,
+            })
+            self.assertEqual(server.jobs[job_id]['state'], 'completed', server.jobs[job_id])
+            output = server.OUTPUTS / f'{job_id}.mp4'
+            samples = []
+            for label, timestamp in [('early', '0.05'), ('late', '0.80')]:
+                frame = Path(root) / f'{label}.png'
+                subprocess.run(
+                    ['ffmpeg', '-y', '-ss', timestamp, '-i', str(output),
+                     '-frames:v', '1', str(frame)],
+                    check=True, capture_output=True,
+                )
+                samples.append(Image.open(frame).convert('RGB').getpixel((80, 45)))
+            self.assertGreater(samples[0][0], samples[0][1] * 2,
+                               f'La clip inferiore non è visibile durante la dissolvenza: {samples[0]}')
+            self.assertGreater(samples[1][1], samples[1][0] * 2,
+                               f'La clip superiore non è diventata opaca: {samples[1]}')
+        finally:
+            if previous is None:
+                os.environ.pop('MEDIA_DATA_DIR', None)
+            else:
+                os.environ['MEDIA_DATA_DIR'] = previous
+            shutil.rmtree(root, ignore_errors=True)
 
     def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
         from backend.server import _keyframe_expression
