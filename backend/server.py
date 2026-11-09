@@ -1283,11 +1283,38 @@ def _render_job(job_id: str, project: dict, settings: dict):
             if not matches: raise RuntimeError(f'Asset non trovato: {asset_id}')
             src=matches[0]; duration=max(0.1, int(clip.get('durationMs',3000))/1000)
             segment=work/f'{index:04d}.mp4'
+            grade=clip.get('colorGrade') or {}
+            if not isinstance(grade, dict):
+                raise RuntimeError('Impostazioni color grading non valide')
+            def grade_value(name, fallback, minimum, maximum):
+                raw=grade.get(name, fallback)
+                if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+                    raise RuntimeError(f'Valore color grading non valido: {name}')
+                return max(minimum, min(maximum, float(raw)))
+            import math
             brightness=max(-1.0,min(1.0,float(clip.get('brightness',0.0))))
-            contrast=max(0.0,min(3.0,float(clip.get('contrast',1.0))))
-            saturation=max(0.0,min(3.0,float(clip.get('saturation',1.0))))
+            exposure=grade_value('exposure', 0.0, -5.0, 5.0)
+            contrast=grade_value('contrast', clip.get('contrast', 1.0), 0.0, 3.0)
+            saturation=grade_value('saturation', clip.get('saturation', 1.0), 0.0, 3.0)
+            temperature=grade_value('temperature', 0.0, -100.0, 100.0) / 200.0
+            tint=grade_value('tint', 0.0, -100.0, 100.0) / 200.0
+            highlights=grade_value('highlights', 0.0, -1.0, 1.0)
+            shadows=grade_value('shadows', 0.0, -1.0, 1.0)
             rotation=float(clip.get('rotationDegrees',0.0)) % 360.0
             filters=[f'scale={width}:{height}:force_original_aspect_ratio=decrease','pad={}:{}:(ow-iw)/2:(oh-ih)/2'.format(width,height),'setsar=1',f'eq=brightness={brightness}:contrast={contrast}:saturation={saturation}']
+            if exposure:
+                filters.append(f'exposure=exposure={exposure:.6f}')
+            if any((temperature, tint, highlights, shadows)):
+                red_shadow=max(-1.0,min(1.0,temperature-tint/2+shadows/2))
+                green_shadow=max(-1.0,min(1.0,tint+shadows/2))
+                blue_shadow=max(-1.0,min(1.0,-temperature-tint/2-shadows/2))
+                red_high=max(-1.0,min(1.0,temperature-tint/2+highlights/2))
+                green_high=max(-1.0,min(1.0,tint+highlights/2))
+                blue_high=max(-1.0,min(1.0,-temperature-tint/2-highlights/2))
+                filters.append(
+                    f'colorbalance=rs={red_shadow:.6f}:gs={green_shadow:.6f}:bs={blue_shadow:.6f}:'
+                    f'rh={red_high:.6f}:gh={green_high:.6f}:bh={blue_high:.6f}'
+                )
             if rotation:
                 import math
                 filters.append(f'rotate={math.radians(rotation):.6f}:ow={width}:oh={height}:c=black')
