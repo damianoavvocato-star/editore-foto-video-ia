@@ -1731,7 +1731,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   else
                     ..._backups.map((backup) => ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.encrypted_outlined),
+                      leading: const Icon(Icons.lock_outline),
                       title: Text(backup['backupId']?.toString() ?? 'Backup'),
                       subtitle: Text(_backupDescription(backup)),
                       trailing: IconButton(
