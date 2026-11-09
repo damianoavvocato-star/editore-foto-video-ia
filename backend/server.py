@@ -1852,7 +1852,9 @@ def _render_job(job_id: str, project: dict, settings: dict):
             overlay_filters.append(f'[{overlay_index}:v]{overlay_chain}{prepared}')
             x_position=f"'{x}+({x_expr})'" if x_expr is not None else str(x)
             y_position=f"'{y}+({y_expr})'" if y_expr is not None else str(y)
-            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x_position}:y={y_position}:eval=frame:enable='between(t,{start:.3f},{end:.3f})'{composed}")
+            # Do not retain the final overlay frame after its clip ends; this keeps
+            # framesync bounded and lets the base video continue independently.
+            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x_position}:y={y_position}:eval=frame:eof_action=pass:repeatlast=0:shortest=0:enable='between(t,{start:.3f},{end:.3f})'{composed}")
             current_video_label=composed
         if overlay_filters: video_label=current_video_label
         cmd += ['-c:v',vcodec,'-threads','1','-r',str(fps)]
