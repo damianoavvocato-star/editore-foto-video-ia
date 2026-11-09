@@ -131,14 +131,20 @@ class StudioJobQueue:
         max_attempts: int = 3,
         now: float | None = None,
     ) -> tuple[dict[str, Any], bool]:
-        if not user_id:
-            raise StudioQueueError("Account obbligatorio.")
+        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            raise StudioQueueError("Account obbligatorio o non valido.")
         if idempotency_key is not None and (
-            not idempotency_key or len(idempotency_key) > 128
+            not isinstance(idempotency_key, str)
+            or not idempotency_key
+            or len(idempotency_key) > 128
             or any(ord(char) < 33 for char in idempotency_key)
         ):
             raise StudioQueueError("Chiave idempotenza non valida.")
-        if not 1 <= max_attempts <= 5:
+        if (
+            not isinstance(max_attempts, int)
+            or isinstance(max_attempts, bool)
+            or not 1 <= max_attempts <= 5
+        ):
             raise StudioQueueError("Numero massimo di tentativi non valido.")
         try:
             request.validate_policy()
@@ -195,7 +201,7 @@ class StudioJobQueue:
     def claim_next(
         self, worker_id: str, now: float | None = None
     ) -> dict[str, Any] | None:
-        if not worker_id or len(worker_id) > 128:
+        if not isinstance(worker_id, str) or not worker_id or len(worker_id) > 128:
             raise StudioQueueError("Identificativo worker non valido.")
         timestamp = time.time() if now is None else float(now)
         connection = self._connect()
