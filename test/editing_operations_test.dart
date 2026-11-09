@@ -66,6 +66,37 @@ void main() {
     expect(result.tracks.first.clips[1].sourceStartMs, 4000);
   });
 
+  test('split and duplicate preserve clip effects and remap keyframe time', () {
+    const effected = EditorClip(
+      id: 'effected', source: '/effected.mp4', kind: MediaKind.video,
+      startMs: 0, durationMs: 4000,
+      colorGrade: ClipColorGrade(exposure: 1.5),
+      keyframes: [
+        EditorKeyframe(timeMs: 500, property: KeyframeProperty.scale, value: 1),
+        EditorKeyframe(timeMs: 2500, property: KeyframeProperty.scale, value: 2),
+      ],
+    );
+    final base = EditorProject(id: 'effects', name: 'Effects', tracks: [
+      const EditorTrack(id: 'v1', name: 'Video', kind: MediaKind.video, clips: [effected]),
+    ]);
+    final split = operations.splitClip(
+      project: base, trackId: 'v1', clipId: 'effected',
+      splitAtMs: 2000, newClipId: 'second',
+    );
+    final first = split.tracks.first.clips.first;
+    final second = split.tracks.first.clips.last;
+    expect(first.keyframes.map((point) => point.timeMs), [500]);
+    expect(second.keyframes.single.timeMs, 500);
+    expect(second.keyframes.single.value, 2);
+    expect(second.colorGrade.exposure, 1.5);
+
+    final duplicated = operations.duplicateClip(
+      project: base, trackId: 'v1', clipId: 'effected', newClipId: 'copy',
+    );
+    expect(duplicated.tracks.first.clips.last.keyframes, effected.keyframes);
+    expect(duplicated.tracks.first.clips.last.colorGrade.exposure, 1.5);
+  });
+
   test('split refuses a duplicate clip ID', () {
     final result = operations.splitClip(
       project: sample(),
