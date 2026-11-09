@@ -286,3 +286,12 @@
 - Aggiunti marcatori a diamante per i keyframe direttamente sopra la timeline, posizionati in base al tempo relativo della clip.
 - Creata un'anteprima web responsive separata in `docs/preview/index.html`, con layout studio, area di anteprima, pannello colore e timeline. È una demo grafica navigabile, non il runtime Flutter e non applica realmente gli effetti ai media.
 - La percentuale complessiva resta invariata finché queste rifiniture non superano i test e i criteri di completamento della funzionalità.
+
+
+## Rifinitura preview live e pannello colore — 9 novembre 2026
+
+- Pannello color grading spostato su un `Material` sagomato: evita che il fondo decorato nasconda gli effetti ink del suo `ExpansionTile`.
+- Intestazione dell'anteprima Flutter rifinita con indicatore LIVE e bordo sottile sullo stage.
+- Demo web aggiornata con lo stesso indicatore LIVE, mantenendo layout responsive.
+- Verifica CI precedente: analisi statica Flutter superata e backend test superati; un test widget del pannello colore è fallito. È stata applicata la correzione Material, da riconvalidare nel run successivo. Android preflight era ancora in corso.
+- La grafica LIVE indica l'area di anteprima, non certifica una riproduzione live per file non caricati. Nessuna nuova funzionalità viene promossa a completata; conteggio e percentuale restano 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%.
