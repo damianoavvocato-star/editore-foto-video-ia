@@ -151,8 +151,22 @@ class BackupStore:
                 tables = {row[0] for row in db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()}
-            if integrity != "ok" or "accounts" not in tables:
-                raise BackupError("Database del backup non integro o non riconosciuto.")
+                account_columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(accounts)").fetchall()
+                } if "accounts" in tables else set()
+                foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
+            required_account_columns = {
+                "user_id", "username", "password_salt", "password_hash",
+                "role", "created_at", "disabled_at",
+            }
+            if (
+                integrity != "ok"
+                or not required_account_columns.issubset(account_columns)
+                or foreign_key_errors
+            ):
+                raise BackupError(
+                    "Database del backup non integro o schema account non riconosciuto."
+                )
             os.replace(temporary_path, staged)
         except Exception:
             temporary_path.unlink(missing_ok=True)
