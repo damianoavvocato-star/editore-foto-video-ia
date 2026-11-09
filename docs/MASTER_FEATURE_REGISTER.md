@@ -267,3 +267,14 @@
 - Le voci P1-10 e P1-11 restano partial: manca la UI per impostare questi valori, il collegamento al renderer/preview e la resa effettiva nel file esportato. Nessun effetto visivo viene dichiarato operativo.
 - La CI del batch è da attendere sul commit finale. Percentuale invariata: 2 done, 33 partial, 19 missing, 3 blocked su 57 = 32,46%.
 - Nessun APK generato; fase 6 invariata come ultima fase; main intatto e PR #1 ancora draft.
+
+
+## Rifinitura grafica editor e pannello colore — 9 novembre 2026
+
+- Timeline: clip rese più leggibili con riempimento sfumato, bordo di selezione evidente, durata visibile e indicatori per keyframe/regolazioni colore; la clip selezionata viene evidenziata in modo coerente con lo stato della sessione.
+- Pannello colore: aggiunti controlli UI per esposizione, contrasto, saturazione e controlli avanzati per temperatura, tinta, luci e ombre; anteprima del valore durante il trascinamento, salvataggio al rilascio e ripristino dei valori neutri.
+- Pannello timeline reso scorrevole e sezione colore comprimibile per mantenere utilizzabile l'area editor anche negli spazi ridotti.
+- Test widget aggiunto per apertura del pannello e persistenza dell'esposizione.
+- Limite esplicito: i parametri sono modificabili e salvati nel progetto, ma la loro applicazione visiva al preview e al file esportato richiede ancora il collegamento al renderer; non si dichiara il color grading come effetto già renderizzato.
+- Le voci keyframe/color grading restano partial; conteggio e percentuale invariati: 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%. CI del commit grafico finale in attesa.
+- Nessun APK generato; fase 6 ultima; branch feature dedicato, main invariato e PR #1 draft.
