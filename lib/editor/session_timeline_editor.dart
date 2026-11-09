@@ -176,47 +176,56 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.65)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF8D69F4), Color(0xFF2D9DAB)],
-              ),
-              borderRadius: BorderRadius.circular(10),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(top: 8),
+        leading: Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF8D69F4), Color(0xFF2D9DAB)],
             ),
-            child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(width: 9),
-          Expanded(child: Text(_t('color'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
-          TextButton.icon(
-            onPressed: locked ? null : () {
-              _session.setSelectedColorGrade(const ClipColorGrade());
-              setState(() => _draftColorGrade = null);
-            },
-            icon: const Icon(Icons.restart_alt, size: 16),
-            label: Text(_t('reset')),
-          ),
-        ]),
-        slider('exposure', grade.exposure, -5, 5),
-        slider('contrast', grade.contrast, 0, 2),
-        slider('saturation', grade.saturation, 0, 2),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: EdgeInsets.zero,
-          title: Text(
-            widget.languageCode == 'it' ? 'Controlli avanzati' : 'Advanced controls',
-            style: theme.textTheme.labelLarge,
-          ),
-          children: [
-            slider('temperature', grade.temperature, -100, 100, divisions: 200),
-            slider('tint', grade.tint, -100, 100, divisions: 200),
-            slider('highlights', grade.highlights, -1, 1),
-            slider('shadows', grade.shadows, -1, 1),
-          ],
+          child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
         ),
-      ]),
+        title: Text(_t('color'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        subtitle: Text(
+          '${_t('exposure')} ${grade.exposure.toStringAsFixed(1)} · ${_t('saturation')} ${grade.saturation.toStringAsFixed(1)}',
+          style: theme.textTheme.labelSmall,
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: locked ? null : () {
+                _session.setSelectedColorGrade(const ClipColorGrade());
+                setState(() => _draftColorGrade = null);
+              },
+              icon: const Icon(Icons.restart_alt, size: 16),
+              label: Text(_t('reset')),
+            ),
+          ),
+          slider('exposure', grade.exposure, -5, 5),
+          slider('contrast', grade.contrast, 0, 2),
+          slider('saturation', grade.saturation, 0, 2),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              widget.languageCode == 'it' ? 'Controlli avanzati' : 'Advanced controls',
+              style: theme.textTheme.labelLarge,
+            ),
+            children: [
+              slider('temperature', grade.temperature, -100, 100, divisions: 200),
+              slider('tint', grade.tint, -100, 100, divisions: 200),
+              slider('highlights', grade.highlights, -1, 1),
+              slider('shadows', grade.shadows, -1, 1),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -240,7 +249,8 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     final transition = selected?.transitionAfter ?? 'fade';
     return Directionality(
       textDirection: widget.languageCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TimelinePanel(
@@ -389,6 +399,8 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           ),
         ),
       ],
+        ),
+      ),
     ));
   }
 }
