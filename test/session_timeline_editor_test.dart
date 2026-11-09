@@ -69,6 +69,8 @@ void main() {
     await tester.tap(find.text('Sample').first);
     await tester.pumpAndSettle();
     expect(find.text('Color grading'), findsOneWidget);
+    await tester.tap(find.text('Color grading'));
+    await tester.pumpAndSettle();
     expect(find.text('Exposure'), findsOneWidget);
     expect(find.text('Contrast'), findsOneWidget);
     final exposureSlider = find.byType(Slider).at(1);
