@@ -56,6 +56,12 @@ class UsageStore:
             raise ValueError("Invalid job identifier.")
         if not isinstance(period, str) or len(period) != 7 or period[4] != "-":
             raise ValueError("Invalid usage period.")
+        try:
+            parsed_period = time.strptime(period, "%Y-%m")
+        except ValueError as exc:
+            raise ValueError("Invalid usage period.") from exc
+        if time.strftime("%Y-%m", parsed_period) != period:
+            raise ValueError("Invalid usage period.")
         db = sqlite3.connect(self.database, timeout=10)
         try:
             db.execute("PRAGMA busy_timeout = 10000")
