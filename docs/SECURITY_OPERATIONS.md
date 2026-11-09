@@ -198,3 +198,12 @@ The operation ignores symlinks and unrelated files. It does not activate a
 restore, alter the live database, or replace the need for maintenance gating
 and rollback before a future restore-activation feature.
 
+
+
+## Verifica schema prima della preparazione restore
+
+La preparazione di un backup non si limita al controllo SQLite `quick_check`: verifica
+anche la presenza delle colonne fondamentali della tabella `accounts` e il risultato
+di `PRAGMA foreign_key_check`. Un archivio cifrato ma con schema incompatibile o
+riferimenti relazionali non validi viene rifiutato prima di essere esposto come staging.
+La preparazione resta non distruttiva e non sostituisce il database attivo.
