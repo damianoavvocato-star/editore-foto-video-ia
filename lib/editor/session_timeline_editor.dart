@@ -1,3 +1,5 @@
+import 'dart:ui' show FontFeature;
+
 import 'package:flutter/material.dart';
 
 import '../models/editor_project.dart';
@@ -37,6 +39,9 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'transitionDuration': 'Durata transizione',
       'select': 'Seleziona una clip per modificarne durata e velocità.',
       'locked': 'Traccia bloccata: sbloccarla per modificare la clip.',
+      'color': 'Regolazione colore', 'exposure': 'Esposizione', 'contrast': 'Contrasto',
+      'saturation': 'Saturazione', 'temperature': 'Temperatura', 'tint': 'Tinta',
+      'highlights': 'Luci', 'shadows': 'Ombre', 'reset': 'Ripristina',
     },
     'en': {
       'timeline': 'Timeline', 'undo': 'Undo', 'redo': 'Redo', 'split': 'Split at playhead',
@@ -49,6 +54,9 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       'dissolve': 'Cross dissolve', 'transitionDuration': 'Transition duration',
       'select': 'Select a clip to change its duration and speed.',
       'locked': 'Track locked: unlock it to edit this clip.',
+      'color': 'Color grading', 'exposure': 'Exposure', 'contrast': 'Contrast',
+      'saturation': 'Saturation', 'temperature': 'Temperature', 'tint': 'Tint',
+      'highlights': 'Highlights', 'shadows': 'Shadows', 'reset': 'Reset',
     },
     'fr': {
       'timeline': 'Chronologie', 'undo': 'Annuler', 'redo': 'Rétablir', 'split': 'Couper à la tête de lecture',
@@ -120,6 +128,101 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     super.dispose();
   }
 
+  Widget _buildColorGradePanel(
+    BuildContext context,
+    ClipColorGrade grade,
+    bool locked,
+  ) {
+    final theme = Theme.of(context);
+    Widget slider(String key, double value, double min, double max, {
+      int divisions = 100,
+      String? suffix,
+    }) => Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(children: [
+        SizedBox(width: 104, child: Text(_t(key), style: theme.textTheme.bodySmall)),
+        Expanded(child: Slider(
+          min: min,
+          max: max,
+          divisions: divisions,
+          value: value.clamp(min, max).toDouble(),
+          onChanged: locked ? null : (_) {},
+          onChangeEnd: locked ? null : (next) => _session.setSelectedColorGrade(
+            _copyGrade(grade, key, next),
+          ),
+        )),
+        SizedBox(
+          width: 42,
+          child: Text(
+            '${value.toStringAsFixed(1)}${suffix ?? ''}',
+            textAlign: TextAlign.end,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ]),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.65)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF8D69F4), Color(0xFF2D9DAB)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 9),
+          Expanded(child: Text(_t('color'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+          TextButton.icon(
+            onPressed: locked ? null : () => _session.setSelectedColorGrade(const ClipColorGrade()),
+            icon: const Icon(Icons.restart_alt, size: 16),
+            label: Text(_t('reset')),
+          ),
+        ]),
+        slider('exposure', grade.exposure, -5, 5),
+        slider('contrast', grade.contrast, 0, 2),
+        slider('saturation', grade.saturation, 0, 2),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            widget.languageCode == 'it' ? 'Controlli avanzati' : 'Advanced controls',
+            style: theme.textTheme.labelLarge,
+          ),
+          children: [
+            slider('temperature', grade.temperature, -100, 100, divisions: 200),
+            slider('tint', grade.tint, -100, 100, divisions: 200),
+            slider('highlights', grade.highlights, -1, 1),
+            slider('shadows', grade.shadows, -1, 1),
+          ],
+        ),
+      ]),
+    );
+  }
+
+  ClipColorGrade _copyGrade(ClipColorGrade source, String key, double value) =>
+      ClipColorGrade(
+        exposure: key == 'exposure' ? value : source.exposure,
+        contrast: key == 'contrast' ? value : source.contrast,
+        saturation: key == 'saturation' ? value : source.saturation,
+        temperature: key == 'temperature' ? value : source.temperature,
+        tint: key == 'tint' ? value : source.tint,
+        highlights: key == 'highlights' ? value : source.highlights,
+        shadows: key == 'shadows' ? value : source.shadows,
+      );
+
   @override
   Widget build(BuildContext context) {
     final selected = _session.selectedClip;
@@ -137,6 +240,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           onClipSelected: _session.selectClip,
           onPlayheadChanged: _session.setPlayhead,
           title: _t('timeline'),
+          selectedClipId: _session.selectedClipId,
         ),
         Card(
           child: Padding(
@@ -185,6 +289,10 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                     ),
                   ],
                 ),
+                if (selected != null && (selected.kind == MediaKind.video || selected.kind == MediaKind.image)) ...[
+                  const SizedBox(height: 14),
+                  _buildColorGradePanel(context, selected.colorGrade, locked),
+                ],
                 if (selected != null) ...[
                   const SizedBox(height: 12),
                   Text(
