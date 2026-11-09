@@ -219,20 +219,75 @@ class RenderEffectsTest(unittest.TestCase):
                 os.environ['MEDIA_DATA_DIR'] = previous
             shutil.rmtree(root, ignore_errors=True)
 
-    def test_alpha_multitrack_path_rejects_unimplemented_clip_transitions(self):
+    def test_alpha_multitrack_path_rejects_unsupported_wipe_transition(self):
         from backend import server
 
         project = {
             'tracks': [{
                 'kind': 'video',
-                'clips': [{'transitionAfterMs': 250}],
+                'clips': [
+                    {'startMs': 0, 'durationMs': 1000, 'transitionAfterMs': 250,
+                     'transitionAfter': 'wipeleft'},
+                    {'startMs': 1000, 'durationMs': 1000},
+                ],
             }],
         }
-        with self.assertRaisesRegex(RuntimeError, 'transizioni tra clip principali'):
+        with self.assertRaisesRegex(RuntimeError, 'non ancora supportata'):
             server._render_primary_alpha_layers(
                 'a' * 32, project, {}, Path(tempfile.gettempdir()),
                 320, 180, 24,
             )
+
+    def test_alpha_multitrack_fade_transition_blends_adjacent_clips(self):
+        root = tempfile.mkdtemp(prefix='editore_alpha_transition_')
+        previous = os.environ.get('MEDIA_DATA_DIR')
+        try:
+            os.environ['MEDIA_DATA_DIR'] = root
+            from backend import server
+            server.ROOT = Path(root)
+            server.ASSETS = server.ROOT / 'assets'
+            server.OUTPUTS = server.ROOT / 'outputs'
+            server.ASSETS.mkdir(parents=True, exist_ok=True)
+            server.OUTPUTS.mkdir(parents=True, exist_ok=True)
+            from PIL import Image
+            first_id, second_id, job_id = (uuid.uuid4().hex for _ in range(3))
+            Image.new('RGB', (160, 90), (220, 20, 20)).save(server.ASSETS / f'{first_id}.png')
+            Image.new('RGB', (160, 90), (20, 210, 30)).save(server.ASSETS / f'{second_id}.png')
+            server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'queued'}
+            project = {
+                'width': 160, 'height': 90, 'fps': 24,
+                'tracks': [{
+                    'kind': 'video',
+                    'clips': [
+                        {'kind': 'image', 'assetId': first_id, 'startMs': 0,
+                         'durationMs': 1000, 'transitionAfterMs': 400,
+                         'transitionAfter': 'fade'},
+                        {'kind': 'image', 'assetId': second_id, 'startMs': 1000,
+                         'durationMs': 1000},
+                    ],
+                }],
+            }
+            server._render_job(job_id, project, {
+                'resolution': 'p720', 'fps': 24, 'container': 'mp4',
+                'codec': 'h264', 'includeAudio': False,
+            })
+            self.assertEqual(server.jobs[job_id]['state'], 'completed', server.jobs[job_id])
+            output = server.OUTPUTS / f'{job_id}.mp4'
+            frame = Path(root) / 'transition-midpoint.png'
+            subprocess.run(
+                ['ffmpeg', '-y', '-ss', '0.80', '-i', str(output),
+                 '-frames:v', '1', str(frame)],
+                check=True, capture_output=True,
+            )
+            red, green, _blue = Image.open(frame).convert('RGB').getpixel((80, 45))
+            self.assertGreater(red, 55, f'La clip uscente non partecipa alla dissolvenza: {red, green}')
+            self.assertGreater(green, 55, f'La clip entrante non partecipa alla dissolvenza: {red, green}')
+        finally:
+            if previous is None:
+                os.environ.pop('MEDIA_DATA_DIR', None)
+            else:
+                os.environ['MEDIA_DATA_DIR'] = previous
+            shutil.rmtree(root, ignore_errors=True)
 
     def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
         from backend.server import _keyframe_expression
