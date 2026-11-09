@@ -1309,6 +1309,182 @@ def _reject_unsupported_primary_opacity(keyframes: list[dict[str, Any]]) -> None
         )
 
 
+def _render_primary_alpha_layers(
+    job_id: str, project: dict, settings: dict, work: Path,
+    width: int, height: int, fps: int,
+) -> tuple[Path, float]:
+    """Composite primary video/image tracks while preserving per-clip alpha.
+
+    This path is selected when a primary clip has opacity keyframes. Each
+    source remains an RGBA layer until it is composited in track order; the
+    resulting opaque timeline is then passed through the existing overlay and
+    audio export pipeline.
+    """
+    tracks = project.get('tracks', [])
+    visual_tracks = []
+    for track in tracks:
+        if not isinstance(track, dict) or track.get('muted'):
+            continue
+        track_kind = str(track.get('kind', '')).lower()
+        if track_kind in {'audio', 'overlay', 'sticker', 'text'}:
+            continue
+        visual_clips = [
+            clip for clip in track.get('clips', [])
+            if isinstance(clip, dict)
+            and str(clip.get('kind', '')).lower() not in {'audio', 'overlay', 'sticker', 'text'}
+        ]
+        if visual_clips:
+            visual_tracks.append(visual_clips)
+    flattened = [clip for track in visual_tracks for clip in track]
+    if not flattened:
+        raise RuntimeError('Nessuna clip video principale da comporre.')
+    total_duration = max(
+        (max(0, int(clip.get('startMs', 0))) +
+         max(100, int(clip.get('durationMs', 3000)))) / 1000.0
+        for clip in flattened
+    )
+    cmd = [FFMPEG, '-y']
+    graph = [
+        f'color=c=black:s={width}x{height}:r={fps}:d={total_duration:.6f},format=rgba[base0]'
+    ]
+    current = '[base0]'
+    input_index = 0
+    layer_number = 0
+
+    for track_clips in visual_tracks:
+        for clip in sorted(track_clips, key=lambda item: max(0, int(item.get('startMs', 0)))):
+            asset_id = clip.get('assetId')
+            if not isinstance(asset_id, str) or not _valid_id(asset_id):
+                raise RuntimeError('Clip senza assetId valido')
+            matches = [
+                path for path in ASSETS.glob(asset_id + '.*')
+                if path.is_file() and path.resolve().parent == ASSETS.resolve()
+            ]
+            if not matches:
+                raise RuntimeError(f'Asset non trovato: {asset_id}')
+            source = matches[0]
+            duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+            start = max(0, int(clip.get('startMs', 0))) / 1000.0
+            if str(clip.get('kind', '')).lower() == 'image':
+                cmd += ['-loop', '1', '-t', f'{duration:.6f}', '-i', str(source)]
+            else:
+                source_start = max(0, int(clip.get('sourceStartMs', 0))) / 1000.0
+                if source_start:
+                    cmd += ['-ss', f'{source_start:.6f}']
+                cmd += ['-i', str(source)]
+
+            keyframes = clip.get('keyframes') or []
+            if not isinstance(keyframes, list) or len(keyframes) > 100:
+                raise RuntimeError('Numero di keyframe non valido (massimo 100 per clip)')
+            supported = {'positionX', 'positionY', 'scale', 'rotation', 'opacity'}
+            if any(not isinstance(point, dict) or point.get('property') not in supported for point in keyframes):
+                raise RuntimeError('Proprietà keyframe non supportata')
+
+            grade = clip.get('colorGrade') or {}
+            if not isinstance(grade, dict):
+                raise RuntimeError('Impostazioni color grading non valide')
+            def grade_value(name, fallback, minimum, maximum):
+                raw = grade.get(name, fallback)
+                if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+                    raise RuntimeError(f'Valore color grading non valido: {name}')
+                return max(minimum, min(maximum, float(raw)))
+
+            brightness = max(-1.0, min(1.0, float(clip.get('brightness', 0.0))))
+            contrast = grade_value('contrast', clip.get('contrast', 1.0), 0.0, 3.0)
+            saturation = grade_value('saturation', clip.get('saturation', 1.0), 0.0, 3.0)
+            exposure = grade_value('exposure', 0.0, -5.0, 5.0)
+            temperature = grade_value('temperature', 0.0, -100.0, 100.0) / 200.0
+            tint = grade_value('tint', 0.0, -100.0, 100.0) / 200.0
+            highlights = grade_value('highlights', 0.0, -1.0, 1.0)
+            shadows = grade_value('shadows', 0.0, -1.0, 1.0)
+            filters = [
+                f'trim=duration={duration:.6f}',
+                'setpts=PTS-STARTPTS',
+                f'fps={fps}',
+                f'scale={width}:{height}:force_original_aspect_ratio=decrease',
+                f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black@0',
+                'setsar=1',
+                'format=rgba',
+                f'eq=brightness={brightness}:contrast={contrast}:saturation={saturation}',
+            ]
+            if exposure:
+                filters.append(f'exposure=exposure={exposure:.6f}')
+            if any((temperature, tint, highlights, shadows)):
+                filters.append(
+                    'colorbalance='
+                    f'rs={max(-1.0,min(1.0,temperature-tint/2+shadows/2)):.6f}:'
+                    f'gs={max(-1.0,min(1.0,tint+shadows/2)):.6f}:'
+                    f'bs={max(-1.0,min(1.0,-temperature-tint/2-shadows/2)):.6f}:'
+                    f'rh={max(-1.0,min(1.0,temperature-tint/2+highlights/2)):.6f}:'
+                    f'gh={max(-1.0,min(1.0,tint+highlights/2)):.6f}:'
+                    f'bh={max(-1.0,min(1.0,-temperature-tint/2-highlights/2)):.6f}'
+                )
+            rotation = float(clip.get('rotationDegrees', 0.0)) % 360.0
+            if rotation:
+                filters.append(f'rotate={math.radians(rotation):.6f}:ow={width}:oh={height}:c=black@0')
+
+            scale_expr = _keyframe_expression(keyframes, 'scale', 't')
+            x_expr = _keyframe_expression(keyframes, 'positionX', 't')
+            y_expr = _keyframe_expression(keyframes, 'positionY', 't')
+            rotation_expr = _keyframe_expression(keyframes, 'rotation', 't')
+            opacity_expr = _keyframe_expression(keyframes, 'opacity', 'T')
+            if scale_expr is not None:
+                filters.append(
+                    f"scale=w='max(2,ceil({width}*({scale_expr})/2)*2)':"
+                    f"h='max(2,ceil({height}*({scale_expr})/2)*2)':eval=frame"
+                )
+                filters.append(
+                    f"pad=w='max(iw,{width})':h='max(ih,{height})':"
+                    "x='(ow-iw)/2':y='(oh-ih)/2':color=black@0"
+                )
+                crop_x = f'(iw-ow)/2-({x_expr or "0"})'
+                crop_y = f'(ih-oh)/2-({y_expr or "0"})'
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{crop_x}))':"
+                    f"y='max(0,min(ih-oh,{crop_y}))'"
+                )
+            elif x_expr is not None or y_expr is not None:
+                filters.append(f'pad={width * 3}:{height * 3}:{width}:{height}:color=black@0')
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{width}-({x_expr or '0'})))':"
+                    f"y='max(0,min(ih-oh,{height}-({y_expr or '0'})))'"
+                )
+            if rotation_expr is not None:
+                filters.append(
+                    f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black@0"
+                )
+            if opacity_expr is not None:
+                filters.append(
+                    f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+                    f"a='alpha(X,Y)*({opacity_expr})'"
+                )
+            filters.append(f'setpts=PTS-STARTPTS+{start:.6f}/TB')
+            layer_label = f'[primary{layer_number}]'
+            graph.append(f'[{input_index}:v]{",".join(filters)}{layer_label}')
+            mixed_label = f'[primarymix{layer_number}]'
+            graph.append(
+                f'{current}{layer_label}overlay=x=0:y=0:format=auto:'
+                f'eof_action=pass:repeatlast=0:shortest=0{mixed_label}'
+            )
+            current = mixed_label
+            input_index += 1
+            layer_number += 1
+
+    intermediate = work / 'primary_alpha_composite.mov'
+    cmd += [
+        '-filter_complex', ';'.join(graph),
+        '-map', current, '-an', '-t', f'{total_duration:.6f}',
+        '-c:v', 'qtrle', '-pix_fmt', 'argb', '-r', str(fps),
+        str(intermediate),
+    ]
+    result = _run_ffmpeg(job_id, cmd, timeout=max(180, total_duration * 20))
+    if result.returncode:
+        raise RuntimeError('FFmpeg compositing alpha: ' + result.stderr[-1800:])
+    return intermediate, total_duration
+
+
 def _render_job(job_id: str, project: dict, settings: dict):
     work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -1343,7 +1519,25 @@ def _render_job(job_id: str, project: dict, settings: dict):
         if not clips: raise RuntimeError('Il progetto non contiene clip video o immagini renderizzabili')
         segments=[]
         clip_durations=[]
-        for index, clip in enumerate(clips):
+        primary_opacity_requested = any(
+            str(track.get('kind', '')).lower() not in {'audio', 'overlay', 'sticker', 'text'}
+            and any(
+                isinstance(point, dict) and point.get('property') == 'opacity'
+                for clip in track.get('clips', [])
+                if isinstance(clip, dict)
+                for point in (clip.get('keyframes') or [])
+            )
+            for track in project.get('tracks', [])
+            if isinstance(track, dict) and not track.get('muted')
+        )
+        if primary_opacity_requested:
+            alpha_segment, alpha_duration = _render_primary_alpha_layers(
+                job_id, project, settings, work, width, height, fps,
+            )
+            segments.append(alpha_segment)
+            clip_durations.append(alpha_duration)
+            clips = [{'transitionAfterMs': 0, 'transitionAfter': 'fade'}]
+        for index, clip in enumerate([] if primary_opacity_requested else clips):
             if cancel_events.get(job_id, threading.Event()).is_set():
                 with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
                 return
@@ -1430,9 +1624,6 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 filters.append(
                     f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black"
                 )
-            # Primary clips are currently flattened into opaque segments.
-            # Reject opacity keyframes rather than silently fading to black.
-            _reject_unsupported_primary_opacity(keyframes)
             filters.append(f'fps={fps}')
             common=['-vf',','.join(filters), '-an','-t',str(duration),'-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast']
             if clip.get('kind') == 'image':
