@@ -143,6 +143,19 @@ class _TrackRow extends StatelessWidget {
                 border: Border.all(color: theme.dividerColor.withValues(alpha: 0.35)),
               ))),
               for (final clip in track.clips)
+                for (final keyframe in clip.keyframes)
+                  if (keyframe.timeMs >= 0 && keyframe.timeMs <= clip.durationMs)
+                    Positioned(
+                      left: (timelineWidth * (clip.startMs + keyframe.timeMs) / totalMs - 4)
+                          .clamp(0, timelineWidth - 8),
+                      top: 0,
+                      child: const Icon(
+                        Icons.diamond,
+                        size: 8,
+                        color: Color(0xFFFFD76A),
+                      ),
+                    ),
+              for (final clip in track.clips)
                 Positioned(
                   left: timelineWidth * clip.startMs / totalMs,
                   width: (timelineWidth * clip.durationMs / totalMs).clamp(34, timelineWidth),
