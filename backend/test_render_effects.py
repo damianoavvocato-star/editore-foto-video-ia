@@ -150,6 +150,21 @@ class RenderEffectsTest(unittest.TestCase):
                 os.environ['MEDIA_DATA_DIR'] = previous
             shutil.rmtree(root, ignore_errors=True)
 
+    def test_alpha_multitrack_path_rejects_unimplemented_clip_transitions(self):
+        from backend import server
+
+        project = {
+            'tracks': [{
+                'kind': 'video',
+                'clips': [{'transitionAfterMs': 250}],
+            }],
+        }
+        with self.assertRaisesRegex(RuntimeError, 'transizioni tra clip principali'):
+            server._render_primary_alpha_layers(
+                'a' * 32, project, {}, Path(tempfile.gettempdir()),
+                320, 180, 24,
+            )
+
     def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
         from backend.server import _keyframe_expression
         points = [
