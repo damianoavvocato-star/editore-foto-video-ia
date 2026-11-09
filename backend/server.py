@@ -1290,6 +1290,25 @@ def _keyframe_expression(keyframes: list[dict[str, Any]], property_name: str, va
     return expression
 
 
+def _reject_unsupported_primary_opacity(keyframes: list[dict[str, Any]]) -> None:
+    """Prevent exporting primary-clip opacity as a misleading fade to black.
+
+    Main video clips are currently flattened into opaque H.264 segments before
+    timeline composition. Until the renderer composites primary tracks as
+    alpha-capable layers, their opacity keyframes cannot reveal lower tracks.
+    Overlay-track opacity remains supported by the RGBA overlay pipeline.
+    """
+    if any(
+        isinstance(point, dict) and point.get('property') == 'opacity'
+        for point in keyframes
+    ):
+        raise RuntimeError(
+            'Opacità animata della clip principale non ancora supportata: '
+            'il rendering a livelli trasparenti è in sviluppo. '
+            'Rimuovi i keyframe di opacità per esportare senza alterazioni.'
+        )
+
+
 def _render_job(job_id: str, project: dict, settings: dict):
     work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -1411,14 +1430,9 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 filters.append(
                     f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black"
                 )
-            if opacity_expr is not None:
-                # The segment is encoded as opaque H.264 before tracks are
-                # composed, so apply clip opacity as a per-frame fade to black.
-                filters.append(
-                    f"geq=r='r(X,Y)*({opacity_expr})':"
-                    f"g='g(X,Y)*({opacity_expr})':"
-                    f"b='b(X,Y)*({opacity_expr})'"
-                )
+            # Primary clips are currently flattened into opaque segments.
+            # Reject opacity keyframes rather than silently fading to black.
+            _reject_unsupported_primary_opacity(keyframes)
             filters.append(f'fps={fps}')
             common=['-vf',','.join(filters), '-an','-t',str(duration),'-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast']
             if clip.get('kind') == 'image':
