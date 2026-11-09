@@ -1408,12 +1408,12 @@ def _render_primary_alpha_layers(
             source = matches[0]
             duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
             if str(clip.get('kind', '')).lower() == 'image':
-                cmd += ['-loop', '1', '-t', f'{duration:.6f}', '-i', str(source)]
+                cmd += ['-thread_queue_size', '1', '-loop', '1', '-t', f'{duration:.6f}', '-i', str(source)]
             else:
                 source_start = max(0, int(clip.get('sourceStartMs', 0))) / 1000.0
                 if source_start:
                     cmd += ['-ss', f'{source_start:.6f}']
-                cmd += ['-i', str(source)]
+                cmd += ['-thread_queue_size', '1', '-i', str(source)]
 
             keyframes = clip.get('keyframes') or []
             if not isinstance(keyframes, list) or len(keyframes) > 100:
@@ -1736,7 +1736,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
         vcodec={'h264':'libx264','h265':'libx265','vp9':'libvpx-vp9'}.get(codec,'libx264')
         output=OUTPUTS/f'{job_id}.{ext}'
         cmd=[FFMPEG,'-y','-threads','1']
-        for segment in segments: cmd += ['-i', str(segment)]
+        for segment in segments: cmd += ['-thread_queue_size', '1', '-i', str(segment)]
         graph=[]
         if len(segments) == 1:
             video_label='[0:v]'
@@ -1764,7 +1764,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
             if not matches: raise RuntimeError(f'Asset audio non trovato: {asset_id}')
             source_start=max(0, int(clip.get('sourceStartMs',0)))/1000.0
             if source_start: cmd += ['-ss', str(source_start)]
-            cmd += ['-i', str(matches[0])]
+            cmd += ['-thread_queue_size', '1', '-i', str(matches[0])]
             duration=max(0.1, int(clip.get('durationMs',3000))/1000)
             delay=max(0, int(clip.get('startMs',0)))
             volume=max(0.0, min(4.0, float(clip.get('volume',1.0))))
@@ -1797,15 +1797,15 @@ def _render_job(job_id: str, project: dict, settings: dict):
                     color='#FFFFFF'
                 draw.multiline_text((4,4),text_value,fill=color,font=font,spacing=4,stroke_width=max(0,min(8,int(clip.get('strokeWidth',1)))),stroke_fill='#000000')
                 src=work/f'text_{overlay_index}.png'; canvas.save(src)
-                cmd += ['-loop','1','-t',str(duration),'-i',str(src)]
+                cmd += ['-thread_queue_size','1','-loop','1','-t',str(duration),'-i',str(src)]
             else:
                 asset_id=clip.get('assetId')
                 if not isinstance(asset_id, str) or not _valid_id(asset_id): raise RuntimeError('Overlay senza assetId valido')
                 matches=list(ASSETS.glob(str(asset_id)+'.*'))
                 if not matches: raise RuntimeError(f'Asset overlay non trovato: {asset_id}')
                 src=matches[0]
-                if clip_kind == 'image': cmd += ['-loop','1','-t',str(duration),'-i',str(src)]
-                else: cmd += ['-stream_loop','-1','-t',str(duration),'-i',str(src)]
+                if clip_kind == 'image': cmd += ['-thread_queue_size','1','-loop','1','-t',str(duration),'-i',str(src)]
+                else: cmd += ['-thread_queue_size','1','-stream_loop','-1','-t',str(duration),'-i',str(src)]
             x=max(0,int(clip.get('x',0))); y=max(0,int(clip.get('y',0)))
             opacity=max(0.0,min(1.0,float(clip.get('opacity',1.0))))
             start=max(0,int(clip.get('startMs',0)))/1000.0
