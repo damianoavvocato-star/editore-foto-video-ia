@@ -109,10 +109,12 @@ void main() {
     expect(changed, isNotNull);
     expect(changed!.tracks.single.clips.single.keyframes, hasLength(1));
     expect(changed!.tracks.single.clips.single.keyframes.single.property, KeyframeProperty.scale);
-    final deleteKeyframe = find.byIcon(Icons.cancel).first;
-    await tester.ensureVisible(deleteKeyframe);
+    final keyframeChip = find.byType(InputChip).first;
+    await tester.ensureVisible(keyframeChip);
     await tester.pumpAndSettle();
-    await tester.tap(deleteKeyframe);
+    final chip = tester.widget<InputChip>(keyframeChip);
+    expect(chip.onDeleted, isNotNull);
+    chip.onDeleted!();
     await tester.pumpAndSettle();
     expect(changed!.tracks.single.clips.single.keyframes, isEmpty);
   });
