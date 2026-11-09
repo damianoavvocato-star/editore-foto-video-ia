@@ -47,8 +47,8 @@
 | P1-07 | Gestione crediti IA e costi | Owner, User | saldo crediti visibile nell'account | ledger SQLite atomico, grant Owner-only, consumo, rimborso limitato al consumo originale, chiavi idempotenti e storico | test saldo non negativo, doppio addebito, rimborso, isolamento e API; collegamento al costo reale dei job/provider ancora da completare | partial |
 | P1-08 | Timeline ed editing manuale | User | strumenti e anteprima | modello/render base | test gesture, playback e salvataggio su device | partial |
 | P1-09 | Effetti, testo, audio completi | User | pannelli operativi | renderer e asset | nessun pulsante placeholder; export testato | partial |
-| P1-10 | Keyframe, curve velocità, maschere e tracking | User | editor avanzato | renderer/engine | progetto riapribile e output coerente | missing |
-| P1-11 | Color grading, LUT, HDR, stabilizzazione | User | controlli avanzati | pipeline media | file campione e device reali | missing |
+| P1-10 | Keyframe, curve velocità, maschere e tracking | User | modello clip con keyframe serializzabili per posizione X/Y, scala, rotazione e opacità; controlli timeline, curve, maschere e tracking non ancora collegati | renderer/engine non ancora applica i keyframe all'output | test di persistenza JSON, compatibilità progetti legacy e rifiuto dati keyframe non validi; UI/rendering e output coerente ancora da completare | partial |
+| P1-11 | Color grading, LUT, HDR, stabilizzazione | User | modello per clip con esposizione, contrasto, saturazione, temperatura, tinta, alte luci e ombre; pannelli UI e LUT/HDR/stabilizzazione non ancora collegati | pipeline media non applica ancora i parametri al rendering/export | test di persistenza e limiti dei valori; renderer, LUT, HDR, stabilizzazione e file campione/device reali ancora da completare | partial |
 | P1-12 | Player professionale e zoom post-export | User | player e gesture | streaming/file output | pinch zoom durante playback, non solo anteprima | partial |
 | P1-13 | Libreria media e scorciatoia ultime 2 foto | User | scorciatoia AppBar per importare fino a 2 immagini; importazione completa resta disponibile | FilePicker image picker e pipeline import condivisa | selezione rapida limitata a due file; ordinamento automatico per data e verifica permessi/device ancora mancanti | partial |
 | P1-14 | Formati export e preset | User | preset e compatibilità | FFmpeg codec map | MP4/MOV/AVI/WebM validati con file reali | partial |
@@ -246,3 +246,13 @@
 - Aggiunti test API per creazione/lista/verifica, rifiuto di utente e anonimo e comportamento fail-closed quando manca la chiave di cifratura.
 - **P0-11 resta partial**: restore sicuro con staging/rollback, media assets, retention automatica e replica remota non sono implementati.
 - La verifica CI della precedente modifica audit sul commit `826f093` ha completato con successo backend e Flutter; Android preflight risultava ancora in esecuzione durante questo batch. La nuova modifica deve essere validata dalla propria CI.
+
+
+## Avanzamento editor: keyframe e controlli colore — 9 novembre 2026
+
+- P1-10 Keyframe: introdotto EditorKeyframe con proprietà posizione X/Y, scala, rotazione e opacità; i punti sono relativi all'inizio della clip, vengono conservati in copyWith e serializzati nel progetto. I dati malformati, con tempo negativo o valore non finito vengono rifiutati. I progetti legacy senza keyframe restano leggibili.
+- P1-11 Color grading: introdotto ClipColorGrade per esposizione, contrasto, saturazione, temperatura, tinta, alte luci e ombre; valori fuori intervallo o non finiti sono rifiutati e i parametri vengono conservati nel progetto. Le clip legacy assumono impostazioni neutre.
+- Test Flutter aggiunti per round-trip JSON di progetto/clip, compatibilità legacy, validazione e limiti dei controlli.
+- Queste due voci passano da missing a partial: non sono ancora disponibili controlli UI, interpolazione/renderer, LUT, HDR o stabilizzazione. Non dichiarare gli effetti visivi come operativi fino al collegamento e ai test con file esportati.
+- Nuovo conteggio: **2 done, 33 partial, 19 missing, 3 blocked su 57**. Ponderazione uniforme: (2 + 33 × 0,5) / 57 × 100 = 32,46%.
+- Il risultato CI sul nuovo commit è in corso; il conteggio documenta basi di modello e test presenti, non un rilascio pronto. APK ancora riservato alla fase 6; main invariato e PR non unita.
