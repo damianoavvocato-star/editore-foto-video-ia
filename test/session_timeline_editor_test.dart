@@ -74,6 +74,8 @@ void main() {
     expect(find.text('Exposure'), findsOneWidget);
     expect(find.text('Contrast'), findsOneWidget);
     final exposureSlider = find.byType(Slider).at(1);
+    await tester.ensureVisible(exposureSlider);
+    await tester.pumpAndSettle();
     await tester.drag(exposureSlider, const Offset(35, 0));
     await tester.pumpAndSettle();
     expect(changed, isNotNull);
