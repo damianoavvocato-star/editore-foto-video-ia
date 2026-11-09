@@ -93,6 +93,24 @@ void main() {
     session.dispose();
   });
 
+  test('selected color and keyframe edits participate in undo redo', () {
+    final session = EditorSession(project);
+    session.selectClip(project.tracks.single.clips.first);
+    session.setSelectedColorGrade(const ClipColorGrade(exposure: 1.25));
+    session.setSelectedKeyframe(const EditorKeyframe(
+      timeMs: 500, property: KeyframeProperty.opacity, value: 0.4,
+    ));
+    expect(session.selectedClip?.colorGrade.exposure, 1.25);
+    expect(session.selectedClip?.keyframes.single.value, 0.4);
+    session.undo();
+    expect(session.selectedClip?.keyframes, isEmpty);
+    session.redo();
+    expect(session.selectedClip?.keyframes.single.value, 0.4);
+    session.removeSelectedKeyframe(timeMs: 500, property: KeyframeProperty.opacity);
+    expect(session.selectedClip?.keyframes, isEmpty);
+    session.dispose();
+  });
+
   test('locked track can be unlocked even when its clip is selected', () {
     final lockedProject = project.copyWith(
       tracks: [project.tracks.single.copyWith(locked: true)],
