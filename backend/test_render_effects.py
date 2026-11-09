@@ -227,7 +227,7 @@ class RenderEffectsTest(unittest.TestCase):
                 'kind': 'video',
                 'clips': [
                     {'startMs': 0, 'durationMs': 1000, 'transitionAfterMs': 250,
-                     'transitionAfter': 'wipeleft'},
+                     'transitionAfter': 'radialwipe'},
                     {'startMs': 1000, 'durationMs': 1000},
                 ],
             }],
@@ -285,6 +285,89 @@ class RenderEffectsTest(unittest.TestCase):
             self.assertGreater(green, 80, f'La clip entrante non partecipa alla dissolvenza: {red, green}')
             self.assertLess(abs(red - green), 55,
                             f'La dissolvenza non miscela correttamente i due colori: {red, green}')
+        finally:
+            if previous is None:
+                os.environ.pop('MEDIA_DATA_DIR', None)
+            else:
+                os.environ['MEDIA_DATA_DIR'] = previous
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_alpha_multitrack_spatial_transitions_reveal_in_expected_direction(self):
+        root = tempfile.mkdtemp(prefix='editore_alpha_spatial_')
+        previous = os.environ.get('MEDIA_DATA_DIR')
+        try:
+            os.environ['MEDIA_DATA_DIR'] = root
+            from backend import server
+            server.ROOT = Path(root)
+            server.ASSETS = server.ROOT / 'assets'
+            server.OUTPUTS = server.ROOT / 'outputs'
+            server.ASSETS.mkdir(parents=True, exist_ok=True)
+            server.OUTPUTS.mkdir(parents=True, exist_ok=True)
+            from PIL import Image
+            first_id, second_id = uuid.uuid4().hex, uuid.uuid4().hex
+            Image.new('RGB', (160, 90), (220, 20, 20)).save(server.ASSETS / f'{first_id}.png')
+            Image.new('RGB', (160, 90), (20, 210, 30)).save(server.ASSETS / f'{second_id}.png')
+
+            samples = {
+                'wipeleft': ((20, 45), (140, 45)),
+                'wiperight': ((140, 45), (20, 45)),
+                'slideleft': ((120, 45), (20, 45)),
+                'slideright': ((20, 45), (120, 45)),
+            }
+            for transition_type, (green_point, red_point) in samples.items():
+                with self.subTest(transition=transition_type):
+                    job_id = uuid.uuid4().hex
+                    server.jobs[job_id] = {
+                        'state': 'queued', 'progress': 0.0, 'message': 'queued',
+                    }
+                    project = {
+                        'width': 160, 'height': 90, 'fps': 24,
+                        'tracks': [{
+                            'kind': 'video',
+                            'clips': [
+                                {
+                                    'kind': 'image', 'assetId': first_id,
+                                    'startMs': 0, 'durationMs': 1000,
+                                    'transitionAfterMs': 400,
+                                    'transitionAfter': transition_type,
+                                    'keyframes': [{
+                                        'timeMs': 0, 'property': 'opacity', 'value': 1.0,
+                                    }],
+                                },
+                                {
+                                    'kind': 'image', 'assetId': second_id,
+                                    'startMs': 1000, 'durationMs': 1000,
+                                },
+                            ],
+                        }],
+                    }
+                    server._render_job(job_id, project, {
+                        'resolution': 'p720', 'fps': 24,
+                        'container': 'mp4', 'codec': 'h264',
+                        'includeAudio': False,
+                    })
+                    self.assertEqual(
+                        server.jobs[job_id]['state'], 'completed',
+                        f'{transition_type}: {server.jobs[job_id]}',
+                    )
+                    frame = Path(root) / f'{transition_type}.png'
+                    subprocess.run(
+                        ['ffmpeg', '-y', '-ss', '0.80', '-i',
+                         str(server.OUTPUTS / f'{job_id}.mp4'),
+                         '-frames:v', '1', str(frame)],
+                        check=True, capture_output=True,
+                    )
+                    image = Image.open(frame).convert('RGB')
+                    green = image.getpixel(green_point)
+                    red = image.getpixel(red_point)
+                    self.assertGreater(
+                        green[1], green[0] * 2,
+                        f'{transition_type}: direzione entrante errata nel punto {green_point}: {green}',
+                    )
+                    self.assertGreater(
+                        red[0], red[1] * 2,
+                        f'{transition_type}: la clip uscente dovrebbe restare visibile in {red_point}: {red}',
+                    )
         finally:
             if previous is None:
                 os.environ.pop('MEDIA_DATA_DIR', None)
