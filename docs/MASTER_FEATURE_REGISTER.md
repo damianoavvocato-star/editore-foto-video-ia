@@ -278,3 +278,11 @@
 - Limite esplicito: i parametri sono modificabili e salvati nel progetto, ma la loro applicazione visiva al preview e al file esportato richiede ancora il collegamento al renderer; non si dichiara il color grading come effetto già renderizzato.
 - Le voci keyframe/color grading restano partial; conteggio e percentuale invariati: 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%. CI del commit grafico finale in attesa.
 - Nessun APK generato; fase 6 ultima; branch feature dedicato, main invariato e PR #1 draft.
+
+
+## Rifinitura grafica timeline e anteprima web — 9 novembre 2026
+
+- Corretta la chiusura del widget editor che bloccava l'analisi statica Flutter.
+- Aggiunti marcatori a diamante per i keyframe direttamente sopra la timeline, posizionati in base al tempo relativo della clip.
+- Creata un'anteprima web responsive separata in `docs/preview/index.html`, con layout studio, area di anteprima, pannello colore e timeline. È una demo grafica navigabile, non il runtime Flutter e non applica realmente gli effetti ai media.
+- La percentuale complessiva resta invariata finché queste rifiniture non superano i test e i criteri di completamento della funzionalità.
