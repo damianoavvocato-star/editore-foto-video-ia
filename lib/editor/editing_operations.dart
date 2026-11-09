@@ -251,7 +251,8 @@ class EditingOperations {
   }) => updateTrack(project, trackId, (track) {
     if (track.locked) return track;
     return track.copyWith(clips: track.clips.map((clip) {
-      if (clip.id != clipId || keyframe.timeMs > clip.durationMs) return clip;
+      if (clip.id != clipId || keyframe.timeMs < 0 ||
+          !keyframe.value.isFinite || keyframe.timeMs > clip.durationMs) return clip;
       final points = clip.keyframes.where((point) =>
         point.property != keyframe.property || point.timeMs != keyframe.timeMs,
       ).toList()..add(keyframe);
