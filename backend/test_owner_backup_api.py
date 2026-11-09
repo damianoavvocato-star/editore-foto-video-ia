@@ -1,4 +1,9 @@
 """Owner-only API tests for encrypted backup creation, listing and verification."""
+import io
+import sqlite3
+import tarfile
+import uuid
+
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
@@ -170,4 +175,36 @@ def test_restore_staging_retention_endpoint_is_owner_only_and_preview_first(tmp_
     denied = client.post(url, headers=_headers(store, user["userId"]))
     assert denied.status_code == 403
     assert client.post(url).status_code == 401
+
+
+
+def test_restore_prepare_api_rejects_incompatible_database_schema(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    key = Fernet.generate_key()
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", key.decode("ascii"))
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("schema_owner", "owner password long enough")
+
+    malformed_database = tmp_path / "malformed.sqlite3"
+    with sqlite3.connect(malformed_database) as db:
+        db.execute("CREATE TABLE accounts (id TEXT PRIMARY KEY)")
+    archive_buffer = io.BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        archive.add(malformed_database, arcname="accounts.sqlite3", recursive=False)
+    backup_id = uuid.uuid4().hex
+    backup_path = tmp_path / "backups" / f"{backup_id}.mibak"
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.write_bytes(Fernet(key).encrypt(archive_buffer.getvalue()))
+
+    before = database.read_bytes()
+    response = TestClient(server.app).post(
+        f"/v1/owner/backups/{backup_id}/restore/prepare",
+        headers=_headers(store, owner["userId"]),
+    )
+    assert response.status_code == 422
+    assert "schema account" in response.json()["detail"]
+    assert database.read_bytes() == before
 
