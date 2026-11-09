@@ -38,10 +38,26 @@ class RenderEffectsTest(unittest.TestCase):
             )
             alpha_image = Image.open(alpha_frame).convert('RGB')
             transparent_pixel = alpha_image.getpixel((42, 38))
-            base_pixel = alpha_image.getpixel((10, 10))
+
+            # Render the identical base clip without overlays as a pixel-level
+            # reference; this avoids assuming that every canvas corner is visible
+            # after rotation/cropping.
+            baseline_job = uuid.uuid4().hex
+            server.jobs[baseline_job]={'state':'queued','progress':0.0,'message':'queued'}
+            baseline_project={'width':320,'height':180,'fps':24,'tracks':[project['tracks'][0]]}
+            server._render_job(baseline_job,baseline_project,{'resolution':'p720','fps':24,'container':'mp4','codec':'h264','includeAudio':False})
+            self.assertEqual(server.jobs[baseline_job]['state'],'completed',server.jobs[baseline_job])
+            baseline_output=server.OUTPUTS/f'{baseline_job}.mp4'
+            baseline_frame=Path(root)/'baseline.png'
+            subprocess.run(
+                ['ffmpeg','-y','-ss','0.25','-i',str(baseline_output),
+                 '-frames:v','1',str(baseline_frame)],
+                check=True,capture_output=True,
+            )
+            base_pixel=Image.open(baseline_frame).convert('RGB').getpixel((42,38))
             self.assertLess(
-                sum(abs(a-b) for a, b in zip(transparent_pixel, base_pixel)), 45,
-                f'Area PNG trasparente non mostra correttamente la clip sottostante: {transparent_pixel} vs {base_pixel}',
+                sum(abs(a-b) for a,b in zip(transparent_pixel,base_pixel)), 45,
+                f'Area PNG trasparente non coincide con la clip sottostante: {transparent_pixel} vs {base_pixel}',
             )
 
             # Verify that animated overlay position changes in the actual
