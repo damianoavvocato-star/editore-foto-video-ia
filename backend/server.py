@@ -1353,7 +1353,9 @@ def _render_primary_alpha_layers(
                 durations[clip_index] * 0.45,
                 durations[clip_index + 1] * 0.45,
             )
-            fade_outs[clip_index] = transition
+            # Keep the outgoing clip opaque beneath the incoming clip.
+            # The incoming alpha ramp alone produces a true cross-dissolve
+            # when composited over the still-visible outgoing frame.
             fade_ins[clip_index + 1] = max(fade_ins[clip_index + 1], transition)
             requested_next_start = starts[clip_index + 1]
             transition_start = starts[clip_index] + durations[clip_index] - transition
