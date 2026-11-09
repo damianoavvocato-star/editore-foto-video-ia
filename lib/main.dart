@@ -998,6 +998,31 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0x222EC6B8),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0x5548CFC1)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.circle, size: 7, color: Color(0xFF55D6C5)),
+                            SizedBox(width: 6),
+                            Text(
+                              'LIVE',
+                              style: TextStyle(
+                                color: Color(0xFF9DEDE2),
+                                fontSize: 9,
+                                letterSpacing: 1.1,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton.filledTonal(
                         tooltip: t('import'),
                         onPressed: importMedia,
@@ -1008,12 +1033,13 @@ class _HomePageState extends State<HomePage> {
                 ),
                 Expanded(
                   child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [Color(0xFF11121B), Color(0xFF202033), Color(0xFF151622)],
                       ),
+                      border: Border.all(color: const Color(0x334E4B70)),
                     ),
                     alignment: Alignment.center,
                     child: media == null
