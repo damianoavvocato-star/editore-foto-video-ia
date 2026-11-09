@@ -25,6 +25,34 @@ class RenderEffectsTest(unittest.TestCase):
             output=server.OUTPUTS/f'{job_id}.mp4'
             probe=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,duration','-of','json',str(output)],check=True,capture_output=True,text=True)
             self.assertTrue(any(x['codec_type']=='video' for x in json.loads(probe.stdout)['streams']))
+
+            # Verify that animated overlay position changes in the actual
+            # encoded output, rather than merely accepting a valid FFmpeg graph.
+            from PIL import Image
+            centers = []
+            for sample, timestamp in [('early', '0.25'), ('late', '0.80')]:
+                frame = work_frame = Path(root) / f'{sample}.png'
+                subprocess.run(
+                    ['ffmpeg', '-y', '-ss', timestamp, '-i', str(output),
+                     '-frames:v', '1', str(frame)],
+                    check=True, capture_output=True,
+                )
+                image = Image.open(frame).convert('RGB')
+                yellow = [
+                    (x, y)
+                    for y in range(image.height)
+                    for x in range(image.width)
+                    if (lambda p: p[0] > 180 and p[1] > 180 and p[2] < 100)(image.getpixel((x, y)))
+                ]
+                self.assertGreater(len(yellow), 20, f'Overlay giallo non visibile a {timestamp}s')
+                centers.append((
+                    sum(point[0] for point in yellow) / len(yellow),
+                    sum(point[1] for point in yellow) / len(yellow),
+                ))
+            self.assertGreater(
+                centers[1][0], centers[0][0] + 10,
+                f'Keyframe posizione X non applicato: {centers}',
+            )
         finally:
             if previous is None: os.environ.pop('MEDIA_DATA_DIR',None)
             else: os.environ['MEDIA_DATA_DIR']=previous
