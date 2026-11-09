@@ -105,9 +105,10 @@ class RenderEffectsTest(unittest.TestCase):
             server.ASSETS.mkdir(parents=True, exist_ok=True)
             server.OUTPUTS.mkdir(parents=True, exist_ok=True)
             from PIL import Image
-            lower_id, upper_id, job_id = (uuid.uuid4().hex for _ in range(3))
+            lower_id, upper_id, overlay_id, job_id = (uuid.uuid4().hex for _ in range(4))
             Image.new('RGB', (160, 90), (220, 20, 20)).save(server.ASSETS / f'{lower_id}.png')
             Image.new('RGB', (160, 90), (20, 210, 30)).save(server.ASSETS / f'{upper_id}.png')
+            Image.new('RGBA', (24, 24), (20, 40, 230, 255)).save(server.ASSETS / f'{overlay_id}.png')
             server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'queued'}
             project = {
                 'width': 160, 'height': 90, 'fps': 24,
@@ -121,6 +122,10 @@ class RenderEffectsTest(unittest.TestCase):
                              {'timeMs': 0, 'property': 'opacity', 'value': 0.0},
                              {'timeMs': 500, 'property': 'opacity', 'value': 1.0},
                          ]},
+                    ]},
+                    {'kind': 'overlay', 'clips': [
+                        {'kind': 'image', 'assetId': overlay_id, 'startMs': 0,
+                         'durationMs': 1000, 'x': 0, 'y': 0, 'width': 24, 'height': 24},
                     ]},
                 ],
             }
@@ -143,6 +148,15 @@ class RenderEffectsTest(unittest.TestCase):
                                f'La clip inferiore non è visibile durante la dissolvenza: {samples[0]}')
             self.assertGreater(samples[1][1], samples[1][0] * 2,
                                f'La clip superiore non è diventata opaca: {samples[1]}')
+            overlay_frame = Path(root) / 'overlay-after-alpha.png'
+            subprocess.run(
+                ['ffmpeg', '-y', '-ss', '0.80', '-i', str(output),
+                 '-frames:v', '1', str(overlay_frame)],
+                check=True, capture_output=True,
+            )
+            overlay_pixel = Image.open(overlay_frame).convert('RGB').getpixel((8, 8))
+            self.assertGreater(overlay_pixel[2], overlay_pixel[1] * 2,
+                               f'Overlay perso nel percorso alpha: {overlay_pixel}')
         finally:
             if previous is None:
                 os.environ.pop('MEDIA_DATA_DIR', None)
