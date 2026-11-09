@@ -466,7 +466,7 @@ class RenderEffectsTest(unittest.TestCase):
             ).stdout.strip()
             self.assertEqual(audio_probe, 'aac', 'Traccia audio assente dall’export alpha')
             stream_probe = subprocess.run(
-                [server.FFPROBE, '-v', 'error', '-show_entries',
+                [shutil.which('ffprobe'), '-v', 'error', '-show_entries',
                  'stream=codec_type,duration', '-of', 'json', str(output)],
                 check=True, capture_output=True, text=True,
             )
