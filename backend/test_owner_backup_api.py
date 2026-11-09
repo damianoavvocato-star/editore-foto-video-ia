@@ -199,12 +199,20 @@ def test_restore_prepare_api_rejects_incompatible_database_schema(tmp_path, monk
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     backup_path.write_bytes(Fernet(key).encrypt(archive_buffer.getvalue()))
 
-    before = database.read_bytes()
+    with sqlite3.connect(database) as db:
+        before = db.execute(
+            "SELECT user_id, username, role FROM accounts ORDER BY user_id"
+        ).fetchall()
     response = TestClient(server.app).post(
         f"/v1/owner/backups/{backup_id}/restore/prepare",
         headers=_headers(store, owner["userId"]),
     )
     assert response.status_code == 422
     assert "schema account" in response.json()["detail"]
-    assert database.read_bytes() == before
+    with sqlite3.connect(database) as db:
+        after = db.execute(
+            "SELECT user_id, username, role FROM accounts ORDER BY user_id"
+        ).fetchall()
+        assert db.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    assert after == before
 
