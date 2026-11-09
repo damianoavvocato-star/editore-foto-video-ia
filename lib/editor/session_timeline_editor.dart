@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:flutter/material.dart';
 
 import '../models/editor_project.dart';
@@ -401,6 +399,6 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
       ],
         ),
       ),
-    ));
+    );
   }
 }
