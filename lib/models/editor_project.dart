@@ -2,6 +2,45 @@ import 'dart:convert';
 
 enum MediaKind { video, image, audio, text }
 
+/// Animatable clip properties stored in project-local timeline time.
+enum KeyframeProperty { positionX, positionY, scale, rotation, opacity }
+
+class EditorKeyframe {
+  const EditorKeyframe({
+    required this.timeMs,
+    required this.property,
+    required this.value,
+  }) : assert(timeMs >= 0);
+
+  final int timeMs;
+  final KeyframeProperty property;
+  final double value;
+
+  Map<String, Object?> toJson() => {
+        'timeMs': timeMs,
+        'property': property.name,
+        'value': value,
+      };
+
+  factory EditorKeyframe.fromJson(Map<String, dynamic> json) {
+    final propertyName = json['property'];
+    final property = KeyframeProperty.values.where(
+      (candidate) => candidate.name == propertyName,
+    );
+    final rawValue = json['value'];
+    final rawTime = json['timeMs'];
+    if (property.isEmpty || rawTime is! int || rawTime < 0 ||
+        rawValue is! num || !rawValue.toDouble().isFinite) {
+      throw const FormatException('Fotogramma chiave non valido.');
+    }
+    return EditorKeyframe(
+      timeMs: rawTime,
+      property: property.first,
+      value: rawValue.toDouble(),
+    );
+  }
+}
+
 MediaKind _mediaKindFromJson(Object? value) {
   for (final kind in MediaKind.values) {
     if (kind.name == value) return kind;
@@ -21,6 +60,7 @@ class EditorClip {
     this.speed = 1,
     this.transitionAfterMs = 0,
     this.transitionAfter = 'fade',
+    this.keyframes = const [],
   });
 
   final String id;
@@ -35,6 +75,8 @@ class EditorClip {
   /// Transition applied after this clip when joining the next clip.
   final int transitionAfterMs;
   final String transitionAfter;
+  /// Property animation points, expressed relative to this clip's start.
+  final List<EditorKeyframe> keyframes;
 
   int get endMs => startMs + durationMs;
 
@@ -46,6 +88,7 @@ class EditorClip {
     double? speed,
     int? transitionAfterMs,
     String? transitionAfter,
+    List<EditorKeyframe>? keyframes,
   }) =>
       EditorClip(
         id: id,
@@ -58,6 +101,7 @@ class EditorClip {
         speed: speed ?? this.speed,
         transitionAfterMs: transitionAfterMs ?? this.transitionAfterMs,
         transitionAfter: transitionAfter ?? this.transitionAfter,
+        keyframes: keyframes ?? this.keyframes,
       );
 
   Map<String, Object?> toJson() => {
@@ -71,6 +115,7 @@ class EditorClip {
         'speed': speed,
         'transitionAfterMs': transitionAfterMs,
         'transitionAfter': transitionAfter,
+        'keyframes': keyframes.map((keyframe) => keyframe.toJson()).toList(),
       };
 
   factory EditorClip.fromJson(Map<String, dynamic> json) => EditorClip(
@@ -84,6 +129,9 @@ class EditorClip {
         speed: (json['speed'] as num?)?.toDouble() ?? 1,
         transitionAfterMs: json['transitionAfterMs'] as int? ?? 0,
         transitionAfter: json['transitionAfter'] as String? ?? 'fade',
+        keyframes: (json['keyframes'] as List<dynamic>? ?? [])
+            .map((item) => EditorKeyframe.fromJson(item as Map<String, dynamic>))
+            .toList(),
       );
 }
 
