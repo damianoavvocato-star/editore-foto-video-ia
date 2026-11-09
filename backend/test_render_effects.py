@@ -465,6 +465,29 @@ class RenderEffectsTest(unittest.TestCase):
                 check=True, capture_output=True, text=True,
             ).stdout.strip()
             self.assertEqual(audio_probe, 'aac', 'Traccia audio assente dall’export alpha')
+            stream_probe = subprocess.run(
+                [server.FFPROBE, '-v', 'error', '-show_entries',
+                 'stream=codec_type,duration', '-of', 'json', str(output)],
+                check=True, capture_output=True, text=True,
+            )
+            streams = json.loads(stream_probe.stdout)['streams']
+            video_duration = float(next(
+                stream['duration'] for stream in streams
+                if stream['codec_type'] == 'video' and 'duration' in stream
+            ))
+            audio_duration = float(next(
+                stream['duration'] for stream in streams
+                if stream['codec_type'] == 'audio' and 'duration' in stream
+            ))
+            self.assertGreater(
+                audio_duration, 1.1,
+                f'Audio troncato durante l’export alpha: {audio_duration:.3f}s',
+            )
+            self.assertLessEqual(
+                audio_duration, video_duration + 0.1,
+                f'Padding audio oltre la timeline video: audio={audio_duration:.3f}s '
+                f'video={video_duration:.3f}s',
+            )
             frame = Path(root) / 'alpha-with-overlay.png'
             subprocess.run(
                 [server.FFMPEG, '-y', '-ss', '0.80', '-i', str(output),
