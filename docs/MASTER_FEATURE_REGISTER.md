@@ -327,3 +327,14 @@
 
 
 > **Transizioni alpha spaziali — 9 novembre 2026:** esteso il compositing alpha alle transizioni `wipeleft`, `wiperight`, `slideleft` e `slideright`, oltre a `fade`/`dissolve`. Aggiunti test d'integrazione che campionano punti distinti del fotogramma intermedio per verificare direzione e permanenza della clip sottostante. Il supporto resta `partial` fino al superamento CI e alla verifica di transizioni concatenate, clip sovrapposte intenzionalmente, overlay e audio.
+
+
+## Verifica rendering alpha, overlay e audio — 10 novembre 2026
+
+- Corretto il completamento della catena audio nel rendering finale: il filtro `apad` è ora limitato alla durata effettiva della timeline video (`whole_dur`), evitando padding audio senza limite durante lo svuotamento dei filtri FFmpeg con `-shortest`.
+- La verifica CI sul commit `add3fb94ed35afd3cf27fc9e49e4dc7521b73f64`, run [42718421985](https://github.com/damianoavvocato-star/editore-foto-video-ia/actions/runs/42718421985), si è conclusa con esito **success** per `backend-test`, `flutter-test` e `android-preflight`.
+- Risultati registrati: **377 test backend superati**, inclusi i test di rendering; **164 test Flutter superati**; configurazione Gradle Android validata con `BUILD SUCCESSFUL`.
+- Il test d'integrazione che combinava transizione alpha, overlay e audio non ha riprodotto il precedente errore FFmpeg `No space left on device`.
+- `android-apk` è stato saltato intenzionalmente: la generazione APK resta riservata alla fase 6. Nessuna modifica a `main` e nessun merge della PR.
+- P1-10 e P1-11 restano `partial`: la CI verde dimostra il percorso backend coperto dai test, ma non certifica ancora confronto visivo preview/export, tutte le transizioni concatenate, gesture avanzate o prova su dispositivi reali. Conteggio e percentuale non cambiano: **2 done, 33 partial, 19 missing, 3 blocked su 57 = 32,46%**.
+- Restano avvisi non bloccanti di deprecazione in dipendenze Python/Flutter/Gradle; vanno gestiti in un batch di manutenzione dedicato, senza mescolarli alla correzione funzionale appena verificata.
