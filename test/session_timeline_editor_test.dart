@@ -50,6 +50,34 @@ void main() {
     expect(find.text('Timeline'), findsOneWidget);
   });
 
+
+  testWidgets('selected clip exposes color controls and persists exposure', (tester) async {
+    EditorProject? changed;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 760,
+          child: SessionTimelineEditor(
+            project: project,
+            languageCode: 'en',
+            onProjectChanged: (value) => changed = value,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sample').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Color grading'), findsOneWidget);
+    expect(find.text('Exposure'), findsOneWidget);
+    expect(find.text('Contrast'), findsOneWidget);
+    final exposureSlider = find.byType(Slider).at(1);
+    await tester.drag(exposureSlider, const Offset(35, 0));
+    await tester.pumpAndSettle();
+    expect(changed, isNotNull);
+    expect(changed!.tracks.single.clips.single.colorGrade.exposure, greaterThan(0));
+  });
+
   testWidgets('timeline controls follow the selected Arabic language', (tester) async {
     await showEditor(tester, 'ar');
     expect(find.text('تراجع'), findsOneWidget);
