@@ -52,6 +52,40 @@ void main() {
     expect(keyframes[2].property, KeyframeProperty.opacity);
   });
 
+
+  test('clip color grade settings survive serialization', () {
+    const clip = EditorClip(
+      id: 'graded',
+      source: 'graded.mp4',
+      kind: MediaKind.video,
+      startMs: 0,
+      durationMs: 4000,
+      colorGrade: ClipColorGrade(
+        exposure: 1.25,
+        contrast: 1.2,
+        saturation: 0.8,
+        temperature: -12,
+        tint: 8,
+        highlights: -0.4,
+        shadows: 0.3,
+      ),
+    );
+    final restored = EditorClip.fromJson(clip.toJson());
+    expect(restored.colorGrade.exposure, 1.25);
+    expect(restored.colorGrade.contrast, 1.2);
+    expect(restored.colorGrade.saturation, 0.8);
+    expect(restored.colorGrade.temperature, -12);
+    expect(restored.colorGrade.tint, 8);
+    expect(restored.colorGrade.highlights, -0.4);
+    expect(restored.colorGrade.shadows, 0.3);
+  });
+
+  test('color grade rejects out-of-range and non-finite values', () {
+    expect(() => ClipColorGrade.fromJson({'exposure': 6}), throwsFormatException);
+    expect(() => ClipColorGrade.fromJson({'saturation': double.nan}), throwsFormatException);
+    expect(() => ClipColorGrade.fromJson({'contrast': -0.1}), throwsFormatException);
+  });
+
   test('legacy clips without keyframes remain readable', () {
     final clip = EditorClip.fromJson({
       'id': 'legacy',
