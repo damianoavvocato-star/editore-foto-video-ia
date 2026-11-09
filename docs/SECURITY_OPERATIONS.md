@@ -158,3 +158,17 @@ alerts for suspicious logins requires a configured notification provider and
 deployment credentials. No notification is claimed to have been sent by this
 repository alone. Production notification delivery must be integrated and
 tested before treating alerts as an active control.
+
+
+## Backup retention
+
+The Owner-only endpoint `POST /v1/owner/backups/retention` supports a preview-first cleanup policy.
+It defaults to `dry_run=true`, retains at least the newest three valid backup files,
+and considers only regular, non-symlink `.mibak` files with valid generated identifiers.
+The retention period defaults to 90 days and is bounded to 1–3650 days; the minimum
+retained count is bounded to 1–100. No files are removed during preview. Actual
+deletion requires an authenticated Owner to explicitly set `dry_run=false`.
+The API reports eligible and deleted identifiers for auditability. This is local
+backup retention only; it does not implement remote replication, media-asset
+backup, or disaster-recovery restore.
+
