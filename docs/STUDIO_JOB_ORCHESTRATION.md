@@ -144,3 +144,15 @@ A provider-neutral S3-compatible adapter is now available in `backend/studio_sto
 - Credentials and bucket configuration are read only from backend environment variables. No storage URL or credential is returned by this adapter's public data model.
 
 This is an infrastructure adapter, not yet an end-to-end delivery feature: the supervised worker does not yet fetch provider output into this storage, no public download route is enabled, and no presigned URL is persisted in SQLite. A production rollout still requires provider-download host allowlisting/redirect controls, streamed size and MIME verification, malware/media validation, object lifecycle rules, deletion propagation, and authenticated download integration.
+
+
+## Restore staging lifecycle
+
+Restore preparation writes a verified SQLite copy into a private staging
+directory and returns a stage identifier. Staged copies are temporary and can
+be inspected for expiry with the Owner-only
+`POST /v1/owner/backups/restore-staging/retention` endpoint. The default
+retention is 24 hours and the endpoint is preview-only unless an operator
+explicitly requests deletion. This is housekeeping only; staged copies cannot
+be activated through the current API. The live database remains untouched.
+
