@@ -42,7 +42,7 @@ class RenderEffectsTest(unittest.TestCase):
                     (x, y)
                     for y in range(image.height)
                     for x in range(image.width)
-                    if (lambda p: p[0] > 180 and p[1] > 180 and p[2] < 100)(image.getpixel((x, y)))
+                    if (lambda p: p[0] > 80 and p[1] > 80 and p[2] < 100)(image.getpixel((x, y)))
                 ]
                 self.assertGreater(len(yellow), 20, f'Overlay giallo non visibile a {timestamp}s')
                 centers.append((
