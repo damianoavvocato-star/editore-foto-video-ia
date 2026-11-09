@@ -48,6 +48,59 @@ MediaKind _mediaKindFromJson(Object? value) {
   throw FormatException('Tipo di contenuto multimediale non supportato: $value');
 }
 
+/// Per-clip color controls persisted with the editable project.
+class ClipColorGrade {
+  const ClipColorGrade({
+    this.exposure = 0,
+    this.contrast = 1,
+    this.saturation = 1,
+    this.temperature = 0,
+    this.tint = 0,
+    this.highlights = 0,
+    this.shadows = 0,
+  });
+
+  final double exposure;
+  final double contrast;
+  final double saturation;
+  final double temperature;
+  final double tint;
+  final double highlights;
+  final double shadows;
+
+  Map<String, Object?> toJson() => {
+        'exposure': exposure,
+        'contrast': contrast,
+        'saturation': saturation,
+        'temperature': temperature,
+        'tint': tint,
+        'highlights': highlights,
+        'shadows': shadows,
+      };
+
+  factory ClipColorGrade.fromJson(Map<String, dynamic> json) {
+    double read(String key, double fallback, double min, double max) {
+      final raw = json[key];
+      if (raw == null) return fallback;
+      if (raw is! num || !raw.toDouble().isFinite ||
+          raw.toDouble() < min || raw.toDouble() > max) {
+        throw FormatException('Valore colore non valido: $key');
+      }
+      return raw.toDouble();
+    }
+
+    return ClipColorGrade(
+      exposure: read('exposure', 0, -5, 5),
+      contrast: read('contrast', 1, 0, 2),
+      saturation: read('saturation', 1, 0, 2),
+      temperature: read('temperature', 0, -100, 100),
+      tint: read('tint', 0, -100, 100),
+      highlights: read('highlights', 0, -1, 1),
+      shadows: read('shadows', 0, -1, 1),
+    );
+  }
+}
+
 class EditorClip {
   const EditorClip({
     required this.id,
@@ -61,6 +114,7 @@ class EditorClip {
     this.transitionAfterMs = 0,
     this.transitionAfter = 'fade',
     this.keyframes = const [],
+    this.colorGrade = const ClipColorGrade(),
   });
 
   final String id;
@@ -77,6 +131,7 @@ class EditorClip {
   final String transitionAfter;
   /// Property animation points, expressed relative to this clip's start.
   final List<EditorKeyframe> keyframes;
+  final ClipColorGrade colorGrade;
 
   int get endMs => startMs + durationMs;
 
@@ -89,6 +144,7 @@ class EditorClip {
     int? transitionAfterMs,
     String? transitionAfter,
     List<EditorKeyframe>? keyframes,
+    ClipColorGrade? colorGrade,
   }) =>
       EditorClip(
         id: id,
@@ -102,6 +158,7 @@ class EditorClip {
         transitionAfterMs: transitionAfterMs ?? this.transitionAfterMs,
         transitionAfter: transitionAfter ?? this.transitionAfter,
         keyframes: keyframes ?? this.keyframes,
+        colorGrade: colorGrade ?? this.colorGrade,
       );
 
   Map<String, Object?> toJson() => {
@@ -116,6 +173,7 @@ class EditorClip {
         'transitionAfterMs': transitionAfterMs,
         'transitionAfter': transitionAfter,
         'keyframes': keyframes.map((keyframe) => keyframe.toJson()).toList(),
+        'colorGrade': colorGrade.toJson(),
       };
 
   factory EditorClip.fromJson(Map<String, dynamic> json) => EditorClip(
@@ -132,6 +190,11 @@ class EditorClip {
         keyframes: (json['keyframes'] as List<dynamic>? ?? [])
             .map((item) => EditorKeyframe.fromJson(item as Map<String, dynamic>))
             .toList(),
+        colorGrade: json['colorGrade'] == null
+            ? const ClipColorGrade()
+            : ClipColorGrade.fromJson(
+                json['colorGrade'] as Map<String, dynamic>,
+              ),
       );
 }
 
