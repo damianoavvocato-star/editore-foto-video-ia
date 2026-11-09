@@ -41,3 +41,50 @@ def test_backup_verification_detects_ciphertext_tampering(tmp_path, monkeypatch)
     path.write_bytes(content)
     with pytest.raises(BackupError, match="alterato"):
         backups.verify(created["backupId"])
+
+def test_retention_preview_and_prune_preserve_minimum_newest_backups(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    created = []
+    for index in range(5):
+        result = backups.create()
+        path = tmp_path / "backups" / f"{result['backupId']}.mibak"
+        path.touch()
+        import os
+        os.utime(path, (1000 + index, 1000 + index))
+        created.append(result["backupId"])
+
+    preview = backups.prune(retention_days=1, min_keep=2, dry_run=True, now=200000)
+    assert preview["eligibleCount"] == 3
+    assert preview["deletedCount"] == 0
+    assert len(backups.list_backups()) == 5
+
+    applied = backups.prune(retention_days=1, min_keep=2, dry_run=False, now=200000)
+    assert applied["deletedCount"] == 3
+    remaining = {item["backupId"] for item in backups.list_backups()}
+    assert remaining == set(created[-2:])
+
+
+def test_retention_rejects_invalid_policy_and_does_not_follow_symlinks(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    with pytest.raises(BackupError):
+        backups.prune(retention_days=0)
+    with pytest.raises(BackupError):
+        backups.prune(min_keep=0)
+
+    outside = tmp_path / "outside.mibak"
+    outside.write_bytes(b"do-not-delete")
+    link = tmp_path / "backups" / ("a" * 32 + ".mibak")
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are not available on this platform")
+    result = backups.prune(retention_days=1, min_keep=1, dry_run=False, now=200000)
+    assert result["deletedCount"] == 0
+    assert outside.read_bytes() == b"do-not-delete"
+
