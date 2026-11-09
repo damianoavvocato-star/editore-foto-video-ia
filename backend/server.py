@@ -1997,6 +1997,25 @@ def owner_list_backups(request: Request, limit: int = 50):
     return {'backups': _backup_store().list_backups(limit)}
 
 
+@app.post('/v1/owner/backups/retention')
+def owner_prune_backups(
+    request: Request,
+    retention_days: int = Query(default=90, ge=1, le=3650),
+    min_keep: int = Query(default=3, ge=1, le=100),
+    dry_run: bool = Query(default=True),
+):
+    """Owner-only backup cleanup; deletion requires an explicit dry_run=false."""
+    _require_owner(request)
+    try:
+        return _backup_store().prune(
+            retention_days=retention_days,
+            min_keep=min_keep,
+            dry_run=dry_run,
+        )
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.post('/v1/owner/backups/{backup_id}/verify')
 def owner_verify_backup(backup_id: str, request: Request):
     _require_owner(request)
