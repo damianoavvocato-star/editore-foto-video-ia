@@ -782,6 +782,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
           .toList();
       var hasMore = response['hasMore'] == true;
       var loadingMore = false;
+      var verifyingIntegrity = false;
+      Map<String, dynamic>? integrity;
       if (!mounted) return;
       final search = TextEditingController();
       String action = 'Tutte';
@@ -821,6 +823,74 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                       items: actions.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
                       onChanged: (value) => refresh(() => action = value ?? 'Tutte'),
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: verifyingIntegrity ? null : () async {
+                              refresh(() => verifyingIntegrity = true);
+                              try {
+                                final result = await api.request(
+                                  'GET',
+                                  '/v1/owner/audit/integrity',
+                                );
+                                refresh(() {
+                                  integrity = Map<String, dynamic>.from(result);
+                                  verifyingIntegrity = false;
+                                });
+                              } catch (error) {
+                                refresh(() => verifyingIntegrity = false);
+                                _notify('Verifica integrità non riuscita: $error');
+                              }
+                            },
+                            icon: verifyingIntegrity
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.verified_user_outlined),
+                            label: Text(verifyingIntegrity
+                                ? 'Verifica in corso…'
+                                : 'Verifica integrità registro'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (integrity != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: integrity!['valid'] == true
+                              ? Theme.of(context).colorScheme.primaryContainer
+                              : Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              integrity!['valid'] == true
+                                  ? Icons.verified
+                                  : Icons.warning_amber_rounded,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                integrity!['valid'] == true
+                                    ? 'Catena integra · ${integrity!['count'] ?? 0} eventi · ${integrity!['algorithm'] ?? 'sha256'}'
+                                    : 'Integrità non verificata · evento: ${integrity!['firstInvalidEventId'] ?? 'non disponibile'}'
+                                        + (integrity!['keyAvailable'] == false
+                                            ? ' · chiave HMAC non disponibile'
+                                            : ''),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerLeft,
