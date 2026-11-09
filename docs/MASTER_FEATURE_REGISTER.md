@@ -321,3 +321,6 @@
 
 
 > **Nuovo percorso alpha multitraccia — 9 novembre 2026:** introdotto un compositing RGBA per le clip principali con keyframe di opacità. Le clip vengono mantenute come livelli trasparenti fino alla composizione, seguendo l'ordine delle tracce e i relativi tempi di timeline; l'output intermedio viene poi passato al percorso esistente di overlay e audio. Aggiunto un test d'integrazione che verifica pixel della traccia inferiore durante la dissolvenza e della traccia superiore a opacità piena. Stato `partial` fino alla CI verde e a ulteriori verifiche su transizioni, anteprima e progetti complessi.
+
+
+> **Transizioni nel compositing alpha — 9 novembre 2026:** aggiunto un primo percorso di transizione tra clip principali sullo stesso livello: dissolvenza e dissolvenza incrociata tramite sovrapposizione temporale e inviluppi alpha complementari. Inserito un test d'integrazione che campiona il frame intermedio del video esportato e un test che verifica il rifiuto esplicito delle tendine non ancora implementate nel percorso alpha. P1-10 resta `partial`: la nuova implementazione deve superare CI e richiede ulteriori test su transizioni concatenate, clip sovrapposte intenzionalmente, audio, overlay e anteprima.
