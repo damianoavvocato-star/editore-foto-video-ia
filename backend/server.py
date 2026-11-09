@@ -1336,6 +1336,7 @@ def _render_primary_alpha_layers(
         ]
         fade_ins = [0.0] * len(ordered)
         fade_outs = [0.0] * len(ordered)
+        transition_ins = ['fade'] * len(ordered)
         for clip_index, clip in enumerate(ordered[:-1]):
             raw_ms = clip.get('transitionAfterMs', 0)
             if isinstance(raw_ms, bool) or not isinstance(raw_ms, int) or raw_ms < 0:
@@ -1343,10 +1344,13 @@ def _render_primary_alpha_layers(
             if not raw_ms:
                 continue
             transition_type = str(clip.get('transitionAfter', 'fade')).lower()
-            if transition_type not in {'fade', 'dissolve'}:
+            if transition_type not in {
+                'fade', 'dissolve', 'wipeleft', 'wiperight',
+                'slideleft', 'slideright',
+            }:
                 raise RuntimeError(
                     f'Transizione {transition_type} non ancora supportata '
-                    'nel compositing alpha multitraccia; usa dissolvenza o dissolvenza incrociata.'
+                    'nel compositing alpha multitraccia.'
                 )
             transition = min(
                 raw_ms / 1000.0,
@@ -1357,6 +1361,7 @@ def _render_primary_alpha_layers(
             # The incoming alpha ramp alone produces a true cross-dissolve
             # when composited over the still-visible outgoing frame.
             fade_ins[clip_index + 1] = max(fade_ins[clip_index + 1], transition)
+            transition_ins[clip_index + 1] = transition_type
             requested_next_start = starts[clip_index + 1]
             transition_start = starts[clip_index] + durations[clip_index] - transition
             # Preserve an intentional overlap; otherwise create the requested
@@ -1366,14 +1371,17 @@ def _render_primary_alpha_layers(
                 min(requested_next_start, transition_start),
             )
         prepared_tracks.append([
-            (clip, starts[index], fade_ins[index], fade_outs[index])
+            (
+                clip, starts[index], fade_ins[index], fade_outs[index],
+                transition_ins[index],
+            )
             for index, clip in enumerate(ordered)
         ])
 
     prepared_flattened = [item for track in prepared_tracks for item in track]
     total_duration = max(
         start + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
-        for clip, start, _fade_in, _fade_out in prepared_flattened
+        for clip, start, _fade_in, _fade_out, _transition_type in prepared_flattened
     )
     cmd = [FFMPEG, '-y']
     graph = [
@@ -1384,7 +1392,10 @@ def _render_primary_alpha_layers(
     layer_number = 0
 
     for track_clips in prepared_tracks:
-        for clip, start, transition_fade_in, transition_fade_out in track_clips:
+        for (
+            clip, start, transition_fade_in, transition_fade_out,
+            transition_in_type,
+        ) in track_clips:
             asset_id = clip.get('assetId')
             if not isinstance(asset_id, str) or not _valid_id(asset_id):
                 raise RuntimeError('Clip senza assetId valido')
@@ -1487,10 +1498,20 @@ def _render_primary_alpha_layers(
                     f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black@0"
                 )
             alpha_factors = [opacity_expr or '1']
-            if transition_fade_in > 0:
+            if transition_fade_in > 0 and transition_in_type in {'fade', 'dissolve'}:
                 alpha_factors.append(
                     f"if(lt(T,{transition_fade_in:.6f}),"
                     f"max(0,T/{transition_fade_in:.6f}),1)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'wipeleft':
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"if(lt(X,W*T/{transition_fade_in:.6f}),1,0),1)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'wiperight':
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"if(gt(X,W*(1-T/{transition_fade_in:.6f})),1,0),1)"
                 )
             if transition_fade_out > 0:
                 fade_out_start = max(0.0, duration - transition_fade_out)
@@ -1508,8 +1529,19 @@ def _render_primary_alpha_layers(
             layer_label = f'[primary{layer_number}]'
             graph.append(f'[{input_index}:v]{",".join(filters)}{layer_label}')
             mixed_label = f'[primarymix{layer_number}]'
+            overlay_x = '0'
+            if transition_fade_in > 0 and transition_in_type == 'slideleft':
+                overlay_x = (
+                    f"if(lt(t,{start + transition_fade_in:.6f}),"
+                    f"{width}*(1-(t-{start:.6f})/{transition_fade_in:.6f}),0)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'slideright':
+                overlay_x = (
+                    f"if(lt(t,{start + transition_fade_in:.6f}),"
+                    f"-{width}*(1-(t-{start:.6f})/{transition_fade_in:.6f}),0)"
+                )
             graph.append(
-                f'{current}{layer_label}overlay=x=0:y=0:format=auto:'
+                f"{current}{layer_label}overlay=x='{overlay_x}':y=0:format=auto:"
                 f'eof_action=pass:repeatlast=0:shortest=0{mixed_label}'
             )
             current = mixed_label
