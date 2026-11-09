@@ -1548,14 +1548,15 @@ def _render_primary_alpha_layers(
             input_index += 1
             layer_number += 1
 
-    intermediate = work / 'primary_alpha_composite.mov'
+    intermediate = work / 'primary_alpha_composite.mp4'
     cmd += [
         # Bound filter-graph worker threads: RGBA 720p frames can otherwise
         # exhaust constrained shared-memory pools on mobile/container hosts.
         '-filter_complex_threads', '1',
         '-filter_complex', ';'.join(graph),
         '-map', current, '-an', '-t', f'{total_duration:.6f}',
-        '-c:v', 'qtrle', '-threads', '1', '-pix_fmt', 'argb', '-r', str(fps),
+        '-c:v', 'libx264', '-threads', '1', '-preset', 'ultrafast',
+        '-crf', '16', '-pix_fmt', 'yuv420p', '-r', str(fps),
         str(intermediate),
     ]
     result = _run_ffmpeg(job_id, cmd, timeout=max(180, total_duration * 20))
