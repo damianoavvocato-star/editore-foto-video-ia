@@ -185,3 +185,16 @@ step only: activation, maintenance-mode coordination, rollback, staged-file expi
 and media-asset restore are not implemented and must not be implied by a successful
 preparation response.
 
+
+
+## Restore staging expiry
+
+Prepared restore databases are isolated under the private `restore-staging`
+directory and are not active account databases. The Owner-only
+`POST /v1/owner/backups/restore-staging/retention` endpoint expires only
+generated stage filenames older than the configured age (default 24 hours).
+It defaults to preview mode; deletion requires an explicit `dry_run=false`.
+The operation ignores symlinks and unrelated files. It does not activate a
+restore, alter the live database, or replace the need for maintenance gating
+and rollback before a future restore-activation feature.
+
