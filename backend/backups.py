@@ -106,6 +106,70 @@ class BackupStore:
         return result
 
 
+
+    def prepare_restore(self, backup_id: str) -> dict:
+        """Decrypt and stage a verified database without touching the live database."""
+        if not self._valid_id(backup_id):
+            raise BackupError("Identificativo backup non valido.")
+        source = self.directory / f"{backup_id}.mibak"
+        if source.is_symlink() or not source.is_file():
+            raise BackupError("Backup non trovato.")
+        try:
+            archive_bytes = self._fernet().decrypt(source.read_bytes())
+        except InvalidToken as exc:
+            raise BackupError("Backup non verificabile: chiave errata o file alterato.") from exc
+        try:
+            with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+                members = archive.getmembers()
+                if len(members) != 1 or members[0].name != "accounts.sqlite3" or not members[0].isfile():
+                    raise BackupError("Contenuto backup non valido.")
+                extracted = archive.extractfile(members[0])
+                if extracted is None:
+                    raise BackupError("Database nel backup non leggibile.")
+                database_bytes = extracted.read(512 * 1024 * 1024 + 1)
+                if len(database_bytes) > 512 * 1024 * 1024:
+                    raise BackupError("Backup oltre la dimensione massima consentita.")
+        except (tarfile.TarError, OSError) as exc:
+            raise BackupError("Archivio backup danneggiato.") from exc
+        stage_dir = self.directory / "restore-staging"
+        stage_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(stage_dir, 0o700)
+        except OSError:
+            pass
+        stage_id = uuid.uuid4().hex
+        staged = stage_dir / f"{stage_id}.sqlite3"
+        with tempfile.NamedTemporaryFile(dir=stage_dir, prefix=".restore-", delete=False) as temporary:
+            temporary.write(database_bytes)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        try:
+            os.chmod(temporary_path, 0o600)
+            with sqlite3.connect(temporary_path) as db:
+                integrity = db.execute("PRAGMA quick_check").fetchone()[0]
+                tables = {row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()}
+            if integrity != "ok" or "accounts" not in tables:
+                raise BackupError("Database del backup non integro o non riconosciuto.")
+            os.replace(temporary_path, staged)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+        return {
+            "backupId": backup_id,
+            "restoreStageId": stage_id,
+            "prepared": True,
+            "applied": False,
+            "databaseIntegrity": integrity,
+            "sizeBytes": len(database_bytes),
+            "sha256": hashlib.sha256(database_bytes).hexdigest(),
+            "tables": sorted(tables),
+            "message": "Ripristino preparato in area isolata; database attivo non modificato.",
+        }
+
+
     def prune(
         self,
         retention_days: int = 90,
