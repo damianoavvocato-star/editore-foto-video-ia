@@ -241,9 +241,11 @@ class RenderEffectsTest(unittest.TestCase):
     def test_alpha_multitrack_fade_transition_blends_adjacent_clips(self):
         root = tempfile.mkdtemp(prefix='editore_alpha_transition_')
         previous = os.environ.get('MEDIA_DATA_DIR')
+        previous_server_paths = None
         try:
             os.environ['MEDIA_DATA_DIR'] = root
             from backend import server
+            previous_server_paths = (server.ROOT, server.ASSETS, server.OUTPUTS)
             server.ROOT = Path(root)
             server.ASSETS = server.ROOT / 'assets'
             server.OUTPUTS = server.ROOT / 'outputs'
@@ -286,6 +288,8 @@ class RenderEffectsTest(unittest.TestCase):
             self.assertLess(abs(red - green), 55,
                             f'La dissolvenza non miscela correttamente i due colori: {red, green}')
         finally:
+            if previous_server_paths is not None:
+                server.ROOT, server.ASSETS, server.OUTPUTS = previous_server_paths
             if previous is None:
                 os.environ.pop('MEDIA_DATA_DIR', None)
             else:
@@ -295,9 +299,11 @@ class RenderEffectsTest(unittest.TestCase):
     def test_alpha_multitrack_spatial_transitions_reveal_in_expected_direction(self):
         root = tempfile.mkdtemp(prefix='editore_alpha_spatial_')
         previous = os.environ.get('MEDIA_DATA_DIR')
+        previous_server_paths = None
         try:
             os.environ['MEDIA_DATA_DIR'] = root
             from backend import server
+            previous_server_paths = (server.ROOT, server.ASSETS, server.OUTPUTS)
             server.ROOT = Path(root)
             server.ASSETS = server.ROOT / 'assets'
             server.OUTPUTS = server.ROOT / 'outputs'
@@ -369,6 +375,8 @@ class RenderEffectsTest(unittest.TestCase):
                         f'{transition_type}: la clip uscente dovrebbe restare visibile in {red_point}: {red}',
                     )
         finally:
+            if previous_server_paths is not None:
+                server.ROOT, server.ASSETS, server.OUTPUTS = previous_server_paths
             if previous is None:
                 os.environ.pop('MEDIA_DATA_DIR', None)
             else:
