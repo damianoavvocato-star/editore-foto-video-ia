@@ -261,7 +261,8 @@ class RenderEffectsTest(unittest.TestCase):
                     'clips': [
                         {'kind': 'image', 'assetId': first_id, 'startMs': 0,
                          'durationMs': 1000, 'transitionAfterMs': 400,
-                         'transitionAfter': 'fade'},
+                         'transitionAfter': 'fade',
+                         'keyframes': [{'timeMs': 0, 'property': 'opacity', 'value': 1.0}]},
                         {'kind': 'image', 'assetId': second_id, 'startMs': 1000,
                          'durationMs': 1000},
                     ],
