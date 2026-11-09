@@ -2007,6 +2007,23 @@ def owner_prepare_backup_restore(backup_id: str, request: Request):
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.post('/v1/owner/backups/restore-staging/retention')
+def owner_prune_restore_staging(
+    request: Request,
+    max_age_seconds: int = Query(default=86400, ge=300, le=604800),
+    dry_run: bool = Query(default=True),
+):
+    """Owner-only expiry for isolated restore copies; preview is the default."""
+    _require_owner(request)
+    try:
+        return _backup_store().prune_restore_staging(
+            max_age_seconds=max_age_seconds,
+            dry_run=dry_run,
+        )
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.post('/v1/owner/backups/retention')
 def owner_prune_backups(
     request: Request,
