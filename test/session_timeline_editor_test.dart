@@ -134,4 +134,5 @@ void main() {
     expect(changed!.tracks.single.clips.single.id, 'second');
     expect(changed!.tracks.single.clips.single.startMs, 3000);
   });
-\n}
+
+}
