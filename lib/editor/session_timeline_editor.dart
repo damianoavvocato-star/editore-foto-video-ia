@@ -28,7 +28,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   static const Map<String, Map<String, String>> _translations = {
     'it': {
       'timeline': 'Timeline', 'undo': 'Annulla', 'redo': 'Ripeti', 'split': 'Dividi al cursore',
-      'duplicate': 'Duplica', 'delete': 'Elimina', 'unmute': 'Riattiva audio',
+      'duplicate': 'Duplica', 'delete': 'Elimina', 'rippleDelete': 'Elimina e chiudi spazio', 'unmute': 'Riattiva audio',
       'mute': 'Silenzia traccia', 'unlock': 'Sblocca traccia',
       'lock': 'Blocca traccia', 'clip': 'Clip', 'duration': 'Durata',
       'speed': 'Velocità', 'nextTransition': 'Transizione successiva',
@@ -44,7 +44,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     },
     'en': {
       'timeline': 'Timeline', 'undo': 'Undo', 'redo': 'Redo', 'split': 'Split at playhead',
-      'duplicate': 'Duplicate', 'delete': 'Delete', 'unmute': 'Unmute track',
+      'duplicate': 'Duplicate', 'delete': 'Delete', 'rippleDelete': 'Delete and close gap', 'unmute': 'Unmute track',
       'mute': 'Mute track', 'unlock': 'Unlock track', 'lock': 'Lock track',
       'clip': 'Clip', 'duration': 'Duration', 'speed': 'Speed',
       'nextTransition': 'Next transition', 'fade': 'Fade',
@@ -59,7 +59,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     },
     'fr': {
       'timeline': 'Chronologie', 'undo': 'Annuler', 'redo': 'Rétablir', 'split': 'Couper à la tête de lecture',
-      'duplicate': 'Dupliquer', 'delete': 'Supprimer', 'unmute': 'Réactiver le son',
+      'duplicate': 'Dupliquer', 'delete': 'Supprimer', 'rippleDelete': 'Supprimer et fermer l’espace', 'unmute': 'Réactiver le son',
       'mute': 'Couper le son', 'unlock': 'Déverrouiller la piste',
       'lock': 'Verrouiller la piste', 'clip': 'Clip', 'duration': 'Durée',
       'speed': 'Vitesse', 'nextTransition': 'Transition suivante',
@@ -72,7 +72,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     },
     'es': {
       'timeline': 'Línea de tiempo', 'undo': 'Deshacer', 'redo': 'Rehacer', 'split': 'Dividir en el cursor',
-      'duplicate': 'Duplicar', 'delete': 'Eliminar', 'unmute': 'Activar sonido',
+      'duplicate': 'Duplicar', 'delete': 'Eliminar', 'rippleDelete': 'Eliminar y cerrar espacio', 'unmute': 'Activar sonido',
       'mute': 'Silenciar pista', 'unlock': 'Desbloquear pista',
       'lock': 'Bloquear pista', 'clip': 'Clip', 'duration': 'Duración',
       'speed': 'Velocidad', 'nextTransition': 'Transición siguiente',
@@ -85,7 +85,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
     },
     'ar': {
       'timeline': 'الخط الزمني', 'undo': 'تراجع', 'redo': 'إعادة', 'split': 'تقسيم عند مؤشر التشغيل',
-      'duplicate': 'تكرار', 'delete': 'حذف', 'unmute': 'إلغاء كتم المسار',
+      'duplicate': 'تكرار', 'delete': 'حذف', 'rippleDelete': 'حذف وإغلاق الفراغ', 'unmute': 'إلغاء كتم المسار',
       'mute': 'كتم المسار', 'unlock': 'إلغاء قفل المسار',
       'lock': 'قفل المسار', 'clip': 'مقطع', 'duration': 'المدة',
       'speed': 'السرعة', 'nextTransition': 'الانتقال التالي',
@@ -298,6 +298,13 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                       onPressed: selected == null || locked ? null : () => _session.deleteSelected(),
                       icon: const Icon(Icons.delete_outline),
                       label: Text(_t('delete')),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: selected == null || locked
+                          ? null
+                          : () => _session.deleteSelected(ripple: true),
+                      icon: const Icon(Icons.content_cut_rounded),
+                      label: Text(_t('rippleDelete')),
                     ),
                     OutlinedButton.icon(
                       onPressed: track == null ? null : _session.toggleSelectedTrackMuted,
