@@ -1290,25 +1290,6 @@ def _keyframe_expression(keyframes: list[dict[str, Any]], property_name: str, va
     return expression
 
 
-def _reject_unsupported_primary_opacity(keyframes: list[dict[str, Any]]) -> None:
-    """Prevent exporting primary-clip opacity as a misleading fade to black.
-
-    Main video clips are currently flattened into opaque H.264 segments before
-    timeline composition. Until the renderer composites primary tracks as
-    alpha-capable layers, their opacity keyframes cannot reveal lower tracks.
-    Overlay-track opacity remains supported by the RGBA overlay pipeline.
-    """
-    if any(
-        isinstance(point, dict) and point.get('property') == 'opacity'
-        for point in keyframes
-    ):
-        raise RuntimeError(
-            'Opacità animata della clip principale non ancora supportata: '
-            'il rendering a livelli trasparenti è in sviluppo. '
-            'Rimuovi i keyframe di opacità per esportare senza alterazioni.'
-        )
-
-
 def _render_primary_alpha_layers(
     job_id: str, project: dict, settings: dict, work: Path,
     width: int, height: int, fps: int,
