@@ -1552,6 +1552,9 @@ def _render_primary_alpha_layers(
     cmd += [
         # Bound filter-graph worker threads: RGBA 720p frames can otherwise
         # exhaust constrained shared-memory pools on mobile/container hosts.
+        # Also bound simple filter pipelines used by automatic format conversion;
+        # complex-graph threads alone do not constrain those auxiliary pipelines.
+        '-filter_threads', '1',
         '-filter_complex_threads', '1',
         '-filter_complex', ';'.join(graph),
         '-map', current, '-an', '-t', f'{total_duration:.6f}',
@@ -1859,7 +1862,8 @@ def _render_job(job_id: str, project: dict, settings: dict):
         if all_filters:
             # Keep the final overlay/audio graph within predictable memory
             # bounds on mobile and container deployments.
-            cmd += ['-filter_complex_threads','1','-filter_complex',';'.join(all_filters),'-map',(video_label if graph or overlay_filters else '0:v:0')]
+            # Limit both ordinary and complex filter pools on constrained runners.
+            cmd += ['-filter_threads','1','-filter_complex_threads','1','-filter_complex',';'.join(all_filters),'-map',(video_label if graph or overlay_filters else '0:v:0')]
             if audio_filters: cmd += ['-map','[aout]','-c:a','aac','-b:a','192k','-shortest']
             else: cmd += ['-an']
         else:
