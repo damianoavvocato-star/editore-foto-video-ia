@@ -255,7 +255,7 @@ class StudioJobQueue:
         self, worker_id: str, job_id: str, now: float | None = None
     ) -> dict[str, Any]:
         """Extend an active submission lease without changing its attempt count."""
-        if not worker_id or len(worker_id) > 128:
+        if not isinstance(worker_id, str) or not worker_id or len(worker_id) > 128:
             raise StudioQueueError("Identificativo worker non valido.")
         timestamp = time.time() if now is None else float(now)
         expires = timestamp + self.lease_seconds
@@ -419,7 +419,7 @@ class StudioJobQueue:
 
     def claim_reconciliation(self, worker_id: str, now: float | None = None) -> dict[str, Any] | None:
         """Atomically lease one processing job to exactly one reconciler."""
-        if not worker_id or len(worker_id) > 128:
+        if not isinstance(worker_id, str) or not worker_id or len(worker_id) > 128:
             raise StudioQueueError("Identificativo worker non valido.")
         timestamp = time.time() if now is None else float(now)
         token = f"{worker_id}:{uuid.uuid4().hex}"
