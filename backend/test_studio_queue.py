@@ -40,6 +40,46 @@ def test_claim_is_exclusive_and_lease_owner_is_required(tmp_path):
         queue.mark_submitted("worker-b", job["jobId"], "provider-1", now=103)
 
 
+@pytest.mark.parametrize(
+    "provider_video_id,provider_status",
+    [
+        (123, "in_progress"),
+        ("video-1", 123),
+        ("", "in_progress"),
+    ],
+)
+def test_submission_rejects_invalid_provider_fields(
+    tmp_path, provider_video_id, provider_status
+):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("worker-a", now=101)
+    with pytest.raises(StudioQueueError):
+        queue.mark_submitted(
+            "worker-a", job["jobId"], provider_video_id, provider_status, now=102
+        )
+
+
+@pytest.mark.parametrize("error_code", [123, None, "UPPER CASE"])
+def test_worker_failure_rejects_non_string_or_invalid_error_code(
+    tmp_path, error_code
+):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("worker-a", now=101)
+    with pytest.raises(StudioQueueError):
+        queue.fail_claimed("worker-a", job["jobId"], error_code, now=102)
+
+
+def test_provider_status_rejects_non_string_value(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    job, _ = queue.enqueue("user-a", _request(), now=100)
+    queue.claim_next("worker-a", now=101)
+    queue.mark_submitted("worker-a", job["jobId"], "video-1", now=102)
+    with pytest.raises(StudioQueueError):
+        queue.record_provider_status("user-a", job["jobId"], 123, now=103)
+
+
 def test_successful_submission_and_provider_completion(tmp_path):
     queue = StudioJobQueue(tmp_path / "queue.sqlite3")
     job, _ = queue.enqueue("user-a", _request(), now=100)
