@@ -25,6 +25,7 @@ class SessionTimelineEditor extends StatefulWidget {
 
 class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   late EditorSession _session;
+  ClipColorGrade? _draftColorGrade;
 
   static const Map<String, Map<String, String>> _translations = {
     'it': {
@@ -112,6 +113,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   void didUpdateWidget(covariant SessionTimelineEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.project.encode() != widget.project.encode()) {
+      _draftColorGrade = null;
       _session.replaceProject(widget.project);
     }
   }
@@ -146,10 +148,13 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           max: max,
           divisions: divisions,
           value: value.clamp(min, max).toDouble(),
-          onChanged: locked ? null : (_) {},
-          onChangeEnd: locked ? null : (next) => _session.setSelectedColorGrade(
-            _copyGrade(grade, key, next),
-          ),
+          onChanged: locked ? null : (next) => setState(() {
+            _draftColorGrade = _copyGrade(grade, key, next);
+          }),
+          onChangeEnd: locked ? null : (next) {
+            _session.setSelectedColorGrade(_copyGrade(grade, key, next));
+            setState(() => _draftColorGrade = null);
+          },
         )),
         SizedBox(
           width: 42,
@@ -186,7 +191,10 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
           const SizedBox(width: 9),
           Expanded(child: Text(_t('color'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
           TextButton.icon(
-            onPressed: locked ? null : () => _session.setSelectedColorGrade(const ClipColorGrade()),
+            onPressed: locked ? null : () {
+              _session.setSelectedColorGrade(const ClipColorGrade());
+              setState(() => _draftColorGrade = null);
+            },
             icon: const Icon(Icons.restart_alt, size: 16),
             label: Text(_t('reset')),
           ),
@@ -226,6 +234,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
   @override
   Widget build(BuildContext context) {
     final selected = _session.selectedClip;
+    final visibleGrade = _draftColorGrade ?? selected?.colorGrade;
     final track = _session.selectedTrack;
     final locked = track?.locked ?? true;
     final transition = selected?.transitionAfter ?? 'fade';
@@ -291,7 +300,7 @@ class _SessionTimelineEditorState extends State<SessionTimelineEditor> {
                 ),
                 if (selected != null && (selected.kind == MediaKind.video || selected.kind == MediaKind.image)) ...[
                   const SizedBox(height: 14),
-                  _buildColorGradePanel(context, selected.colorGrade, locked),
+                  _buildColorGradePanel(context, visibleGrade ?? selected.colorGrade, locked),
                 ],
                 if (selected != null) ...[
                   const SizedBox(height: 12),
