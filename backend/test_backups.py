@@ -1,4 +1,7 @@
+import io
 import sqlite3
+import tarfile
+import uuid
 
 import pytest
 from cryptography.fernet import Fernet
@@ -130,6 +133,27 @@ def test_restore_preparation_rejects_tampered_or_unknown_backup(tmp_path, monkey
     path.write_bytes(damaged)
     with pytest.raises(BackupError, match="alterato"):
         backups.prepare_restore(created["backupId"])
+
+
+def test_restore_preparation_rejects_database_with_incompatible_account_schema(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    key = Fernet.generate_key()
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", key.decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+
+    malformed_database = tmp_path / "malformed.sqlite3"
+    with sqlite3.connect(malformed_database) as db:
+        db.execute("CREATE TABLE accounts (id TEXT PRIMARY KEY)")
+    archive_buffer = io.BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        archive.add(malformed_database, arcname="accounts.sqlite3", recursive=False)
+    backup_id = uuid.uuid4().hex
+    backup_path = tmp_path / "backups" / f"{backup_id}.mibak"
+    backup_path.write_bytes(Fernet(key).encrypt(archive_buffer.getvalue()))
+
+    with pytest.raises(BackupError, match="schema account"):
+        backups.prepare_restore(backup_id)
 
 def test_restore_staging_expiry_preview_and_delete_are_bounded(tmp_path, monkeypatch):
     database = tmp_path / "accounts.sqlite3"
