@@ -168,3 +168,10 @@ def test_usage_summary_is_scoped_to_user_and_validates_limit(tmp_path):
     assert store.summary("user-b", 2, now=1_800_000_000)["used"] == 0
     with pytest.raises(ValueError):
         store.summary("user-a", 0, now=1_800_000_000)
+
+@pytest.mark.parametrize("period", ["2026-00", "2026-13", "26-01", "2026/01", "2026-1x"])
+def test_quota_release_rejects_malformed_calendar_period(tmp_path, period):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    with pytest.raises(ValueError, match="period"):
+        store.release("user-a", "job-a", period)
+
