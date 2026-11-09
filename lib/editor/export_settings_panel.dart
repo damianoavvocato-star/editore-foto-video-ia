@@ -46,7 +46,8 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
     final width = MediaQuery.sizeOf(context).width;
     final fieldWidth = width < 520 ? double.infinity : 250.0;
 
-    return Card(
+    return SingleChildScrollView(
+      child: Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -135,6 +136,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
                   width: fieldWidth,
                   child: DropdownButtonFormField<ExportContainer>(
                     initialValue: settings.container,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Formato contenitore',
                       prefixIcon: Icon(Icons.video_file_outlined),
@@ -154,6 +156,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
                   width: fieldWidth,
                   child: DropdownButtonFormField<ExportResolution>(
                     initialValue: settings.resolution,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Risoluzione',
                       prefixIcon: Icon(Icons.aspect_ratio_outlined),
@@ -173,6 +176,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
                   width: fieldWidth,
                   child: DropdownButtonFormField<ExportCodec>(
                     initialValue: settings.codec,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Codec video',
                       prefixIcon: Icon(Icons.settings_outlined),
@@ -235,6 +239,7 @@ class _ExportSettingsPanelState extends State<ExportSettingsPanel> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
