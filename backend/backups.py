@@ -105,6 +105,65 @@ class BackupStore:
             })
         return result
 
+
+    def prune(
+        self,
+        retention_days: int = 90,
+        min_keep: int = 3,
+        dry_run: bool = True,
+        now: int | float | None = None,
+    ) -> dict:
+        """Preview or remove expired backups while always preserving the newest set."""
+        if not isinstance(retention_days, int) or isinstance(retention_days, bool) or not 1 <= retention_days <= 3650:
+            raise BackupError("Periodo di conservazione non valido.")
+        if not isinstance(min_keep, int) or isinstance(min_keep, bool) or not 1 <= min_keep <= 100:
+            raise BackupError("Numero minimo di backup da conservare non valido.")
+        if not isinstance(dry_run, bool):
+            raise BackupError("Modalità anteprima non valida.")
+        timestamp = time.time() if now is None else float(now)
+        cutoff = timestamp - retention_days * 24 * 60 * 60
+        candidates = []
+        for path in self.directory.iterdir():
+            if (
+                not self._valid_id(path.stem)
+                or path.suffix != ".mibak"
+                or path.is_symlink()
+                or not path.is_file()
+            ):
+                continue
+            try:
+                stat = path.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            candidates.append((stat.st_mtime, path))
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        expired = [
+            (modified, path)
+            for index, (modified, path) in enumerate(candidates)
+            if index >= min_keep and modified < cutoff
+        ]
+        removed = []
+        if not dry_run:
+            for _, path in expired:
+                try:
+                    # Re-check the directory entry immediately before deletion.
+                    if path.is_symlink() or not path.is_file():
+                        continue
+                    path.unlink()
+                    removed.append(path.stem)
+                except FileNotFoundError:
+                    continue
+        return {
+            "dryRun": dry_run,
+            "retentionDays": retention_days,
+            "minimumToKeep": min_keep,
+            "eligibleCount": len(expired),
+            "eligibleBackupIds": [path.stem for _, path in expired],
+            "deletedCount": len(removed),
+            "deletedBackupIds": removed,
+        }
+
+
     def verify(self, backup_id: str) -> dict:
         if not self._valid_id(backup_id):
             raise BackupError("Identificativo backup non valido.")
