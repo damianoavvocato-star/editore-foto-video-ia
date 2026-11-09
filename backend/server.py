@@ -1321,86 +1321,52 @@ def _render_primary_alpha_layers(
         raise RuntimeError('Nessuna clip video principale da comporre.')
 
     # Prepare timeline positions and alpha envelopes for same-track
-    # cross-fades. The next clip is moved left by the transition duration,
-    # matching the overlap produced by the legacy xfade export path.
+    # cross-fades. The next clip moves left by the requested overlap, matching
+    # the overlap produced by the legacy xfade export path.
     prepared_tracks = []
     for track_clips in visual_tracks:
         ordered = sorted(
             track_clips,
             key=lambda item: max(0, int(item.get('startMs', 0))),
         )
-        prepared = []
-        for clip_index, clip in enumerate(ordered):
-            duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
-            start = max(0, int(clip.get('startMs', 0))) / 1000.0
-            fade_in = 0.0
-            fade_out = 0.0
-            if clip_index < len(ordered) - 1:
-                raw_ms = clip.get('transitionAfterMs', 0)
-                if isinstance(raw_ms, bool) or not isinstance(raw_ms, int) or raw_ms < 0:
-                    raise RuntimeError('Durata transizione non valida')
-                if raw_ms:
-                    transition_type = str(clip.get('transitionAfter', 'fade')).lower()
-                    if transition_type not in {'fade', 'dissolve'}:
-                        raise RuntimeError(
-                            f'Transizione {transition_type} non ancora supportata '
-                            'nel compositing alpha multitraccia; usa dissolvenza o dissolvenza incrociata.'
-                        )
-                    next_clip = ordered[clip_index + 1]
-                    next_duration = max(
-                        0.1, int(next_clip.get('durationMs', 3000)) / 1000.0
-                    )
-                    transition = min(
-                        raw_ms / 1000.0,
-                        duration * 0.45,
-                        next_duration * 0.45,
-                    )
-                    fade_out = transition
-                    next_start = max(0, int(next_clip.get('startMs', 0))) / 1000.0
-                    # Preserve intentional overlaps; otherwise create the
-                    # overlap requested by transitionAfterMs.
-                    effective_next_start = min(next_start, start + duration - transition)
-                    prepared.append((clip, start, fade_in, fade_out))
-                    # The incoming clip receives a matching alpha ramp.
-                    # Store its adjusted start and fade-in for the next loop.
-                    if clip_index + 1 < len(ordered):
-                        next_item = (next_clip, max(start, effective_next_start), transition, 0.0)
-                        # Replace the next item's default entry when it is visited.
-                        prepared.append(next_item)
-                        continue
-            if clip_index == 0 or not prepared or prepared[-1][0] is not clip:
-                prepared.append((clip, start, fade_in, fade_out))
-        # Normalize adjacent transition metadata into one entry per clip.
-        normalized = []
-        for item in prepared:
-            if normalized and normalized[-1][0] is item[0]:
-                normalized[-1] = item
-            else:
-                normalized.append(item)
-        # A clip may be pre-added as the incoming side of the previous
-        # transition. Carry its own outgoing transition onto that same entry.
-        by_identity = {id(item[0]): item for item in normalized}
-        for clip_index, clip in enumerate(ordered):
-            if id(clip) not in by_identity:
-                by_identity[id(clip)] = (clip, max(0, int(clip.get('startMs', 0))) / 1000.0, 0.0, 0.0)
-            if clip_index < len(ordered) - 1 and int(clip.get('transitionAfterMs', 0)) > 0:
-                current_item = by_identity[id(clip)]
-                by_identity[id(clip)] = (clip, current_item[1], current_item[2], min(
-                    int(clip['transitionAfterMs']) / 1000.0,
-                    max(0.1, int(clip.get('durationMs', 3000)) / 1000.0) * 0.45,
-                    max(0.1, int(ordered[clip_index + 1].get('durationMs', 3000)) / 1000.0) * 0.45,
-                ))
-                next_clip = ordered[clip_index + 1]
-                next_item = by_identity.get(id(next_clip))
-                transition = by_identity[id(clip)][3]
-                requested_start = max(0, int(next_clip.get('startMs', 0))) / 1000.0
-                adjusted_start = min(requested_start, current_item[1] + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0) - transition)
-                by_identity[id(next_clip)] = (
-                    next_clip, max(current_item[1], adjusted_start),
-                    max(transition, next_item[2] if next_item else 0.0),
-                    next_item[3] if next_item else 0.0,
+        starts = [max(0, int(clip.get('startMs', 0))) / 1000.0 for clip in ordered]
+        durations = [
+            max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+            for clip in ordered
+        ]
+        fade_ins = [0.0] * len(ordered)
+        fade_outs = [0.0] * len(ordered)
+        for clip_index, clip in enumerate(ordered[:-1]):
+            raw_ms = clip.get('transitionAfterMs', 0)
+            if isinstance(raw_ms, bool) or not isinstance(raw_ms, int) or raw_ms < 0:
+                raise RuntimeError('Durata transizione non valida')
+            if not raw_ms:
+                continue
+            transition_type = str(clip.get('transitionAfter', 'fade')).lower()
+            if transition_type not in {'fade', 'dissolve'}:
+                raise RuntimeError(
+                    f'Transizione {transition_type} non ancora supportata '
+                    'nel compositing alpha multitraccia; usa dissolvenza o dissolvenza incrociata.'
                 )
-        prepared_tracks.append([by_identity[id(clip)] for clip in ordered])
+            transition = min(
+                raw_ms / 1000.0,
+                durations[clip_index] * 0.45,
+                durations[clip_index + 1] * 0.45,
+            )
+            fade_outs[clip_index] = transition
+            fade_ins[clip_index + 1] = max(fade_ins[clip_index + 1], transition)
+            requested_next_start = starts[clip_index + 1]
+            transition_start = starts[clip_index] + durations[clip_index] - transition
+            # Preserve an intentional overlap; otherwise create the requested
+            # overlap. Do not move a clip before the outgoing clip's start.
+            starts[clip_index + 1] = max(
+                starts[clip_index],
+                min(requested_next_start, transition_start),
+            )
+        prepared_tracks.append([
+            (clip, starts[index], fade_ins[index], fade_outs[index])
+            for index, clip in enumerate(ordered)
+        ])
 
     prepared_flattened = [item for track in prepared_tracks for item in track]
     total_duration = max(
