@@ -34,6 +34,8 @@
 | P0-13 | Isolamento account end-to-end | Tutti | indicatori accesso | asset, progetti, export, storage e download ACL | test cross-account su ogni risorsa | partial |
 | P0-14 | Storage privato e cancellazione dati | Owner, User | gestione file/cestino | storage integrato, delete e retention | accesso negato a URL non autorizzati | partial |
 
+> **Aggiornamento UI 9 novembre 2026:** la timeline Flutter è stata rifinita con gerarchia visiva più chiara, indicatori di traccia, griglia temporale, playhead evidenziato, stato di selezione e legenda keyframe. La voce P1-08 resta `partial`: la rifinitura UI non certifica ancora gesture avanzate, rendering finale o test su dispositivi.
+
 ## P1 — Account, Premium e funzioni editor
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
