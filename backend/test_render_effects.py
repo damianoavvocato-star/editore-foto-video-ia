@@ -281,8 +281,10 @@ class RenderEffectsTest(unittest.TestCase):
                 check=True, capture_output=True,
             )
             red, green, _blue = Image.open(frame).convert('RGB').getpixel((80, 45))
-            self.assertGreater(red, 55, f'La clip uscente non partecipa alla dissolvenza: {red, green}')
-            self.assertGreater(green, 55, f'La clip entrante non partecipa alla dissolvenza: {red, green}')
+            self.assertGreater(red, 80, f'La clip uscente non partecipa alla dissolvenza: {red, green}')
+            self.assertGreater(green, 80, f'La clip entrante non partecipa alla dissolvenza: {red, green}')
+            self.assertLess(abs(red - green), 55,
+                            f'La dissolvenza non miscela correttamente i due colori: {red, green}')
         finally:
             if previous is None:
                 os.environ.pop('MEDIA_DATA_DIR', None)
