@@ -1528,15 +1528,38 @@ def _render_job(job_id: str, project: dict, settings: dict):
             end=start+duration
             prepared=f'[ov{overlay_index}]'; composed=f'[mix{overlay_index}]'
             rotation=float(clip.get('rotationDegrees',0.0)) % 360.0
-            import math
-            overlay_chain=f'scale={width_px}:{height_px},format=rgba,colorchannelmixer=aa={opacity}'
-            if rotation: overlay_chain += f',rotate={math.radians(rotation):.6f}:c=none:ow=rotw(iw):oh=roth(ih)'
+            overlay_keyframes=clip.get('keyframes') or []
+            if not isinstance(overlay_keyframes,list) or len(overlay_keyframes)>100:
+                raise RuntimeError('Numero di keyframe overlay non valido (massimo 100)')
+            supported_properties={'positionX','positionY','scale','rotation','opacity'}
+            if any(not isinstance(point,dict) or point.get('property') not in supported_properties for point in overlay_keyframes):
+                raise RuntimeError('Proprietà keyframe overlay non supportata')
+            local_t=f'(t-{start:.6f})'
+            local_T=f'(T-{start:.6f})'
+            scale_expr=_keyframe_expression(overlay_keyframes,'scale',local_t)
+            x_expr=_keyframe_expression(overlay_keyframes,'positionX',local_t)
+            y_expr=_keyframe_expression(overlay_keyframes,'positionY',local_t)
+            rotation_expr=_keyframe_expression(overlay_keyframes,'rotation',local_t)
+            opacity_expr=_keyframe_expression(overlay_keyframes,'opacity',local_T)
+            scale_w=f"'{width_px}*({scale_expr})'" if scale_expr else str(width_px)
+            scale_h=f"'{height_px}*({scale_expr})'" if scale_expr else str(height_px)
+            overlay_chain=f'scale=w={scale_w}:h={scale_h}:eval=frame,format=rgba'
+            if opacity_expr is not None:
+                overlay_chain += f",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity:.6f})*({opacity_expr})'"
+            elif opacity != 1.0:
+                overlay_chain += f',colorchannelmixer=aa={opacity:.6f}'
+            if rotation_expr is not None:
+                overlay_chain += f",rotate='({rotation_expr})*PI/180':c=none:ow=rotw(iw):oh=roth(ih)"
+            elif rotation:
+                overlay_chain += f',rotate={math.radians(rotation):.6f}:c=none:ow=rotw(iw):oh=roth(ih)'
             fade_in=max(0.0,min(duration,float(clip.get('fadeInMs',0))/1000.0))
             fade_out=max(0.0,min(duration,float(clip.get('fadeOutMs',0))/1000.0))
             if fade_in: overlay_chain += f',fade=t=in:st=0:d={fade_in:.3f}:alpha=1'
             if fade_out: overlay_chain += f',fade=t=out:st={max(0.0,duration-fade_out):.3f}:d={fade_out:.3f}:alpha=1'
             overlay_filters.append(f'[{overlay_index}:v]{overlay_chain}{prepared}')
-            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x}:y={y}:enable='between(t,{start:.3f},{end:.3f})'{composed}")
+            x_position=f"'{x}+({x_expr})'" if x_expr is not None else str(x)
+            y_position=f"'{y}+({y_expr})'" if y_expr is not None else str(y)
+            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x_position}:y={y_position}:eval=frame:enable='between(t,{start:.3f},{end:.3f})'{composed}")
             current_video_label=composed
         if overlay_filters: video_label=current_video_label
         cmd += ['-c:v',vcodec,'-r',str(fps)]
