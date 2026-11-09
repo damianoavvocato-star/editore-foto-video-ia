@@ -104,3 +104,42 @@ def test_backup_retention_endpoint_is_owner_only_and_preview_is_non_destructive(
     )
     assert invalid.status_code == 422
 
+def test_restore_prepare_endpoint_is_owner_only_and_does_not_replace_live_database(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    monkeypatch.setenv("MEDIA_AUTH_DB", str(database))
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv(
+        "MEDIA_BACKUP_ENCRYPTION_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", False)
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("restore_owner", "owner password long enough")
+    user = store.register("restore_user", "user password long enough")
+    client = TestClient(server.app)
+    owner_headers = _headers(store, owner["userId"])
+
+    created = client.post("/v1/owner/backups", headers=owner_headers)
+    assert created.status_code == 200
+    backup_id = created.json()["backupId"]
+    store.register("live_only_user", "live only password long")
+    before = database.read_bytes()
+
+    prepared = client.post(
+        f"/v1/owner/backups/{backup_id}/restore/prepare",
+        headers=owner_headers,
+    )
+    assert prepared.status_code == 200
+    assert prepared.json()["prepared"] is True
+    assert prepared.json()["applied"] is False
+    assert database.read_bytes() == before
+
+    denied = client.post(
+        f"/v1/owner/backups/{backup_id}/restore/prepare",
+        headers=_headers(store, user["userId"]),
+    )
+    assert denied.status_code == 403
+    assert client.post(
+        f"/v1/owner/backups/{backup_id}/restore/prepare"
+    ).status_code == 401
+
