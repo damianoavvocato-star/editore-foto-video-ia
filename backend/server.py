@@ -1385,7 +1385,7 @@ def _render_primary_alpha_layers(
     )
     cmd = [FFMPEG, '-y', '-threads', '1']
     graph = [
-        f'color=c=black:s={width}x{height}:r={fps}:d={total_duration:.6f},format=rgba[base0]'
+        f'color=c=black:s={width}x{height}:r={fps}:d={total_duration:.6f}[base0]'
     ]
     current = '[base0]'
     input_index = 0
@@ -1607,9 +1607,6 @@ def _render_job(job_id: str, project: dict, settings: dict):
             and any(
                 isinstance(point, dict)
                 and point.get('property') == 'opacity'
-                and isinstance(point.get('value'), (int, float))
-                and not isinstance(point.get('value'), bool)
-                and abs(float(point['value']) - 1.0) > 1e-9
                 for clip in track.get('clips', [])
                 if isinstance(clip, dict)
                 for point in (clip.get('keyframes') or [])
