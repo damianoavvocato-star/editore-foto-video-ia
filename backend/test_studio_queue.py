@@ -113,6 +113,33 @@ def test_enqueue_requires_valid_account_and_retry_limit(tmp_path):
         queue.enqueue("user-a", _request(), max_attempts=9)
 
 
+@pytest.mark.parametrize(
+    "user_id,idempotency_key,max_attempts",
+    [
+        ("x" * 129, None, 1),
+        ("user-a", 123, 1),
+        ("user-a", "valid-key", True),
+        ("user-a", "valid-key", False),
+    ],
+)
+def test_enqueue_rejects_wrong_types_and_oversized_identifiers(
+    tmp_path, user_id, idempotency_key, max_attempts
+):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    with pytest.raises(StudioQueueError):
+        queue.enqueue(
+            user_id, _request(), idempotency_key=idempotency_key,
+            max_attempts=max_attempts,
+        )
+
+
+def test_claim_rejects_non_string_worker_identifier(tmp_path):
+    queue = StudioJobQueue(tmp_path / "queue.sqlite3")
+    queue.enqueue("user-a", _request(), now=100)
+    with pytest.raises(StudioQueueError, match="worker"):
+        queue.claim_next(123, now=101)
+
+
 
 def test_worker_can_renew_only_an_active_lease(tmp_path):
     queue = StudioJobQueue(tmp_path / "queue.sqlite3", lease_seconds=30)
