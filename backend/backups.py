@@ -170,6 +170,54 @@ class BackupStore:
         }
 
 
+
+    def prune_restore_staging(
+        self,
+        max_age_seconds: int = 86400,
+        dry_run: bool = True,
+        now: int | float | None = None,
+    ) -> dict:
+        """Expire old staged restore databases; never inspect or remove live DBs."""
+        if not isinstance(max_age_seconds, int) or isinstance(max_age_seconds, bool) or not 300 <= max_age_seconds <= 604800:
+            raise BackupError("Durata delle copie temporanee non valida.")
+        if not isinstance(dry_run, bool):
+            raise BackupError("Modalità anteprima non valida.")
+        stage_dir = self.directory / "restore-staging"
+        if stage_dir.is_symlink() or not stage_dir.is_dir():
+            return {"dryRun": dry_run, "eligibleCount": 0, "deletedCount": 0, "eligibleStageIds": [], "deletedStageIds": []}
+        timestamp = time.time() if now is None else float(now)
+        cutoff = timestamp - max_age_seconds
+        eligible = []
+        for path in stage_dir.iterdir():
+            if not re.fullmatch(r"[a-f0-9]{32}\\.sqlite3", path.name):
+                continue
+            try:
+                stat = path.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if path.is_symlink() or not path.is_file() or stat.st_mtime >= cutoff:
+                continue
+            eligible.append((path.stem, path))
+        deleted = []
+        if not dry_run:
+            for stage_id, path in eligible:
+                try:
+                    if path.is_symlink() or not path.is_file():
+                        continue
+                    path.unlink()
+                    deleted.append(stage_id)
+                except FileNotFoundError:
+                    continue
+        return {
+            "dryRun": dry_run,
+            "maxAgeSeconds": max_age_seconds,
+            "eligibleCount": len(eligible),
+            "deletedCount": len(deleted),
+            "eligibleStageIds": [stage_id for stage_id, _ in eligible],
+            "deletedStageIds": deleted,
+        }
+
+
     def prune(
         self,
         retention_days: int = 90,
