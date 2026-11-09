@@ -211,6 +211,57 @@ class EditingOperations {
     });
   }
 
+  /// Persists clip-local color settings without changing source media.
+  EditorProject setClipColorGrade({
+    required EditorProject project,
+    required String trackId,
+    required String clipId,
+    required ClipColorGrade colorGrade,
+  }) => updateTrack(project, trackId, (track) {
+    if (track.locked) return track;
+    return track.copyWith(clips: track.clips.map((clip) =>
+      clip.id == clipId ? clip.copyWith(colorGrade: colorGrade) : clip,
+    ).toList());
+  });
+
+  /// Adds or replaces one keyframe for the same property and timestamp.
+  EditorProject setClipKeyframe({
+    required EditorProject project,
+    required String trackId,
+    required String clipId,
+    required EditorKeyframe keyframe,
+  }) => updateTrack(project, trackId, (track) {
+    if (track.locked) return track;
+    return track.copyWith(clips: track.clips.map((clip) {
+      if (clip.id != clipId || keyframe.timeMs > clip.durationMs) return clip;
+      final points = clip.keyframes.where((point) =>
+        point.property != keyframe.property || point.timeMs != keyframe.timeMs,
+      ).toList()..add(keyframe);
+      points.sort((a, b) {
+        final byTime = a.timeMs.compareTo(b.timeMs);
+        return byTime != 0 ? byTime : a.property.index.compareTo(b.property.index);
+      });
+      return clip.copyWith(keyframes: points);
+    }).toList());
+  });
+
+  EditorProject removeClipKeyframe({
+    required EditorProject project,
+    required String trackId,
+    required String clipId,
+    required int timeMs,
+    required KeyframeProperty property,
+  }) => updateTrack(project, trackId, (track) {
+    if (track.locked) return track;
+    return track.copyWith(clips: track.clips.map((clip) =>
+      clip.id == clipId
+        ? clip.copyWith(keyframes: clip.keyframes.where((point) =>
+            point.timeMs != timeMs || point.property != property,
+          ).toList())
+        : clip,
+    ).toList());
+  });
+
   /// Changes the mute state of a track without modifying its clips.
   EditorProject setTrackMuted({
     required EditorProject project,
