@@ -256,3 +256,14 @@
 - Queste due voci passano da missing a partial: non sono ancora disponibili controlli UI, interpolazione/renderer, LUT, HDR o stabilizzazione. Non dichiarare gli effetti visivi come operativi fino al collegamento e ai test con file esportati.
 - Nuovo conteggio: **2 done, 33 partial, 19 missing, 3 blocked su 57**. Ponderazione uniforme: (2 + 33 × 0,5) / 57 × 100 = 32,46%.
 - Il risultato CI sul nuovo commit è in corso; il conteggio documenta basi di modello e test presenti, non un rilascio pronto. APK ancora riservato alla fase 6; main invariato e PR non unita.
+
+
+## Avanzamento editor: interpolazione e modifiche non distruttive — 9 novembre 2026
+
+- Aggiunto un valutatore puro dei keyframe con interpolazione lineare per proprietà, mantenimento del valore prima/dopo l'intervallo e gestione deterministica dei timestamp duplicati. Non è ancora collegato a un renderer o all'export.
+- Le operazioni di editing possono ora impostare/rimuovere keyframe e aggiornare il color grade della clip; le modifiche passano dalla sessione editor e sono incluse nello storico undo/redo.
+- La divisione di una clip conserva il color grade e ripartisce i keyframe relativi alla clip, rimappando i tempi sulla seconda metà; la duplicazione conserva entrambi.
+- Aggiunti test unitari per interpolazione, limiti, proprietà non animate, timestamp duplicati, modifiche sessione/undo-redo e conservazione effetti in split/duplicate.
+- Le voci P1-10 e P1-11 restano partial: manca la UI per impostare questi valori, il collegamento al renderer/preview e la resa effettiva nel file esportato. Nessun effetto visivo viene dichiarato operativo.
+- La CI del batch è da attendere sul commit finale. Percentuale invariata: 2 done, 33 partial, 19 missing, 3 blocked su 57 = 32,46%.
+- Nessun APK generato; fase 6 invariata come ultima fase; main intatto e PR #1 ancora draft.
