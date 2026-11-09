@@ -1875,7 +1875,9 @@ def _render_job(job_id: str, project: dict, settings: dict):
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
             return
         result=_run_ffmpeg(job_id, cmd, timeout=1800)
-        if result.returncode: raise RuntimeError('FFmpeg finale: '+result.stderr[-1800:])
+        if result.returncode:
+            logging.error('FFmpeg final filter graph: %s', ';'.join(all_filters))
+            raise RuntimeError('FFmpeg finale: '+result.stderr[-10000:])
         if cancel_events.get(job_id, threading.Event()).is_set():
             output.unlink(missing_ok=True)
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
