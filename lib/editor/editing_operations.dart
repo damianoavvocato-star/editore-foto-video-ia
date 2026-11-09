@@ -96,8 +96,20 @@ class EditingOperations {
         }
         final firstDuration = splitAtMs - clip.startMs;
         final secondDuration = clip.endMs - splitAtMs;
+        final firstKeyframes = clip.keyframes
+            .where((point) => point.timeMs <= firstDuration).toList();
+        final secondKeyframes = clip.keyframes
+            .where((point) => point.timeMs >= firstDuration)
+            .map((point) => EditorKeyframe(
+                  timeMs: point.timeMs - firstDuration,
+                  property: point.property,
+                  value: point.value,
+                )).toList();
         result
-          ..add(clip.copyWith(durationMs: firstDuration))
+          ..add(clip.copyWith(
+            durationMs: firstDuration,
+            keyframes: firstKeyframes,
+          ))
           ..add(EditorClip(
             id: newClipId,
             source: clip.source,
@@ -107,6 +119,10 @@ class EditingOperations {
             sourceStartMs: clip.sourceStartMs + firstDuration,
             title: clip.title.isEmpty ? 'Split clip' : '${clip.title} (2)',
             speed: clip.speed,
+            transitionAfterMs: clip.transitionAfterMs,
+            transitionAfter: clip.transitionAfter,
+            keyframes: secondKeyframes,
+            colorGrade: clip.colorGrade,
           ));
       }
       result.sort((a, b) => a.startMs.compareTo(b.startMs));
@@ -166,6 +182,8 @@ class EditingOperations {
         title: source.title.isEmpty ? 'Copy' : '${source.title} (copy)',
         speed: source.speed, transitionAfterMs: source.transitionAfterMs,
         transitionAfter: source.transitionAfter,
+        keyframes: source.keyframes,
+        colorGrade: source.colorGrade,
       );
       final clips = [...track.clips, duplicate]..sort((a,b) => a.startMs.compareTo(b.startMs));
       return track.copyWith(clips: clips);
