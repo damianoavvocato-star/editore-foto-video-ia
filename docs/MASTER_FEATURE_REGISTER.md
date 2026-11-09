@@ -303,3 +303,12 @@
 - La demo web mostra ora il corrispondente indicatore di avanzamento come elemento grafico della preview. La barra web è dimostrativa e non controlla un file video.
 - Verifica sul commit precedente `8d5843b6e3f5e61318652c5c2c87d0902aa1d5b7`: analisi statica Flutter, test Flutter e test backend superati; il controllo Android Gradle preflight è ancora in esecuzione. Il nuovo commit deve superare la propria CI.
 - Nessuna voce del registro viene promossa a completata: conteggio invariato, 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%. Nessun APK generato; fase 6 resta l'ultima.
+
+
+## Ripristino e pubblicazione anteprima web — 9 novembre 2026
+
+- Reso il fondo scuro esplicito anche sul tag body, così la pagina conserva un aspetto leggibile anche quando il servizio di anteprima non applica correttamente il foglio di stile.
+- Sostituito il simbolo di riproduzione con un pulsante accessibile e aggiunti controlli demo funzionanti per play/pause, zoom e ripristino dei cursori colore.
+- Preparato un workflow GitHub Pages dedicato per pubblicare la cartella `docs/preview` come sito statico. La pubblicazione dipende dall'abilitazione di GitHub Pages con sorgente "GitHub Actions" nelle impostazioni del repository; il workflow non modifica il branch main.
+- L'anteprima è una dimostrazione interattiva, non una sessione Flutter né un editor con media reali collegati.
+- Nessuna funzionalità del registro promossa a completata: 2 completate, 33 parziali, 19 mancanti, 3 bloccate su 57 = 32,46%.
