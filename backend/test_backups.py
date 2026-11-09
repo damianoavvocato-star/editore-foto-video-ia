@@ -131,3 +131,57 @@ def test_restore_preparation_rejects_tampered_or_unknown_backup(tmp_path, monkey
     with pytest.raises(BackupError, match="alterato"):
         backups.prepare_restore(created["backupId"])
 
+def test_restore_staging_expiry_preview_and_delete_are_bounded(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    stage_dir = tmp_path / "backups" / "restore-staging"
+    stage_dir.mkdir()
+    old_id = "a" * 32
+    fresh_id = "b" * 32
+    old_file = stage_dir / f"{old_id}.sqlite3"
+    fresh_file = stage_dir / f"{fresh_id}.sqlite3"
+    old_file.write_bytes(b"old-stage")
+    fresh_file.write_bytes(b"fresh-stage")
+    import os
+    os.utime(old_file, (1000, 1000))
+    os.utime(fresh_file, (95000, 95000))
+
+    preview = backups.prune_restore_staging(
+        max_age_seconds=3600, dry_run=True, now=100000
+    )
+    assert preview["eligibleStageIds"] == [old_id]
+    assert preview["deletedCount"] == 0
+    assert old_file.exists()
+
+    applied = backups.prune_restore_staging(
+        max_age_seconds=3600, dry_run=False, now=100000
+    )
+    assert applied["deletedStageIds"] == [old_id]
+    assert not old_file.exists()
+    assert fresh_file.exists()
+
+
+def test_restore_staging_expiry_ignores_symlinks_and_rejects_invalid_policy(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    stage_dir = tmp_path / "backups" / "restore-staging"
+    stage_dir.mkdir()
+    outside = tmp_path / "outside.sqlite3"
+    outside.write_bytes(b"keep")
+    link = stage_dir / ("c" * 32 + ".sqlite3")
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are not available on this platform")
+    with pytest.raises(BackupError):
+        backups.prune_restore_staging(max_age_seconds=1)
+    result = backups.prune_restore_staging(
+        max_age_seconds=300, dry_run=False, now=100000
+    )
+    assert result["deletedCount"] == 0
+    assert outside.read_bytes() == b"keep"
+
