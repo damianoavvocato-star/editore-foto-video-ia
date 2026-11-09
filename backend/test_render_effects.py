@@ -20,7 +20,7 @@ class RenderEffectsTest(unittest.TestCase):
             overlay_image.save(server.ASSETS/f'{overlay_id}.png')
             server.jobs[job_id]={'state':'queued','progress':0.0,'message':'queued'}
             project={'width':320,'height':180,'fps':24,'tracks':[
-                {'kind':'video','clips':[{'kind':'image','assetId':base_id,'durationMs':1000,'colorGrade':{'exposure':0.25,'contrast':1.1,'saturation':1.2,'temperature':18,'tint':-8,'highlights':0.15,'shadows':-0.1},'keyframes':[{'timeMs':0,'property':'scale','value':1.0},{'timeMs':900,'property':'scale','value':1.25},{'timeMs':0,'property':'positionX','value':0.0},{'timeMs':900,'property':'positionX','value':20.0},{'timeMs':0,'property':'positionY','value':0.0},{'timeMs':900,'property':'positionY','value':-10.0},{'timeMs':0,'property':'rotation','value':0.0},{'timeMs':900,'property':'rotation','value':12.0},{'timeMs':0,'property':'opacity','value':0.7},{'timeMs':900,'property':'opacity','value':1.0}] }]},
+                {'kind':'video','clips':[{'kind':'image','assetId':base_id,'durationMs':1000,'colorGrade':{'exposure':0.25,'contrast':1.1,'saturation':1.2,'temperature':18,'tint':-8,'highlights':0.15,'shadows':-0.1},'keyframes':[{'timeMs':0,'property':'scale','value':1.0},{'timeMs':900,'property':'scale','value':1.25},{'timeMs':0,'property':'positionX','value':0.0},{'timeMs':900,'property':'positionX','value':20.0},{'timeMs':0,'property':'positionY','value':0.0},{'timeMs':900,'property':'positionY','value':-10.0},{'timeMs':0,'property':'rotation','value':0.0},{'timeMs':900,'property':'rotation','value':12.0},] }]},
                 {'kind':'overlay','clips':[{'kind':'image','assetId':overlay_id,'durationMs':1000,'x':30,'y':30,'width':80,'height':60,'rotationDegrees':8,'fadeInMs':150,'fadeOutMs':150,'keyframes':[{'timeMs':0,'property':'scale','value':1.0},{'timeMs':900,'property':'scale','value':1.3},{'timeMs':0,'property':'positionX','value':0.0},{'timeMs':900,'property':'positionX','value':30.0},{'timeMs':0,'property':'positionY','value':0.0},{'timeMs':900,'property':'positionY','value':15.0},{'timeMs':0,'property':'rotation','value':0.0},{'timeMs':900,'property':'rotation','value':20.0},{'timeMs':0,'property':'opacity','value':0.5},{'timeMs':900,'property':'opacity','value':1.0}]}]}
             ]}
             server._render_job(job_id,project,{'resolution':'p720','fps':24,'container':'mp4','codec':'h264','includeAudio':False})
@@ -92,6 +92,19 @@ class RenderEffectsTest(unittest.TestCase):
             else: os.environ['MEDIA_DATA_DIR']=previous
             shutil.rmtree(root,ignore_errors=True)
 
+
+    def test_primary_clip_opacity_is_rejected_until_alpha_track_compositing_exists(self):
+        from backend.server import _reject_unsupported_primary_opacity
+
+        _reject_unsupported_primary_opacity([
+            {'timeMs': 0, 'property': 'scale', 'value': 1.0},
+            {'timeMs': 900, 'property': 'positionX', 'value': 12.0},
+        ])
+        with self.assertRaisesRegex(RuntimeError, 'Opacità animata della clip principale'):
+            _reject_unsupported_primary_opacity([
+                {'timeMs': 0, 'property': 'opacity', 'value': 0.0},
+                {'timeMs': 900, 'property': 'opacity', 'value': 1.0},
+            ])
 
     def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
         from backend.server import _keyframe_expression
