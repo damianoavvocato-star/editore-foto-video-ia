@@ -1383,9 +1383,9 @@ def _render_primary_alpha_layers(
                 'setpts=PTS-STARTPTS',
                 f'fps={fps}',
                 f'scale={width}:{height}:force_original_aspect_ratio=decrease',
+                'format=rgba',
                 f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black@0',
                 'setsar=1',
-                'format=rgba',
                 f'eq=brightness={brightness}:contrast={contrast}:saturation={saturation}',
             ]
             if exposure:
