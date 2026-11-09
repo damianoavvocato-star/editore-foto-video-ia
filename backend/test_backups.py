@@ -146,7 +146,7 @@ def test_restore_staging_expiry_preview_and_delete_are_bounded(tmp_path, monkeyp
     fresh_file.write_bytes(b"fresh-stage")
     import os
     os.utime(old_file, (1000, 1000))
-    os.utime(fresh_file, (95000, 95000))
+    os.utime(fresh_file, (99000, 99000))
 
     preview = backups.prune_restore_staging(
         max_age_seconds=3600, dry_run=True, now=100000
