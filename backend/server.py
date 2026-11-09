@@ -1317,6 +1317,12 @@ def _render_primary_alpha_layers(
         if visual_clips:
             visual_tracks.append(visual_clips)
     flattened = [clip for track in visual_tracks for clip in track]
+    if any(int(clip.get('transitionAfterMs', 0)) > 0 for clip in flattened):
+        raise RuntimeError(
+            'Le transizioni tra clip principali non sono ancora supportate '
+            'nel nuovo rendering alpha multitraccia. Rimuovi temporaneamente '
+            'le transizioni per esportare questo progetto.'
+        )
     if not flattened:
         raise RuntimeError('Nessuna clip video principale da comporre.')
     total_duration = max(
