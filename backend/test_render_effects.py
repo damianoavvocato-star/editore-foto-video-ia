@@ -17,7 +17,7 @@ class RenderEffectsTest(unittest.TestCase):
             subprocess.run(['ffmpeg','-y','-f','lavfi','-i','color=c=yellow:s=80x60:d=1','-frames:v','1',str(server.ASSETS/f'{overlay_id}.png')],check=True,capture_output=True)
             server.jobs[job_id]={'state':'queued','progress':0.0,'message':'queued'}
             project={'width':320,'height':180,'fps':24,'tracks':[
-                {'kind':'video','clips':[{'kind':'image','assetId':base_id,'durationMs':1000,'colorGrade':{'exposure':0.25,'contrast':1.1,'saturation':1.2,'temperature':18,'tint':-8,'highlights':0.15,'shadows':-0.1}}]},
+                {'kind':'video','clips':[{'kind':'image','assetId':base_id,'durationMs':1000,'colorGrade':{'exposure':0.25,'contrast':1.1,'saturation':1.2,'temperature':18,'tint':-8,'highlights':0.15,'shadows':-0.1},'keyframes':[{'timeMs':0,'property':'scale','value':1.0},{'timeMs':900,'property':'scale','value':1.25},{'timeMs':0,'property':'positionX','value':0.0},{'timeMs':900,'property':'positionX','value':20.0},{'timeMs':0,'property':'positionY','value':0.0},{'timeMs':900,'property':'positionY','value':-10.0},{'timeMs':0,'property':'rotation','value':0.0},{'timeMs':900,'property':'rotation','value':12.0},{'timeMs':0,'property':'opacity','value':0.7},{'timeMs':900,'property':'opacity','value':1.0}] }]},
                 {'kind':'overlay','clips':[{'kind':'image','assetId':overlay_id,'durationMs':1000,'x':30,'y':30,'width':80,'height':60,'rotationDegrees':8,'fadeInMs':150,'fadeOutMs':150}]}
             ]}
             server._render_job(job_id,project,{'resolution':'p720','fps':24,'container':'mp4','codec':'h264','includeAudio':False})
@@ -29,5 +29,22 @@ class RenderEffectsTest(unittest.TestCase):
             if previous is None: os.environ.pop('MEDIA_DATA_DIR',None)
             else: os.environ['MEDIA_DATA_DIR']=previous
             shutil.rmtree(root,ignore_errors=True)
+
+
+    def test_keyframe_expression_interpolates_and_rejects_out_of_range_values(self):
+        from backend.server import _keyframe_expression
+        points = [
+            {'timeMs': 0, 'property': 'scale', 'value': 1.0},
+            {'timeMs': 1000, 'property': 'scale', 'value': 2.0},
+        ]
+        expression = _keyframe_expression(points, 'scale', 't')
+        self.assertIn('if(lt(t,1.000000)', expression)
+        self.assertIn('(t-0.000000)/1.000000', expression)
+        with self.assertRaises(RuntimeError):
+            _keyframe_expression(
+                [{'timeMs': 0, 'property': 'opacity', 'value': 1.5}],
+                'opacity',
+                'T',
+            )
 
 if __name__=='__main__': unittest.main()
