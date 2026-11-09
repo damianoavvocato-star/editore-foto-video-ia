@@ -1383,7 +1383,7 @@ def _render_primary_alpha_layers(
         start + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
         for clip, start, _fade_in, _fade_out, _transition_type in prepared_flattened
     )
-    cmd = [FFMPEG, '-y']
+    cmd = [FFMPEG, '-y', '-threads', '1']
     graph = [
         f'color=c=black:s={width}x{height}:r={fps}:d={total_duration:.6f},format=rgba[base0]'
     ]
@@ -1555,7 +1555,7 @@ def _render_primary_alpha_layers(
         '-filter_complex_threads', '1',
         '-filter_complex', ';'.join(graph),
         '-map', current, '-an', '-t', f'{total_duration:.6f}',
-        '-c:v', 'qtrle', '-pix_fmt', 'argb', '-r', str(fps),
+        '-c:v', 'qtrle', '-threads', '1', '-pix_fmt', 'argb', '-r', str(fps),
         str(intermediate),
     ]
     result = _run_ffmpeg(job_id, cmd, timeout=max(180, total_duration * 20))
@@ -1735,7 +1735,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
         codec=str(settings.get('codec','h264')).lower()
         vcodec={'h264':'libx264','h265':'libx265','vp9':'libvpx-vp9'}.get(codec,'libx264')
         output=OUTPUTS/f'{job_id}.{ext}'
-        cmd=[FFMPEG,'-y']
+        cmd=[FFMPEG,'-y','-threads','1']
         for segment in segments: cmd += ['-i', str(segment)]
         graph=[]
         if len(segments) == 1:
@@ -1850,7 +1850,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
             overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x_position}:y={y_position}:eval=frame:enable='between(t,{start:.3f},{end:.3f})'{composed}")
             current_video_label=composed
         if overlay_filters: video_label=current_video_label
-        cmd += ['-c:v',vcodec,'-r',str(fps)]
+        cmd += ['-c:v',vcodec,'-threads','1','-r',str(fps)]
         if audio_filters:
             labels=''.join(f'[a{i}]' for i in range(audio_input_start,audio_input_start+len(audio_clips)))
             audio_filters.append(f'{labels}amix=inputs={len(audio_clips)}:duration=longest:dropout_transition=2,apad[aout]')
