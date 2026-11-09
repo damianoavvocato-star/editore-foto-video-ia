@@ -172,3 +172,16 @@ The API reports eligible and deleted identifiers for auditability. This is local
 backup retention only; it does not implement remote replication, media-asset
 backup, or disaster-recovery restore.
 
+
+
+## Isolated restore preparation
+
+The Owner-only endpoint `POST /v1/owner/backups/{backup_id}/restore/prepare`
+decrypts a backup, validates its archive structure and SQLite integrity, then writes
+a private staged database under `restore-staging`. It never overwrites or opens the
+live account database for writing. The response exposes a generated stage identifier,
+integrity result and table inventory, not a filesystem path. This is a preparation
+step only: activation, maintenance-mode coordination, rollback, staged-file expiry,
+and media-asset restore are not implemented and must not be implied by a successful
+preparation response.
+
