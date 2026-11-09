@@ -14,7 +14,10 @@ class RenderEffectsTest(unittest.TestCase):
             server.ASSETS.mkdir(parents=True,exist_ok=True); server.OUTPUTS.mkdir(parents=True,exist_ok=True)
             base_id, overlay_id, job_id=(uuid.uuid4().hex for _ in range(3))
             subprocess.run(['ffmpeg','-y','-f','lavfi','-i','color=c=navy:s=320x180:d=1','-frames:v','1',str(server.ASSETS/f'{base_id}.png')],check=True,capture_output=True)
-            subprocess.run(['ffmpeg','-y','-f','lavfi','-i','color=c=yellow:s=80x60:d=1','-frames:v','1',str(server.ASSETS/f'{overlay_id}.png')],check=True,capture_output=True)
+            from PIL import Image, ImageDraw
+            overlay_image=Image.new('RGBA',(80,60),(0,0,0,0))
+            ImageDraw.Draw(overlay_image).rectangle((20,15,59,44),fill=(255,255,0,255))
+            overlay_image.save(server.ASSETS/f'{overlay_id}.png')
             server.jobs[job_id]={'state':'queued','progress':0.0,'message':'queued'}
             project={'width':320,'height':180,'fps':24,'tracks':[
                 {'kind':'video','clips':[{'kind':'image','assetId':base_id,'durationMs':1000,'colorGrade':{'exposure':0.25,'contrast':1.1,'saturation':1.2,'temperature':18,'tint':-8,'highlights':0.15,'shadows':-0.1},'keyframes':[{'timeMs':0,'property':'scale','value':1.0},{'timeMs':900,'property':'scale','value':1.25},{'timeMs':0,'property':'positionX','value':0.0},{'timeMs':900,'property':'positionX','value':20.0},{'timeMs':0,'property':'positionY','value':0.0},{'timeMs':900,'property':'positionY','value':-10.0},{'timeMs':0,'property':'rotation','value':0.0},{'timeMs':900,'property':'rotation','value':12.0},{'timeMs':0,'property':'opacity','value':0.7},{'timeMs':900,'property':'opacity','value':1.0}] }]},
@@ -25,6 +28,21 @@ class RenderEffectsTest(unittest.TestCase):
             output=server.OUTPUTS/f'{job_id}.mp4'
             probe=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,duration','-of','json',str(output)],check=True,capture_output=True,text=True)
             self.assertTrue(any(x['codec_type']=='video' for x in json.loads(probe.stdout)['streams']))
+
+            # Transparent pixels in the PNG must reveal the graded base clip.
+            alpha_frame = Path(root) / 'alpha-check.png'
+            subprocess.run(
+                ['ffmpeg', '-y', '-ss', '0.25', '-i', str(output),
+                 '-frames:v', '1', str(alpha_frame)],
+                check=True, capture_output=True,
+            )
+            alpha_image = Image.open(alpha_frame).convert('RGB')
+            transparent_pixel = alpha_image.getpixel((42, 38))
+            base_pixel = alpha_image.getpixel((10, 10))
+            self.assertLess(
+                sum(abs(a-b) for a, b in zip(transparent_pixel, base_pixel)), 45,
+                f'Area PNG trasparente non mostra correttamente la clip sottostante: {transparent_pixel} vs {base_pixel}',
+            )
 
             # Verify that animated overlay position changes in the actual
             # encoded output, rather than merely accepting a valid FFmpeg graph.
