@@ -1,6 +1,7 @@
 """Atomic monthly usage reservations for account-scoped AI jobs."""
 from __future__ import annotations
 
+import math
 import os
 import sqlite3
 import time
@@ -42,8 +43,24 @@ class UsageStore:
             pass
 
     @staticmethod
-    def _period(now: int | float | None = None) -> str:
+    def _validated_timestamp(now: int | float | None = None) -> float:
+        """Validate a UTC timestamp before calendar conversion or persistence."""
         timestamp = time.time() if now is None else now
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not math.isfinite(timestamp)
+        ):
+            raise ValueError("Invalid usage timestamp.")
+        try:
+            time.gmtime(timestamp)
+        except (OverflowError, OSError, ValueError) as exc:
+            raise ValueError("Invalid usage timestamp.") from exc
+        return float(timestamp)
+
+    @classmethod
+    def _period(cls, now: int | float | None = None) -> str:
+        timestamp = cls._validated_timestamp(now)
         return time.strftime("%Y-%m", time.gmtime(timestamp))
 
     def release(
@@ -112,8 +129,9 @@ class UsageStore:
             raise ValueError("Invalid job identifier.")
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
             raise ValueError("Invalid monthly usage limit.")
-        period = self._period(now)
-        timestamp = int(time.time() if now is None else now)
+        timestamp_value = self._validated_timestamp(now)
+        period = time.strftime("%Y-%m", time.gmtime(timestamp_value))
+        timestamp = int(timestamp_value)
         db = sqlite3.connect(self.database, timeout=10)
         try:
             db.execute("PRAGMA busy_timeout = 10000")
