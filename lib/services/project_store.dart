@@ -77,7 +77,7 @@ class ProjectStore {
         .where((entity) => entity is File && entity.path.endsWith('.editproj'))
         .cast<File>()
         .toList();
-    final projects = <EditorProject>[];
+    final projects = <({EditorProject project, DateTime modifiedAt})>[];
     for (final file in files) {
       try {
         final decoded = jsonDecode(await file.readAsString());
@@ -88,7 +88,10 @@ class ProjectStore {
           final expectedName = '${_safeName(project.id)}.editproj';
           if (file.uri.pathSegments.isNotEmpty &&
               file.uri.pathSegments.last == expectedName) {
-            projects.add(project);
+            projects.add((
+              project: project,
+              modifiedAt: await file.lastModified(),
+            ));
           }
         }
       } on FormatException {
@@ -98,13 +101,20 @@ class ProjectStore {
         // project must not prevent the library screen from listing the others.
       } on ArgumentError {
         // Reject unsafe IDs (including path traversal attempts) without
-        // allowing one malformed file to break the entire project library.
+        // allowing one malformed file to break the entire library screen.
       } on FileSystemException {
         // A file may be removed while the directory is being scanned.
       }
     }
-    projects.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return projects;
+    // The library is a recent-projects view: last edited first, with a stable
+    // name tie-breaker when multiple files share the same timestamp.
+    projects.sort((a, b) {
+      final byDate = b.modifiedAt.compareTo(a.modifiedAt);
+      return byDate != 0
+          ? byDate
+          : a.project.name.toLowerCase().compareTo(b.project.name.toLowerCase());
+    });
+    return projects.map((entry) => entry.project).toList();
   }
 
   Future<void> delete(String projectId, Directory directory) async {
