@@ -1155,6 +1155,10 @@ class AccountStore:
         if len(serialized.encode("utf-8")) > 4096:
             raise AccountError("Dettagli audit troppo grandi.")
         with self._connect() as db:
+            # Acquire the SQLite write reservation before reading the previous hash.
+            # Without this, simultaneous audit writers could read the same chain tail
+            # and either contend on a stale snapshot or append against the wrong tail.
+            db.execute("BEGIN IMMEDIATE")
             return _append_audit_event(db, actor_user_id, action, target_user_id, details, int(time.time()))
 
     def verify_audit_chain(self) -> dict[str, Any]:
