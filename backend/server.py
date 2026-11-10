@@ -23,6 +23,7 @@ from backend.usage_store import UsageLimitError, UsageStore
 from backend.media_cleanup import cleanup_stale_media
 from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
 from backend.studio_queue import StudioJobQueue, StudioQueueError
+from backend.magiclink import MagicLinkRequest, describe_link
 from backend.team_workspace import TeamWorkspaceError, TeamWorkspaceStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
@@ -81,6 +82,28 @@ def studio_capabilities(request: Request):
         'generationAvailable': False,
         'message': 'La creazione dei progetti è disponibile; la generazione richiede ancora un provider video autorizzato e verificato.',
     }
+
+
+@app.get('/v1/magiclink/capabilities')
+def magiclink_capabilities(request: Request):
+    _studio_user(request)
+    return {
+        'urlRecognition': True,
+        'platformClassification': True,
+        'remoteContentExtraction': False,
+        'transcriptionAvailable': False,
+        'translationAvailable': False,
+        'dubbingAvailable': False,
+        'providerConfigured': False,
+        'message': 'MagicLink riconosce il link; l’analisi dei contenuti e le elaborazioni richiedono ancora connettori e provider autorizzati.',
+    }
+
+
+@app.post('/v1/magiclink/analyze')
+def magiclink_analyze(body: MagicLinkRequest, request: Request):
+    _studio_user(request)
+    # Metadata-only by design: never fetch an arbitrary user-supplied URL here.
+    return describe_link(body)
 
 
 @app.post('/v1/studio/jobs')
