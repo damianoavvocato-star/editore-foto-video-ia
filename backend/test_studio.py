@@ -12,7 +12,7 @@ def test_studio_accepts_twenty_distinct_languages():
     assert len(request.targetLanguages) == 20
 
 
-def test_studio_rejects_duplicate_or_invalid_languages():
+def test_studio_accepts_script_and_numeric_region_language_tags():\n    request = StudioJobRequest(\n        task='script_to_video', script='Hello',\n        sourceLanguage='zh-Hant-TW', targetLanguages=['sr-Latn-RS', 'es-419'],\n    )\n    request.validate_policy()\n    assert request.sourceLanguage == 'zh-Hant-TW'\n\n\ndef test_studio_rejects_duplicate_or_invalid_languages():
     with pytest.raises(ValidationError):
         StudioJobRequest(task="script_to_video", script="Hello", targetLanguages=["it-IT", "it-IT"])
     with pytest.raises(ValidationError):
