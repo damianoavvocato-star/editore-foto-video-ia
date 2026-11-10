@@ -104,7 +104,7 @@ class _SynthesiaStudioScreenState extends State<SynthesiaStudioScreen> {
   Future<void> _createDraft() async {
     final studio = _studio;
     if (studio == null || _busy) return;
-    final languages = _languages.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+    final languages = parseStudioLanguageCodes(_languages.text);
     setState(() { _busy = true; _message = null; });
     try {
       final draft = await studio.createDraft(StudioJobRequest(
