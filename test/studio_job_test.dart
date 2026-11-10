@@ -12,6 +12,26 @@ void main() {
     expect(request.toJson()['targetLanguages'], ['it-IT', 'en-US', 'fr-FR']);
   });
 
+  test('Studio language parser normalizes casing and removes duplicates in order', () {
+    expect(
+      parseStudioLanguageCodes('it-it, EN-us, en-US, fr-FR, , es-es'),
+      ['it-IT', 'en-US', 'fr-FR', 'es-ES'],
+    );
+  });
+
+  test('Studio language parser preserves invalid tokens for validation', () {
+    final languages = parseStudioLanguageCodes('it-IT, en_US');
+    expect(languages, ['it-IT', 'en_US']);
+    expect(
+      () => StudioJobRequest(
+        task: StudioTask.scriptToVideo,
+        script: 'Hello',
+        targetLanguages: languages,
+      ).validate(),
+      throwsArgumentError,
+    );
+  });
+
   test('Studio request rejects more than twenty target languages', () {
     final request = StudioJobRequest(
       task: StudioTask.scriptToVideo, script: 'Hello',
