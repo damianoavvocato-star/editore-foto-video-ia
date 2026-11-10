@@ -154,7 +154,10 @@ class JobRegistry(dict[str, dict[str, Any]]):
                 "SELECT payload FROM media_jobs WHERE job_id = ?", (job_id,)
             ).fetchone()
         if row is None:
-            return dict.get(self, job_id, default)
+            # Another registry instance may have removed this durable job.
+            # Do not leak a stale in-memory snapshot after cross-instance deletion.
+            dict.pop(self, job_id, None)
+            return default
         try:
             values = json.loads(row[0])
             if not isinstance(values, dict):
@@ -309,7 +312,17 @@ class JobRegistry(dict[str, dict[str, Any]]):
         return values
 
     def clear(self) -> None:
-        dict.clear(self)
-        with self._connection() as connection:
+        # Commit durable deletion before changing this instance's cache. This
+        # keeps memory and SQLite consistent if the transaction cannot commit.
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute("DELETE FROM media_jobs")
             connection.execute("DELETE FROM render_idempotency")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        dict.clear(self)
