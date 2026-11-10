@@ -256,3 +256,8 @@ La schermata Flutter consente ora di organizzare manualmente fino a 50 URL in or
 ### MagicLink — controllo raccolta e batch
 
 La raccolta manuale degli episodi ora supporta riordino, copia dell'elenco, avanzamento del riconoscimento, annullamento cooperativo tra richieste e nuovo tentativo limitato ai link non riconosciuti. L'annullamento non interrompe forzatamente una richiesta HTTP già partita: evita l'avvio delle successive. La raccolta resta in memoria della schermata e non sopravvive ancora alla chiusura dell'app. Il backend continua a classificare soltanto i metadati del link e non scarica contenuti. Persistenza, coda durevole, connettori autorizzati e pipeline ASR/traduzione/TTS sono ancora da sviluppare.
+
+### Home — localizzazione della schermata iniziale
+
+La schermata iniziale usa ora le stringhe della tabella Copy per intestazione dello studio, slogan, testo hero, descrizioni delle sei scorciatoie, tooltip Premium e conteggio degli elementi dei progetti. I testi sono definiti per italiano, inglese, francese, spagnolo e arabo; il layout mantiene le etichette di navigazione e le azioni già esistenti. Restano da verificare rendering, overflow e direzione RTL nella campagna completa alla soglia del 35%. La localizzazione della home non implica che tutte le altre schermate siano già completamente tradotte.
+
