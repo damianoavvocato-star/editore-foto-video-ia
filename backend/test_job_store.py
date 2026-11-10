@@ -411,3 +411,32 @@ def test_idempotent_job_with_worker_start_failure_can_be_retried(tmp_path):
     )
     assert replayed is False
     assert replay_id == retry_id
+
+def test_pop_removes_job_created_by_another_registry_instance(tmp_path):
+    database = tmp_path / "jobs.sqlite3"
+    writer = JobRegistry(database)
+    reader = JobRegistry(database)
+    job_id = "1" * 32
+    writer[job_id] = {"state": "succeeded", "result": {"assetId": "2" * 32}}
+
+    removed = reader.pop(job_id)
+
+    assert removed["state"] == "succeeded"
+    assert removed["result"]["assetId"] == "2" * 32
+    assert job_id not in reader
+    assert job_id not in JobRegistry(database)
+
+
+def test_pop_returns_default_for_missing_durable_job(tmp_path):
+    jobs = JobRegistry(tmp_path / "jobs.sqlite3")
+
+    assert jobs.pop("missing-job", None) is None
+
+
+def test_pop_rejects_multiple_default_arguments(tmp_path):
+    import pytest
+
+    jobs = JobRegistry(tmp_path / "jobs.sqlite3")
+    with pytest.raises(TypeError, match="at most 2 arguments"):
+        jobs.pop("missing-job", None, None)
+
