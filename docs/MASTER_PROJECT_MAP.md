@@ -276,3 +276,6 @@ La direzione del testo viene ora applicata al livello radice di MaterialApp in b
 - Il modello espone `isPremiumAt(instant)` per verifiche deterministiche dell'attivazione Premium; il getter `isPremium` usa l'ora corrente.
 - Alla data/ora esatta di `validUntil`, il diritto Premium risulta scaduto (`isAfter`); gli account Free non risultano Premium anche se hanno una data futura.
 - Il client valuta soltanto i dati ricevuti: la concessione e la revoca dei diritti rimangono responsabilità del backend.
+
+### Recupero della coda di salvataggio
+La coda serializza le scritture per progetto e deve rimanere utilizzabile anche dopo il fallimento di un'operazione precedente. È stato aggiunto un test che simula un primo salvataggio fallito e verifica che il secondo venga eseguito; esecuzione rinviata al traguardo di test del 35%.
