@@ -410,3 +410,9 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - La lettura continua a ignorare file corrotti, ID non sicuri e nomi file non corrispondenti all'ID del progetto.
 - Aggiunto un test automatico dedicato all'ordinamento temporale; **non eseguito**, in rispetto della regola di test solo al raggiungimento delle soglie del 5%.
 - Nessuna variazione della percentuale generale: questa miglioria è un affinamento di una funzionalità già parziale, non una nuova voce completata.
+
+
+### Correzione home — ordine dei progetti recenti
+
+- Allineata la home all'ordinamento recente-prima della libreria: ora mostra i primi quattro progetti senza invertire la lista.
+- Aggiunto un test widget che verifica ordine e limite dei quattro elementi visibili; **non eseguito**, in attesa della soglia generale del 35%.
