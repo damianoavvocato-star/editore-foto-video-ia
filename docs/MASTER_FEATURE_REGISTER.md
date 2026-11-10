@@ -536,3 +536,11 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Aggiunti test parametrizzati che verificano la stessa risposta di validazione in tutti e tre i percorsi pubblici.
 - I test sono stati aggiunti ma **non eseguiti**: resta attivo il gate del 35%. Nessuna analisi statica, CI, build o APK avviati.
 - Avanzamento generale invariato: **32,76%**.
+
+## Job registry — rollback delle mutazioni in memoria dopo errori di persistenza
+
+- Le modifiche a un job già caricato (update, assegnazione di un campo e cancellazione di un campo) ora conservano uno snapshot precedente e ripristinano il dizionario se la scrittura SQLite fallisce.
+- L'inserimento tramite JobRegistry.__setitem__ persiste prima di pubblicare la voce nella cache, evitando job visibili nel processo ma assenti dal database.
+- Aggiunti test di regressione con errore di scrittura simulato per aggiornamento, assegnazione/cancellazione di campi e nuovo inserimento. **Non eseguiti**: il gate concordato resta il 35%; nessun test, analisi statica, CI o build è stato avviato.
+- Il cambiamento non modifica la semantica dei job già persistiti e non introduce worker distribuiti.
+- Avanzamento generale invariato: **32,76%**.
