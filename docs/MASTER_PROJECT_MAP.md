@@ -246,3 +246,8 @@ A partire dal 10 novembre 2026, il lavoro segue un ciclo a soglie:
 - Il job APK resta separato e non deve essere abilitato prima della fase 6.
 
 La prossima campagna autorizzata è al **35,00%**. La percentuale generale corrente resta **32,76%** fino a un aggiornamento sostenuto da nuove funzionalità completate; nessun test viene anticipato per inseguire la soglia.
+
+
+### MagicLink — stato sviluppo aggiornato
+
+La schermata Flutter consente ora di organizzare manualmente fino a 50 URL in ordine di episodio, eliminare singoli link e inviare un riconoscimento sequenziale all'API autenticata. Ogni risultato indica la piattaforma e mantiene chiaro che il contenuto remoto non è stato scaricato. È disponibile anche il percorso per importare media locali autorizzati direttamente nella timeline dell'editor. Restano da sviluppare scoperta automatica degli episodi, estrazione autorizzata, ASR, traduzione, doppiaggio, stato persistente della serie e test di integrazione. La nuova UI è da verificare alla soglia del 35%.
