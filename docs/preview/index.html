@@ -64,7 +64,7 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
    document.getElementById('magiclinkPanel').style.display=magic?'block':'none';
  }
  navItems.forEach(item=>item.addEventListener('click',()=>{
-   const title=item.textContent.trim().replace(/^\\S+\\s*/, '');
+   const title=item.textContent.trim();
    const magic=title.toLowerCase().includes('magiclink');
    showWorkspace(magic);
    if(!magic) document.querySelector('.sectionhead h3').textContent=title || 'Anteprima progetto';
