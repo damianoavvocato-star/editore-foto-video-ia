@@ -81,6 +81,8 @@
 - Se la cancellazione fallisce, il registry in memoria non viene modificato prima del commit; lo snapshot restituito dopo una rimozione remota è un dizionario indipendente e non riscrive automaticamente il record eliminato.
 - Conservato il comportamento di `dict.pop` per chiave assente e valore predefinito, incluso il rifiuto di più di un argomento predefinito.
 - Aggiunti test per rimozione cross-instance, default e arità. **Non eseguiti**: nessun test, analisi statica, CI o build prima del 35%.
+- Estesa la coerenza tra istanze: `get` elimina dalla cache locale una voce non più presente in SQLite, mentre `clear` cancella job e chiavi idempotenti in un'unica transazione prima di svuotare la cache del chiamante.
+- Aggiunti test di regressione per cache obsoleta dopo rimozione remota e per `clear` osservabile da altre istanze, inclusa la possibilità di riutilizzare la chiave idempotente dopo la cancellazione.
 - Il registry resta una coda con worker locali: questa modifica non introduce esecuzione distribuita o recovery automatico dei worker.
 - Avanzamento generale invariato: **32,76%**.
 
