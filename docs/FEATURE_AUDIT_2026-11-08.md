@@ -105,3 +105,15 @@ Nel branch è stato aggiunto un primo livello di codice, distinto dalla roadmap 
 - Se il processo server si riavvia mentre il worker MagicIAedit è attivo, il job viene ancora marcato `worker_interrupted`. La ripetizione della stessa chiave non lo riavvia automaticamente e non addebita una seconda quota: per un nuovo tentativo esplicito il client deve usare una nuova chiave.
 - Questo migliora la protezione da richieste duplicate, ma **non implementa la ripresa durevole dei worker**. Render FFmpeg e MagicIAedit continuano a usare thread locali; la coda distribuita con lease, heartbeat e recupero dei payload resta da realizzare.
 - Aggiunta regressione API che verifica replay, conflitto fingerprint, singola prenotazione quota e comportamento dopo riavvio.
+
+
+## Verifica CI aggiornata al 10 novembre 2026
+
+Sul commit `2f55ee6b7ef6310ae8dbb07bb746777b71f04c9a` (branch `feature/magiciaedit-cloud-foundation`), il workflow PR #1 è terminato con successo nel run [42719646017](https://github.com/damianoavvocato-star/editore-foto-video-ia/actions/runs/42719646017):
+
+- Backend: **377 test passati**, 4 subtest passati; 3 warning di deprecazione (Starlette/httpx, Pillow `getdata`, Node.js delle action).
+- Flutter: `flutter analyze` superato e **164 test passati**.
+- Android preflight: generazione scaffold, asset icona/splash e configurazione Gradle superati (`BUILD SUCCESSFUL`).
+- `android-apk`: **skipped intenzionalmente**; nessun APK prodotto, in coerenza con il vincolo della fase 6.
+
+La stessa revisione aveva avviato due run equivalenti per ogni commit (evento `push` e `pull_request`). Per evitare consumo duplicato di minuti CI, il trigger `push` resta per `main` e `master`; i commit del branch di lavoro vengono verificati dall'evento `pull_request` sulla PR #1. Questo non modifica il codice dell'app e non avvia alcuna build APK.
