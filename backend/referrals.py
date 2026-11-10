@@ -5,6 +5,7 @@ existing premium_grants ledger and start at maturation, not at claim time.
 """
 from __future__ import annotations
 
+import re
 import secrets
 import sqlite3
 import time
@@ -88,7 +89,7 @@ class ReferralStore:
         if not isinstance(code, str):
             raise ReferralError("Codice invito non valido.")
         normalized = code.strip().upper()
-        if not 6 <= len(normalized) <= 12 or not normalized.isalnum():
+        if re.fullmatch(r"[A-Z0-9]{6,12}", normalized, flags=re.ASCII) is None:
             raise ReferralError("Codice invito non valido.")
         if not invitee_user_id or len(invitee_user_id) > 128:
             raise ReferralError("Account non valido.")
