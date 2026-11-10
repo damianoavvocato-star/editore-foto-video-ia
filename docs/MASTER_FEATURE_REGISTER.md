@@ -445,3 +445,5 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 > **Aggiornamento entitlement Premium:** aggiunto `isPremiumAt(instant)` per verificare in modo deterministico la scadenza, con test per istante immediatamente precedente, esatto e successivo alla scadenza e per account Free. `isPremium` continua a usare l'orologio corrente. La concessione dei diritti resta esclusivamente server-side. I test sono stati aggiunti ma non eseguiti prima della soglia del 35%.
 
 > **Coda di salvataggio progetti:** aggiunto un test di regressione che verifica che un errore di scrittura non blocchi i salvataggi successivi dello stesso progetto. Il test è stato aggiunto alla suite Flutter ma non eseguito, in conformità alla soglia del 35%.
+
+> **Parsing dei diritti account:** la deserializzazione di `UserEntitlement` ora rifiuta ID utente vuoti, livelli account e origini sconosciuti, tipi errati e scadenze non valide con `FormatException` coerenti. Aggiunti test di regressione per payload API malformati; non eseguiti prima del 35%.
