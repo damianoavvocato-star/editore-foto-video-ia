@@ -43,6 +43,18 @@ class UsageStore:
             pass
 
     @staticmethod
+    def _validate_identifier(value: str, label: str, maximum: int) -> str:
+        """Require canonical non-empty identifiers; never silently trim keys."""
+        if (
+            not isinstance(value, str)
+            or not value
+            or value != value.strip()
+            or len(value) > maximum
+        ):
+            raise ValueError(f"Invalid {label}.")
+        return value
+
+    @staticmethod
     def _validated_timestamp(now: int | float | None = None) -> float:
         """Validate a UTC timestamp before calendar conversion or persistence."""
         timestamp = time.time() if now is None else now
@@ -67,10 +79,8 @@ class UsageStore:
         self, user_id: str, job_id: str, period: str
     ) -> bool:
         """Release a reservation when a job could not be accepted by the job store."""
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
-            raise ValueError("Invalid account identifier.")
-        if not isinstance(job_id, str) or not job_id or len(job_id) > 64:
-            raise ValueError("Invalid job identifier.")
+        self._validate_identifier(user_id, "account identifier", 128)
+        self._validate_identifier(job_id, "job identifier", 64)
         if not isinstance(period, str) or len(period) != 7 or period[4] != "-":
             raise ValueError("Invalid usage period.")
         try:
@@ -98,10 +108,8 @@ class UsageStore:
 
     def has_reservation(self, user_id: str, job_id: str, limit: int) -> bool:
         """Check that a job has a reservation and its original period is within quota."""
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
-            raise ValueError("Invalid account identifier.")
-        if not isinstance(job_id, str) or not job_id or len(job_id) > 64:
-            raise ValueError("Invalid job identifier.")
+        self._validate_identifier(user_id, "account identifier", 128)
+        self._validate_identifier(job_id, "job identifier", 64)
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
             raise ValueError("Invalid monthly usage limit.")
         with sqlite3.connect(self.database, timeout=10) as db:
@@ -123,10 +131,8 @@ class UsageStore:
     def reserve(
         self, user_id: str, job_id: str, limit: int, now: int | float | None = None
     ) -> dict[str, Any]:
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
-            raise ValueError("Invalid account identifier.")
-        if not isinstance(job_id, str) or not job_id or len(job_id) > 64:
-            raise ValueError("Invalid job identifier.")
+        self._validate_identifier(user_id, "account identifier", 128)
+        self._validate_identifier(job_id, "job identifier", 64)
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
             raise ValueError("Invalid monthly usage limit.")
         timestamp_value = self._validated_timestamp(now)
@@ -175,8 +181,7 @@ class UsageStore:
 
     def summary(self, user_id: str, limit: int, now: int | float | None = None) -> dict[str, Any]:
         """Return the authenticated account's monthly reservation count and quota."""
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
-            raise ValueError("Invalid account identifier.")
+        self._validate_identifier(user_id, "account identifier", 128)
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
             raise ValueError("Invalid monthly usage limit.")
         period = self._period(now)
