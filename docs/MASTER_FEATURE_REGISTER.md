@@ -467,3 +467,6 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 
 
 - Ledger crediti IA: validazione centralizzata di operatore e motivazione anche nei percorsi consume/refund, con normalizzazione degli spazi esterni e rifiuto di valori vuoti/non stringa; aggiunti test dedicati. Test non eseguiti in attesa del gate del 35%.
+
+
+- API storico crediti: il parametro `limit` è ora vincolato a 1–100 a livello HTTP (richieste fuori intervallo ricevono 422 invece di essere corrette silenziosamente); aggiunto test autenticazione, isolamento del saldo tra account e limiti di paginazione. Test non eseguiti fino alla soglia del 35%.
