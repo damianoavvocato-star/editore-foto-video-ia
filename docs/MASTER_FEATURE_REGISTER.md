@@ -19,7 +19,7 @@
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
 |---|---|---|---|---|---|---|
-| P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs/MASTER_PROJECT_MAP.md e docs/MASTER_FEATURE_REGISTER.md | 57 voci distribuite in P0–P3 con requisiti, ruoli, frontend/backend e criteri di accettazione | Mappa decisioni e roadmap presenti; ogni voce ha ID, stato e criteri di verifica; aggiornamento per ogni batch | done |
+| P0-01 | Registro completo e misurabile delle funzioni | Tutti | docs/MASTER_PROJECT_MAP.md e docs/MASTER_FEATURE_REGISTER.md | 58 voci distribuite in P0–P3 con requisiti, ruoli, frontend/backend e criteri di accettazione | Mappa decisioni e roadmap presenti; ogni voce ha ID, stato e criteri di verifica; aggiornamento per ogni batch | done |
 | P0-02 | Dashboard autonoma Proprietario | Owner | KPI, navigazione, schede | statistiche aggregate e autorizzate | Owner vede dati reali, altri ruoli 403 | partial |
 | P0-03 | Gestione account e ruoli | Owner, Admin limitato | schermata account esistente | API account/permessi | protezione owner e privilege escalation | partial |
 | P0-04 | Console autonoma Amministratore | Admin | dashboard con statistiche aggregate e gestione account limitata | endpoint admin-only e permessi server-side | admin non può creare/modificare owner né promuoversi; completare KPI operativi e test UI dedicati | partial |
@@ -73,6 +73,7 @@
 | P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
+| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | UI di incolla link, revisione episodi e selezione azioni da realizzare | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI | partial |
 | P2-14 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
 | P2-15 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
 | P2-16 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
@@ -338,3 +339,15 @@
 - `android-apk` è stato saltato intenzionalmente: la generazione APK resta riservata alla fase 6. Nessuna modifica a `main` e nessun merge della PR.
 - P1-10 e P1-11 restano `partial`: la CI verde dimostra il percorso backend coperto dai test, ma non certifica ancora confronto visivo preview/export, tutte le transizioni concatenate, gesture avanzate o prova su dispositivi reali. Conteggio e percentuale non cambiano: **2 done, 33 partial, 19 missing, 3 blocked su 57 = 32,46%**.
 - Restano avvisi non bloccanti di deprecazione in dipendenze Python/Flutter/Gradle; vanno gestiti in un batch di manutenzione dedicato, senza mescolarli alla correzione funzionale appena verificata.
+
+
+
+## Nuova funzione MagicLink IA — 10 novembre 2026
+
+- Aggiunta la funzione **MagicLink IA** alla mappa del prodotto e al registro P2-14. Il flusso previsto comprende link singoli e serie multi-episodio, con azioni collegate a MagicTranslate, MagicVoice e MagicIAedit.
+- Aggiunto `backend/magiclink.py`: validazione URL HTTP/HTTPS, riconoscimento di TikTok, YouTube, Instagram, Facebook, X, Vimeo e siti generici. Blocca credenziali nell'URL, host locali/interni, IP non globali e porte personalizzate.
+- Aggiunti endpoint autenticati `GET /v1/magiclink/capabilities` e `POST /v1/magiclink/analyze`. L'endpoint attuale classifica il link e restituisce le possibili operazioni, ma **non scarica né legge il contenuto remoto** e non dichiara provider di trascrizione/traduzione/doppiaggio disponibili.
+- Aggiunti test unitari e API per classificazione piattaforme, URL pericolosi, autenticazione, isolamento del flusso e stato metadata-only.
+- Stato P2-14: `partial`. Restano da realizzare UI Flutter per incolla link, condivisione verso l'app, elenco/ordinamento episodi, importazione file autorizzati, estrazione tramite connettori consentiti, provider ASR/traduzione/TTS, job persistenti, quote/costi, retry/cancellazione e test end-to-end.
+- Nuovo conteggio: **2 done, 34 partial, 19 missing, 3 blocked su 58**. Ponderazione uniforme: (2 + 34 × 0,5) / 58 × 100 = **32,76%**. Il lieve aumento deriva dall'aggiunta della nuova voce parziale, non dal completamento dell'intera funzione.
+- Nessun APK generato; fase 6 resta l'ultima. Nessuna modifica a `main` e nessun merge della PR.
