@@ -112,7 +112,7 @@ flowchart TD
 - Azioni previste: trascrizione, traduzione dei sottotitoli, doppiaggio, riassunto e apertura del materiale in MagicIAedit per il montaggio.
 - Il contenuto remoto può essere elaborato solo tramite accessi, API o importazioni autorizzate e nel rispetto dei termini della piattaforma, dei diritti e del consenso. Se un link non è leggibile, proporre l'importazione di un file che l'utente è autorizzato a utilizzare.
 - Mai aggirare login, DRM, paywall, protezioni tecniche o limitazioni di accesso. Nessuna promessa di compatibilità universale: dichiarare i limiti per ogni piattaforma.
-- La prima base backend riconosce/classifica URL in modalità metadata-only; non scarica né analizza ancora i media. La UI Flutter e i provider di estrazione/ASR/traduzione/TTS restano da implementare.
+- UI Flutter disponibile nella navigazione: incolla da appunti, istruzione in linguaggio naturale e presentazione dello stato di riconoscimento. Backend in modalità metadata-only: non scarica né analizza ancora i media. Connettori di estrazione autorizzata, elenco episodi e provider ASR/traduzione/TTS restano da implementare.
 
 ### 3.5 Audio, voce, lingue e sottotitoli
 - ASR/trascrizione con timestamp e, quando disponibile, diarizzazione speaker.
