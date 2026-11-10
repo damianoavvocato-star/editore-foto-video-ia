@@ -479,3 +479,12 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Commit di implementazione: `83b52b5`; commit del test: `52b601c`.
 - Nessuna funzionalità viene promossa a `done` prima della campagna completa. Avanzamento generale invariato: **32,76%**; `main` invariato e PR #1 ancora draft.
 
+ 
+### Hardening catena audit — scritture concorrenti
+
+- La scrittura degli eventi audit generici acquisisce ora una prenotazione SQLite `BEGIN IMMEDIATE` prima di leggere l'ultimo hash e appendere il nuovo evento.
+- Questo serializza i writer concorrenti e impedisce che due richieste costruiscano la nuova voce partendo dallo stesso elemento finale della catena.
+- Aggiunto test backend concorrente con 24 append simultanei e verifica di unicità degli ID, presenza di tutti gli eventi e integrità della catena.
+- Test non eseguiti: resta valido il gate di verifica al 35%. Nessuna variazione dell'avanzamento generale (32,76%).
+- Commit codice: `71aa6e3`; commit test: `0773b81`.
+
