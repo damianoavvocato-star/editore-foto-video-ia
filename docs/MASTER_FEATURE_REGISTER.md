@@ -73,7 +73,7 @@
 | P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
-| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter MagicLink con incolla clipboard, istruzioni, riconoscimento risultato e pulsante di importazione di media locali autorizzati direttamente nella timeline editor; revisione episodi non ancora implementata | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI; nuova integrazione import->timeline da verificare alla prossima soglia | partial |
+| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter con clipboard, istruzioni, import locale autorizzato verso timeline e raccolta manuale ordinata fino a 50 URL, rimozione singoli episodi e riconoscimento batch sequenziale | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; nuove interazioni batch/import da verificare alla prossima soglia | partial |
 | P2-15 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
 | P2-16 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
 | P2-17 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
@@ -381,3 +381,12 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - Il passaggio cambia la vista sull'editor prima di aprire il selettore; l'utente può annullare senza che venga dichiarata un'importazione riuscita.
 - Nessun fetch remoto, scraping, aggiramento di login/DRM/paywall o elaborazione IA è stato aggiunto. Il connettore remoto resta non configurato.
 - La modifica Flutter e il flusso di navigazione restano **da verificare**: per decisione dell'utente non si eseguono test, analisi statica o CI prima del 35%.
+
+
+### Incremento sviluppo MagicLink — raccolta manuale di episodi
+
+- Aggiunta una raccolta ordinata di massimo 50 URL, con aggiunta, rilevamento duplicati e rimozione dei singoli episodi.
+- Il comando "Analizza serie" invia i collegamenti uno alla volta all'API autenticata di classificazione già disponibile e conserva lo stato di ciascun collegamento.
+- La UI dichiara esplicitamente che il batch riconosce i link ma non scarica, riproduce o analizza i video remoti. Non è stata implementata alcuna estrazione automatica della serie.
+- L'analisi batch richiede prima una connessione API valida. I singoli errori vengono conservati come stato dell'episodio senza interrompere gli altri link.
+- Integrazione locale e raccolta batch restano da verificare con la campagna prevista al 35%; nessun test o workflow CI è stato avviato.
