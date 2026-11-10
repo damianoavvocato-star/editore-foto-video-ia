@@ -7,7 +7,9 @@ const _studioLanguagePattern = r'^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?    final token = part.trim();
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
+  for (final part in input.split(',')) {
+    final token = part.trim();
     if (token.isEmpty) continue;
     final match = codePattern.firstMatch(token);
     final String normalized;
