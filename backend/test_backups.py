@@ -209,3 +209,23 @@ def test_restore_staging_expiry_ignores_symlinks_and_rejects_invalid_policy(tmp_
     assert result["deletedCount"] == 0
     assert outside.read_bytes() == b"keep"
 
+def test_backup_verification_rejects_incompatible_account_schema(tmp_path, monkeypatch):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    key = Fernet.generate_key()
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", key.decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+
+    malformed_database = tmp_path / "malformed-verify.sqlite3"
+    with sqlite3.connect(malformed_database) as db:
+        db.execute("CREATE TABLE accounts (id TEXT PRIMARY KEY)")
+    archive_buffer = io.BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
+        archive.add(malformed_database, arcname="accounts.sqlite3", recursive=False)
+    backup_id = uuid.uuid4().hex
+    backup_path = tmp_path / "backups" / f"{backup_id}.mibak"
+    backup_path.write_bytes(Fernet(key).encrypt(archive_buffer.getvalue()))
+
+    with pytest.raises(BackupError, match="schema account"):
+        backups.verify(backup_id)
+
