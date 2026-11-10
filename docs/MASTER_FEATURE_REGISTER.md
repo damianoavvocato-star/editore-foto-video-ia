@@ -454,3 +454,10 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Il modello Flutter espone `normalizedReferralCode` (trim + maiuscolo) e valida codici con il set ASCII `A-Z0-9`, lunghezza 6–12, in modo coerente con il server.
 - Il backend rifiuta esplicitamente caratteri alfanumerici Unicode non ASCII; gli ID invitato vuoti o oltre 128 caratteri sono rifiutati dal client prima dell'invio.
 - Aggiunti casi di regressione Flutter e backend per normalizzazione, codice Unicode e ID invitato non valido. **I test non sono stati eseguiti**: restano in attesa del gate concordato al 35%.
+
+
+## Referral — concorrenza e input account
+
+- La creazione/lettura del codice personale ora usa una transazione SQLite `BEGIN IMMEDIATE`, serializzando il passaggio di lettura e inserimento: richieste simultanee per lo stesso account non generano codici in conflitto.
+- Gli identificativi account vengono normalizzati con `strip()` e validati come stringhe non vuote entro 128 caratteri anche nel livello di servizio.
+- Aggiunti test backend per richieste concorrenti e identificativi non validi. **Non eseguiti**, in attesa della soglia del 35% concordata.
