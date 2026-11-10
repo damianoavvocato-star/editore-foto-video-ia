@@ -132,7 +132,7 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
 
   Future<void> _copyEpisodeList() async {
     if (_episodeUrls.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _episodeUrls.join('\\n')));
+    await Clipboard.setData(ClipboardData(text: _episodeUrls.join('\n')));
     if (mounted) {
       setState(() => _message = 'Elenco degli episodi copiato negli appunti.');
     }
