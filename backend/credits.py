@@ -41,11 +41,11 @@ class CreditStore:
 
     @staticmethod
     def _validate(user_id: str, amount: int, reference_id: str):
-        if not isinstance(user_id, str) or not user_id.strip() or len(user_id) > 128:
+        if not isinstance(user_id, str) or not user_id.strip() or user_id != user_id.strip() or len(user_id) > 128:
             raise CreditError("Account non valido.")
         if not isinstance(amount, int) or isinstance(amount, bool) or not 1 <= amount <= 1_000_000:
             raise CreditError("Quantità crediti non valida.")
-        if not isinstance(reference_id, str) or not reference_id.strip() or len(reference_id) > 128:
+        if not isinstance(reference_id, str) or not reference_id.strip() or reference_id != reference_id.strip() or len(reference_id) > 128:
             raise CreditError("Riferimento operazione non valido.")
 
     @staticmethod
