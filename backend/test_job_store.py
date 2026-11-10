@@ -440,3 +440,49 @@ def test_pop_rejects_multiple_default_arguments(tmp_path):
     with pytest.raises(TypeError, match="at most 2 arguments"):
         jobs.pop("missing-job", None, None)
 
+def test_get_evicts_stale_cache_after_another_registry_removes_job(tmp_path):
+    database = tmp_path / "jobs.sqlite3"
+    writer = JobRegistry(database)
+    reader = JobRegistry(database)
+    job_id = "3" * 32
+    writer[job_id] = {"state": "succeeded", "result": {"value": "old"}}
+
+    assert reader.get(job_id)["result"]["value"] == "old"
+    writer.pop(job_id)
+
+    assert reader.get(job_id) is None
+    assert job_id not in reader
+
+
+def test_clear_removes_jobs_and_idempotency_for_all_registry_instances(tmp_path):
+    import uuid
+
+    database = tmp_path / "jobs.sqlite3"
+    writer = JobRegistry(database)
+    reader = JobRegistry(database)
+    job_id = uuid.uuid4().hex
+    writer.create_idempotent_job(
+        job_id,
+        {"state": "succeeded", "progress": 1.0},
+        "account-scope",
+        "clear-key",
+        "clear-fingerprint",
+    )
+    assert reader.get(job_id)["state"] == "succeeded"
+
+    writer.clear()
+
+    assert job_id not in JobRegistry(database)
+    assert reader.get(job_id) is None
+    assert job_id not in reader
+
+    replacement_id, created = reader.create_idempotent_job(
+        uuid.uuid4().hex,
+        {"state": "queued", "progress": 0.0},
+        "account-scope",
+        "clear-key",
+        "clear-fingerprint",
+    )
+    assert created is True
+    assert replacement_id != job_id
+
