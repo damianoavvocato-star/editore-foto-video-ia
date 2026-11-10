@@ -863,6 +863,12 @@ class _HomePageState extends State<HomePage> {
                 icon: const Icon(Icons.auto_awesome),
                 onPressed: () => setState(() => selectedTab = 2),
               ),
+            if (selectedTab != 6)
+              IconButton(
+                tooltip: t('settings'),
+                onPressed: () => setState(() => selectedTab = 6),
+                icon: const Icon(Icons.settings_outlined),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: DropdownButton<AppLanguage>(
@@ -895,6 +901,8 @@ class _HomePageState extends State<HomePage> {
                     photoLabel: t('photo'),
                     aiLabel: t('ai'),
                     magicLinkLabel: 'MagicLink IA',
+                    studioLabel: 'Synthesia Studio IA',
+                    teamLabel: 'TeamStudio',
                     savedProjectsLabel: t('savedProjects'),
                     noSavedProjectsLabel: t('noSavedProjects'),
                     projects: savedProjects,
@@ -907,6 +915,8 @@ class _HomePageState extends State<HomePage> {
                     onPhoto: () => setState(() => selectedTab = 1),
                     onMagic: () => setState(() => selectedTab = 2),
                     onMagicLink: () => setState(() => selectedTab = 10),
+                    onStudio: () => setState(() => selectedTab = 7),
+                    onTeam: () => setState(() => selectedTab = 8),
                     onPremium: () => setState(() => selectedTab = 9),
                     onOpenProject: _openSavedProject,
                   )
@@ -971,11 +981,7 @@ class _HomePageState extends State<HomePage> {
       (tab: 0, icon: Icons.movie_outlined, label: 'Video'),
       (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
       (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
-      (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
       (tab: 10, icon: Icons.link, label: 'MagicLink'),
-      (tab: 8, icon: Icons.groups_outlined, label: 'Team'),
-      (tab: 6, icon: Icons.admin_panel_settings_outlined, label: 'Pannelli'),
-      (tab: 9, icon: Icons.workspace_premium_outlined, label: 'Premium'),
     ];
     final selectedIndex = destinations.indexWhere((item) => item.tab == selectedTab);
     return NavigationBar(
