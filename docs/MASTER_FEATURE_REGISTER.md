@@ -401,3 +401,12 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - La raccolta rimane temporanea nella schermata: persistenza su account/progetto, retry durevole dopo chiusura app e cancellazione effettiva dei job remoti non sono implementati.
 - La modifica non cambia la modalità metadata-only del backend e non accede ai contenuti remoti.
 - Tutto il nuovo flusso resta da verificare alla soglia del 35%, senza test intermedi.
+
+
+## Avanzamento incrementale — 10 novembre 2026, libreria progetti
+
+- La libreria locale dei progetti ora ordina per data effettiva di ultima modifica del file: il progetto modificato più di recente compare in cima.
+- In caso di timestamp uguali, usa il nome in ordine alfabetico per mantenere un risultato stabile.
+- La lettura continua a ignorare file corrotti, ID non sicuri e nomi file non corrispondenti all'ID del progetto.
+- Aggiunto un test automatico dedicato all'ordinamento temporale; **non eseguito**, in rispetto della regola di test solo al raggiungimento delle soglie del 5%.
+- Nessuna variazione della percentuale generale: questa miglioria è un affinamento di una funzionalità già parziale, non una nuova voce completata.
