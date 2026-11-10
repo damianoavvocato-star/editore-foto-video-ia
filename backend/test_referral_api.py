@@ -64,6 +64,20 @@ def test_referral_api_requires_session_and_claims_code_once(tmp_path, monkeypatc
     )
     assert invalid.status_code == 422
 
+    unicode_code = client.post(
+        "/v1/account/referrals/claim",
+        headers=another_headers,
+        json={"code": "ÀB12CD34"},
+    )
+    assert unicode_code.status_code == 422
+
+    short_code = client.post(
+        "/v1/account/referrals/claim",
+        headers=another_headers,
+        json={"code": "ABC"},
+    )
+    assert short_code.status_code == 422
+
 
 
 def test_account_usage_endpoint_requires_auth_and_returns_server_quota(tmp_path, monkeypatch):
