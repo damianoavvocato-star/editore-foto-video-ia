@@ -19,7 +19,7 @@ void main() {
     );
   });
 
-  test('Studio language parser preserves invalid tokens for validation', () {
+  test('Studio language parser normalizes script and numeric region subtags', () {\n    expect(\n      parseStudioLanguageCodes('zh-hant-tw, sr-latn-rs, es-419, zh-Hant-TW'),\n      ['zh-Hant-TW', 'sr-Latn-RS', 'es-419'],\n    );\n  });\n\n  test('Studio language parser preserves invalid tokens for validation', () {
     final languages = parseStudioLanguageCodes('it-IT, en_US');
     expect(languages, ['it-IT', 'en_US']);
     expect(
@@ -32,7 +32,7 @@ void main() {
     );
   });
 
-  test('Studio request rejects more than twenty target languages', () {
+  test('Studio request accepts script and numeric region language tags', () {\n    final request = StudioJobRequest(\n      task: StudioTask.scriptToVideo, script: 'Hello',\n      sourceLanguage: 'zh-Hant-TW', targetLanguages: ['en-US'],\n    );\n    expect(request.validate, returnsNormally);\n  });\n\n  test('Studio request rejects more than twenty target languages', () {
     final request = StudioJobRequest(
       task: StudioTask.scriptToVideo, script: 'Hello',
       targetLanguages: List.generate(21, (index) => 'x${index.toString().padLeft(2, '0')}'),
