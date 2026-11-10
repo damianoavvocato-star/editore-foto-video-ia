@@ -73,7 +73,7 @@
 | P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
-| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | UI di incolla link, revisione episodi e selezione azioni da realizzare | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI | partial |
+| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter MagicLink, incolla da clipboard, istruzioni utente e presentazione risultato; revisione episodi non ancora implementata | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI | partial |
 | P2-14 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
 | P2-15 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
 | P2-16 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
@@ -351,3 +351,10 @@
 - Stato P2-14: `partial`. Restano da realizzare UI Flutter per incolla link, condivisione verso l'app, elenco/ordinamento episodi, importazione file autorizzati, estrazione tramite connettori consentiti, provider ASR/traduzione/TTS, job persistenti, quote/costi, retry/cancellazione e test end-to-end.
 - Nuovo conteggio: **2 done, 34 partial, 19 missing, 3 blocked su 58**. Ponderazione uniforme: (2 + 34 × 0,5) / 58 × 100 = **32,76%**. Il lieve aumento deriva dall'aggiunta della nuova voce parziale, non dal completamento dell'intera funzione.
 - Nessun APK generato; fase 6 resta l'ultima. Nessuna modifica a `main` e nessun merge della PR.
+
+
+### Aggiornamento MagicLink IA — UI Flutter e anteprima web
+- Aggiunti `lib/services/magiclink_api.dart` e `lib/studio/magiclink_screen.dart`: collegamento autenticato, incolla dagli appunti, campo URL, istruzione libera, chiamata di analisi e presentazione trasparente dello stato del provider.
+- Integrata la schermata nella navigazione mobile e desktop come voce MagicLink IA.
+- Aggiornata `docs/preview/index.html` con una singola anteprima interattiva del flusso MagicLink: input link, pulsante appunti, istruzione, riconoscimento dimostrativo e spiegazione dei limiti. La demo non recupera media e non simula una traduzione reale.
+- P2-14 resta `partial`: mancano connettori remoti autorizzati, elenco episodi, import/condivisione di file, provider ASR/MT/TTS, job batch e test end-to-end.
