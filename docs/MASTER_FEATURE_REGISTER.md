@@ -416,3 +416,12 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 
 - Allineata la home all'ordinamento recente-prima della libreria: ora mostra i primi quattro progetti senza invertire la lista.
 - Aggiunto un test widget che verifica ordine e limite dei quattro elementi visibili; **non eseguito**, in attesa della soglia generale del 35%.
+
+### Incremento sviluppo — localizzazione della schermata iniziale
+
+- Rimossi dalla UI home i principali testi promozionali e le descrizioni delle sei scorciatoie scritti direttamente in italiano.
+- Aggiunte stringhe dedicate in Copy per italiano, inglese, francese, spagnolo e arabo: intestazione, slogan, hero, descrizioni strumenti, tooltip Premium e unità di conteggio degli elementi.
+- Collegata la schermata HomeDashboard alle stringhe della lingua selezionata; aggiornati i fixture dei test widget per la nuova interfaccia.
+- Non è stata dichiarata la localizzazione completa dell'app: le altre schermate e il controllo RTL complessivo restano da verificare/estendere.
+- Test widget e analisi statica non eseguiti, in rispetto della soglia del 35%. La percentuale generale resta 32,76%: questa è una rifinitura di una funzione UI già parziale e non chiude una nuova voce del registro.
+
