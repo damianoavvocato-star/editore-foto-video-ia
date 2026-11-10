@@ -48,4 +48,46 @@ void main() {
     await tester.pump();
     expect(openedProject, isTrue);
   });
+  testWidgets('home dashboard keeps the four most recent projects in supplied order', (tester) async {
+    const projects = [
+      EditorProject(id: 'p5', name: 'Progetto più recente'),
+      EditorProject(id: 'p4', name: 'Progetto recente 4'),
+      EditorProject(id: 'p3', name: 'Progetto recente 3'),
+      EditorProject(id: 'p2', name: 'Progetto recente 2'),
+      EditorProject(id: 'p1', name: 'Progetto più vecchio'),
+    ];
+
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: HomeDashboard(
+      appName: 'MagicIAedit',
+      subtitle: 'Il tuo studio creativo',
+      newProjectLabel: 'Nuovo progetto',
+      importLabel: 'Importa',
+      videoLabel: 'Video',
+      photoLabel: 'Foto',
+      aiLabel: 'Studio IA',
+      magicLinkLabel: 'MagicLink IA',
+      studioLabel: 'Studio',
+      teamLabel: 'Team',
+      savedProjectsLabel: 'Progetti recenti',
+      noSavedProjectsLabel: 'Nessun progetto',
+      projects: projects,
+      onNewProject: () {},
+      onImport: () {},
+      onVideo: () {},
+      onPhoto: () {},
+      onMagic: () {},
+      onMagicLink: () {},
+      onStudio: () {},
+      onTeam: () {},
+      onPremium: () {},
+      onOpenProject: (_) {},
+    ))));
+
+    expect(find.text('Progetto più recente'), findsOneWidget);
+    expect(find.text('Progetto recente 2'), findsOneWidget);
+    expect(find.text('Progetto più vecchio'), findsNothing);
+    expect(tester.getTopLeft(find.text('Progetto più recente')).dy,
+      lessThan(tester.getTopLeft(find.text('Progetto recente 2')).dy));
+  });
+
 }
