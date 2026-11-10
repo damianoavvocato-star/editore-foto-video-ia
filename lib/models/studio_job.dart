@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-const _studioLanguagePattern = r'^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?
+const _studioLanguagePattern = r'^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$';
 /// Parses comma-separated BCP-47 language codes, normalizing language/region
 /// casing and removing duplicates while preserving the user's chosen order.
 /// Invalid tokens are preserved so StudioJobRequest.validate can reject them.
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?  for (final part in input.split(',')) {
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
     final token = part.trim();
     if (token.isEmpty) continue;
     final match = codePattern.firstMatch(token);
@@ -190,7 +190,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -544,7 +544,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -725,7 +725,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -906,7 +906,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -1260,7 +1260,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -1614,7 +1614,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -1968,7 +1968,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -2149,7 +2149,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -2330,7 +2330,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
@@ -2684,7 +2684,7 @@ class StudioJobDraft {
 List<String> parseStudioLanguageCodes(String input) {
   final result = <String>[];
   final seen = <String>{};
-  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{2}))?$');
+  final codePattern = RegExp(r'^([A-Za-z]{2,3})(?:-([A-Za-z]{4}))?(?:-([A-Za-z]{2}|[0-9]{3}))?$');
   for (final part in input.split(',')) {
     final token = part.trim();
     if (token.isEmpty) continue;
