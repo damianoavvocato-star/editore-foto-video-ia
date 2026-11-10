@@ -211,14 +211,17 @@ class HomeDashboard extends StatelessWidget {
               style: const TextStyle(color: _muted, fontSize: 12))),
           ])
         else
-          ...visible.map((project) => ListTile(
-            contentPadding: EdgeInsets.zero, dense: true,
-            leading: const CircleAvatar(backgroundColor: Color(0x332E9EAD),
-              child: Icon(Icons.movie_outlined, color: _cyan, size: 19)),
-            title: Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} elementi'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => onOpenProject(project),
+          ...visible.map((project) => Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero, dense: true,
+              leading: const CircleAvatar(backgroundColor: Color(0x332E9EAD),
+                child: Icon(Icons.movie_outlined, color: _cyan, size: 19)),
+              title: Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} elementi'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => onOpenProject(project),
+            ),
           )),
       ]),
     );
