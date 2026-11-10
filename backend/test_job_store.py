@@ -486,3 +486,62 @@ def test_clear_removes_jobs_and_idempotency_for_all_registry_instances(tmp_path)
     assert created is True
     assert replacement_id != job_id
 
+
+
+def test_failed_job_update_restores_in_memory_snapshot(tmp_path, monkeypatch):
+    import pytest
+
+    database = tmp_path / "jobs.sqlite3"
+    jobs = JobRegistry(database)
+    job_id = "4" * 32
+    jobs[job_id] = {"state": "succeeded", "message": "saved"}
+    record = jobs[job_id]
+
+    def fail_save(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(jobs, "_save", fail_save)
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.update(state="failed", message="not saved", extra=True)
+
+    assert record == {"state": "succeeded", "message": "saved"}
+    assert JobRegistry(database)[job_id] == {"state": "succeeded", "message": "saved"}
+
+
+def test_failed_job_field_set_and_delete_restore_snapshot(tmp_path, monkeypatch):
+    import pytest
+
+    database = tmp_path / "jobs.sqlite3"
+    jobs = JobRegistry(database)
+    job_id = "5" * 32
+    jobs[job_id] = {"state": "succeeded", "message": "saved"}
+    record = jobs[job_id]
+
+    def fail_save(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(jobs, "_save", fail_save)
+    with pytest.raises(OSError, match="disk unavailable"):
+        record["message"] = "not saved"
+    assert record["message"] == "saved"
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        del record["message"]
+    assert record["message"] == "saved"
+
+
+def test_failed_registry_insert_does_not_publish_in_memory_job(tmp_path, monkeypatch):
+    import pytest
+
+    jobs = JobRegistry(tmp_path / "jobs.sqlite3")
+
+    def fail_save(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(jobs, "_save", fail_save)
+    job_id = "6" * 32
+    with pytest.raises(OSError, match="disk unavailable"):
+        jobs[job_id] = {"state": "queued"}
+
+    assert job_id not in jobs
+    assert JobRegistry(jobs.database).get(job_id) is None
