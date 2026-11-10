@@ -6,6 +6,16 @@ import 'package:editore_foto_video_ia/models/editor_project.dart';
 import 'package:editore_foto_video_ia/services/project_store.dart';
 import 'package:editore_foto_video_ia/models/export_settings.dart';
 
+class _FailOnceProjectStore extends ProjectStore {
+  int attempts = 0;
+
+  @override
+  Future<void> save(EditorProject project, Directory directory) async {
+    attempts++;
+    if (attempts == 1) throw StateError('Simulated disk failure');
+  }
+}
+
 class _BlockingProjectStore extends ProjectStore {
   final saveStarted = Completer<void>();
   final releaseSave = Completer<void>();
@@ -117,6 +127,22 @@ void main() {
     final restored = await const ProjectStore().load(initial.id, directory);
     expect(restored.name, 'Version 3');
     expect(await File('${directory.path}/queued-project.editproj.bak').exists(), isTrue);
+  });
+
+  test('project save queue continues after a previous save fails', () async {
+    final directory = await Directory.systemTemp.createTemp('editor_project_queue_retry');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = _FailOnceProjectStore();
+    final queue = ProjectSaveQueue(store: store);
+    const project = EditorProject(id: 'retry-after-failure', name: 'Retry');
+
+    await expectLater(
+      queue.save(project, directory),
+      throwsA(isA<StateError>()),
+    );
+    await queue.save(project.copyWith(name: 'Recovered'), directory);
+
+    expect(store.attempts, 2);
   });
 
   test('project queue waits for pending autosave before deleting', () async {
