@@ -22,17 +22,24 @@ class _PersistentJob(dict):
         self._job_id = job_id
         self._registry = registry
 
+    def _persist_mutation(self, mutation: Any) -> None:
+        previous = dict(self)
+        try:
+            mutation()
+            self._registry._save(self._job_id, self)
+        except Exception:
+            dict.clear(self)
+            dict.update(self, previous)
+            raise
+
     def update(self, *args: Any, **kwargs: Any) -> None:
-        super().update(*args, **kwargs)
-        self._registry._save(self._job_id, self)
+        self._persist_mutation(lambda: dict.update(self, *args, **kwargs))
 
     def __setitem__(self, key: str, value: Any) -> None:
-        super().__setitem__(key, value)
-        self._registry._save(self._job_id, self)
+        self._persist_mutation(lambda: dict.__setitem__(self, key, value))
 
     def __delitem__(self, key: str) -> None:
-        super().__delitem__(key)
-        self._registry._save(self._job_id, self)
+        self._persist_mutation(lambda: dict.__delitem__(self, key))
 
 
 class IdempotencyConflict(ValueError):
@@ -275,8 +282,10 @@ class JobRegistry(dict[str, dict[str, Any]]):
 
     def __setitem__(self, job_id: str, values: dict[str, Any]) -> None:
         record = _PersistentJob(job_id, dict(values), self)
-        dict.__setitem__(self, job_id, record)
+        # Persist first: a failed write must not publish an in-memory job that
+        # disappears on restart or misleads readers in this process.
         self._save(job_id, record)
+        dict.__setitem__(self, job_id, record)
 
     def pop(self, job_id: str, *default: Any) -> Any:
         if len(default) > 1:
