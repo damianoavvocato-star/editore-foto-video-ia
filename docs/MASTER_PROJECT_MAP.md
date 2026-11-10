@@ -251,3 +251,8 @@ La prossima campagna autorizzata è al **35,00%**. La percentuale generale corre
 ### MagicLink — stato sviluppo aggiornato
 
 La schermata Flutter consente ora di organizzare manualmente fino a 50 URL in ordine di episodio, eliminare singoli link e inviare un riconoscimento sequenziale all'API autenticata. Ogni risultato indica la piattaforma e mantiene chiaro che il contenuto remoto non è stato scaricato. È disponibile anche il percorso per importare media locali autorizzati direttamente nella timeline dell'editor. Restano da sviluppare scoperta automatica degli episodi, estrazione autorizzata, ASR, traduzione, doppiaggio, stato persistente della serie e test di integrazione. La nuova UI è da verificare alla soglia del 35%.
+
+
+### MagicLink — controllo raccolta e batch
+
+La raccolta manuale degli episodi ora supporta riordino, copia dell'elenco, avanzamento del riconoscimento, annullamento cooperativo tra richieste e nuovo tentativo limitato ai link non riconosciuti. L'annullamento non interrompe forzatamente una richiesta HTTP già partita: evita l'avvio delle successive. La raccolta resta in memoria della schermata e non sopravvive ancora alla chiusura dell'app. Il backend continua a classificare soltanto i metadati del link e non scarica contenuti. Persistenza, coda durevole, connettori autorizzati e pipeline ASR/traduzione/TTS sono ancora da sviluppare.
