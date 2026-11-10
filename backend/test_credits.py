@@ -70,7 +70,12 @@ def test_credit_history_rejects_invalid_limits_and_blank_identifiers(tmp_path):
         with pytest.raises(CreditError, match="Limite storico non valido"):
             store.history("user-1", invalid)
 
-    with pytest.raises(CreditError, match="Account non valido"):
-        store.balance("   ")
+    for invalid_user_id in ("   ", " user-1 "):
+        with pytest.raises(CreditError, match="Account non valido"):
+            store.balance(invalid_user_id)
+        with pytest.raises(CreditError, match="Account non valido"):
+            store.history(invalid_user_id)
     with pytest.raises(CreditError, match="Riferimento operazione non valido"):
         store.grant("owner", "owner-1", "user-1", 1, "   ", "test")
+    with pytest.raises(CreditError, match="Riferimento operazione non valido"):
+        store.grant("owner", "owner-1", "user-1", 1, " grant-1 ", "test")
