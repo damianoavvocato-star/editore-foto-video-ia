@@ -464,3 +464,6 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 
 
 - Il confine HTTP del claim referral applica ora lo stesso formato ASCII alfanumerico e la stessa lunghezza 6–12 del servizio; aggiunti casi API per codice Unicode e codice troppo corto. I test restano intenzionalmente non eseguiti fino al 35%.
+
+
+- Ledger crediti IA: validazione centralizzata di operatore e motivazione anche nei percorsi consume/refund, con normalizzazione degli spazi esterni e rifiuto di valori vuoti/non stringa; aggiunti test dedicati. Test non eseguiti in attesa del gate del 35%.
