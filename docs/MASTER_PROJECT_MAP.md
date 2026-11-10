@@ -279,3 +279,6 @@ La direzione del testo viene ora applicata al livello radice di MaterialApp in b
 
 ### Recupero della coda di salvataggio
 La coda serializza le scritture per progetto e deve rimanere utilizzabile anche dopo il fallimento di un'operazione precedente. È stato aggiunto un test che simula un primo salvataggio fallito e verifica che il secondo venga eseguito; esecuzione rinviata al traguardo di test del 35%.
+
+### Robustezza dei dati entitlement
+La risposta API dei diritti account viene validata prima di costruire `UserEntitlement`: ID non vuoti, livello e origine riconosciuti, timestamp di scadenza stringa e valido. I payload malformati generano `FormatException` invece di errori di cast o lookup enum non uniformi. I test di regressione sono stati aggiunti e saranno eseguiti alla soglia concordata del 35%.
