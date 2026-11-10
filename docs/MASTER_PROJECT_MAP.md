@@ -271,3 +271,8 @@ La schermata iniziale usa ora le stringhe della tabella Copy per intestazione de
 
 La direzione del testo viene ora applicata al livello radice di MaterialApp in base alla lingua selezionata: arabo RTL per l'intera applicazione, italiano/inglese/francese/spagnolo LTR. In questo modo anche home, schermate di servizio, navigazione e componenti che non avevano una Directionality propria ricevono la direzione corretta. Sono stati dichiarati esplicitamente i delegate Material, Widgets e Cupertino per le localizzazioni Flutter. Aggiunto un test unitario per la mappatura lingua/direzione, non eseguito prima della soglia 35%. Il controllo visivo di allineamenti, icone direzionali e overflow RTL resta parte della campagna completa.
 
+
+### Verifica scadenza Premium
+- Il modello espone `isPremiumAt(instant)` per verifiche deterministiche dell'attivazione Premium; il getter `isPremium` usa l'ora corrente.
+- Alla data/ora esatta di `validUntil`, il diritto Premium risulta scaduto (`isAfter`); gli account Free non risultano Premium anche se hanno una data futura.
+- Il client valuta soltanto i dati ricevuti: la concessione e la revoca dei diritti rimangono responsabilità del backend.
