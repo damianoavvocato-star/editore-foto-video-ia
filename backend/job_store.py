@@ -305,10 +305,9 @@ class JobRegistry(dict[str, dict[str, Any]]):
             raise
         finally:
             connection.close()
-        local_value = dict.pop(self, job_id, None)
-        if local_value is not None:
-            return local_value
-        return _PersistentJob(job_id, values, self)
+        value = _PersistentJob(job_id, values, self)
+        dict.pop(self, job_id, None)
+        return value
 
     def clear(self) -> None:
         dict.clear(self)
