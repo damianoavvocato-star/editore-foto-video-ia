@@ -73,7 +73,7 @@
 | P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
-| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter MagicLink, incolla da clipboard, istruzioni utente e presentazione risultato; revisione episodi non ancora implementata | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI | partial |
+| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter MagicLink con incolla clipboard, istruzioni, riconoscimento risultato e pulsante di importazione di media locali autorizzati direttamente nella timeline editor; revisione episodi non ancora implementata | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI; nuova integrazione import->timeline da verificare alla prossima soglia | partial |
 | P2-15 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
 | P2-16 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
 | P2-17 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
@@ -372,3 +372,12 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - Le esecuzioni CI già avviate prima dell'entrata in vigore di questa regola non sono considerate nuove campagne autorizzate; non avviare nuove esecuzioni automatiche nel frattempo.
 
 **Prossima soglia:** 35,00%. Nessuna campagna di test prima del raggiungimento documentato di tale percentuale.
+
+
+### Incremento sviluppo MagicLink — importazione locale autorizzata
+
+- La schermata MagicLink offre ora un percorso esplicito per importare dal dispositivo foto, video e audio già in possesso dell'utente o autorizzati.
+- Il comando riutilizza il selettore e la pipeline d'importazione dell'editor principale, così i media selezionati vengono inseriti nel progetto/timeline invece di simulare un download da TikTok o altri siti.
+- Il passaggio cambia la vista sull'editor prima di aprire il selettore; l'utente può annullare senza che venga dichiarata un'importazione riuscita.
+- Nessun fetch remoto, scraping, aggiramento di login/DRM/paywall o elaborazione IA è stato aggiunto. Il connettore remoto resta non configurato.
+- La modifica Flutter e il flusso di navigazione restano **da verificare**: per decisione dell'utente non si eseguono test, analisi statica o CI prima del 35%.
