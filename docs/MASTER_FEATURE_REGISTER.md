@@ -74,6 +74,16 @@
 - Aggiunto test parametrico per entrambe le procedure di retention; **non eseguito**, in attesa del gate del 35%.
 - P0-11 resta `partial`; nessun test, analisi statica, CI o build è stato avviato. Avanzamento generale invariato: **32,76%**.
 
+## Job registry — rimozione atomica e visibile tra istanze
+
+- `JobRegistry.pop` ora esegue la lettura e la cancellazione di `media_jobs` e della relativa prenotazione idempotente nella stessa transazione SQLite `BEGIN IMMEDIATE`.
+- La rimozione può individuare anche job persistiti da un'altra istanza del registry, invece di dipendere soltanto dalla cache in memoria del chiamante.
+- Se la cancellazione fallisce, il registry in memoria non viene modificato prima del commit; lo snapshot restituito dopo una rimozione remota è un dizionario indipendente e non riscrive automaticamente il record eliminato.
+- Conservato il comportamento di `dict.pop` per chiave assente e valore predefinito, incluso il rifiuto di più di un argomento predefinito.
+- Aggiunti test per rimozione cross-instance, default e arità. **Non eseguiti**: nessun test, analisi statica, CI o build prima del 35%.
+- Il registry resta una coda con worker locali: questa modifica non introduce esecuzione distribuita o recovery automatico dei worker.
+- Avanzamento generale invariato: **32,76%**.
+
 ## P2 — MagicIAedit, Studio IA, lingue e strumenti media
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
