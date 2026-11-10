@@ -515,3 +515,9 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Test non eseguiti: resta valido il gate di verifica al 35%. Nessuna variazione dell'avanzamento generale (32,76%).
 - Commit codice: `71aa6e3`; commit test: `0773b81`.
 
+### Quote AI — validazione dei timestamp mensili
+
+- `UsageStore` valida ora i timestamp prima della conversione UTC e della scrittura delle prenotazioni: rifiuta booleani, stringhe, NaN, valori infiniti e timestamp fuori dall'intervallo supportato dal calendario.
+- `_period` e `reserve` condividono la stessa regola di validazione; i timestamp numerici finiti, anche frazionari, mantengono la semantica precedente (periodo UTC e `created_at` intero).
+- Aggiunti test parametrizzati per input non validi e un caso positivo frazionario. **Test non eseguiti**: rimangono riservati alla campagna completa al 35%.
+- Nessuna voce P1 viene promossa a done; avanzamento generale invariato a **32,76%**.
