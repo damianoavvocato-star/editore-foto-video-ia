@@ -151,6 +151,32 @@ void main() {
   });
 
 
+  test('project listing puts most recently edited projects first', () async {
+    final directory = await Directory.systemTemp.createTemp('editor_project_recency');
+    addTearDown(() => directory.delete(recursive: true));
+    const store = ProjectStore();
+    await store.save(
+      const EditorProject(id: 'older-project', name: 'Older'),
+      directory,
+    );
+    await store.save(
+      const EditorProject(id: 'newer-project', name: 'Newer'),
+      directory,
+    );
+
+    final olderFile = File('${directory.path}/older-project.editproj');
+    final newerFile = File('${directory.path}/newer-project.editproj');
+    final now = DateTime.now();
+    await olderFile.setLastModified(now.subtract(const Duration(days: 2)));
+    await newerFile.setLastModified(now.subtract(const Duration(hours: 1)));
+
+    final listed = await store.listProjects(directory);
+    expect(listed.map((project) => project.id), [
+      'newer-project',
+      'older-project',
+    ]);
+  });
+
   test('project listing ignores files whose contents have a different ID', () async {
     final directory = await Directory.systemTemp.createTemp('editor_project_mismatch');
     addTearDown(() => directory.delete(recursive: true));
