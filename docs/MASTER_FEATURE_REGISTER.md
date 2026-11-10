@@ -447,3 +447,10 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 > **Coda di salvataggio progetti:** aggiunto un test di regressione che verifica che un errore di scrittura non blocchi i salvataggi successivi dello stesso progetto. Il test è stato aggiunto alla suite Flutter ma non eseguito, in conformità alla soglia del 35%.
 
 > **Parsing dei diritti account:** la deserializzazione di `UserEntitlement` ora rifiuta ID utente vuoti, livelli account e origini sconosciuti, tipi errati e scadenze non valide con `FormatException` coerenti. Aggiunti test di regressione per payload API malformati; non eseguiti prima del 35%.
+
+
+## Hardening referral — validazione coerente dei codici
+
+- Il modello Flutter espone `normalizedReferralCode` (trim + maiuscolo) e valida codici con il set ASCII `A-Z0-9`, lunghezza 6–12, in modo coerente con il server.
+- Il backend rifiuta esplicitamente caratteri alfanumerici Unicode non ASCII; gli ID invitato vuoti o oltre 128 caratteri sono rifiutati dal client prima dell'invio.
+- Aggiunti casi di regressione Flutter e backend per normalizzazione, codice Unicode e ID invitato non valido. **I test non sono stati eseguiti**: restano in attesa del gate concordato al 35%.
