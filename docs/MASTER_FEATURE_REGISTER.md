@@ -74,11 +74,11 @@
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
 | P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter MagicLink, incolla da clipboard, istruzioni utente e presentazione risultato; revisione episodi non ancora implementata | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non ancora collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; test API e sicurezza in CI | partial |
-| P2-14 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
-| P2-15 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
-| P2-16 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
-| P2-17 | Miglioramento video | User | denoise, upscale, frame interpolation, scene detect | pipeline media/provider | benchmark qualità e tempi | missing |
-| P2-18 | Generazione copertine, titoli e descrizioni | User | editor metadata | AI metadata | revisione prima della pubblicazione | missing |
+| P2-15 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
+| P2-16 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
+| P2-17 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
+| P2-18 | Miglioramento video | User | denoise, upscale, frame interpolation, scene detect | pipeline media/provider | benchmark qualità e tempi | missing |
+| P2-19 | Generazione copertine, titoli e descrizioni | User | editor metadata | AI metadata | revisione prima della pubblicazione | missing |
 
 ## P3 — collaborazione, marketing, pubblicazione e multipiattaforma
 
@@ -358,3 +358,17 @@
 - Integrata la schermata nella navigazione mobile e desktop come voce MagicLink IA.
 - Aggiornata `docs/preview/index.html` con una singola anteprima interattiva del flusso MagicLink: input link, pulsante appunti, istruzione, riconoscimento dimostrativo e spiegazione dei limiti. La demo non recupera media e non simula una traduzione reale.
 - P2-14 resta `partial`: mancano connettori remoti autorizzati, elenco episodi, import/condivisione di file, provider ASR/MT/TTS, job batch e test end-to-end.
+
+
+## Regola operativa delle campagne di test a soglia — 10 novembre 2026
+
+L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione si applica il seguente ciclo obbligatorio:
+
+- Prima del 35%: sviluppo, integrazione, documentazione e correzioni del codice; non avviare campagne di test, analisi statica o preflight automatici.
+- Al 35%, 40%, 45%, 50% e a ogni successiva soglia di 5 punti fino al 100%: eseguire una campagna completa (Flutter analyze e test, backend/API/sicurezza, preflight Android e verifiche pertinenti), correggere tutti i problemi trovati e registrare i risultati.
+- Dopo la campagna di una soglia, riprendere lo sviluppo senza altri test fino alla soglia successiva.
+- Le funzionalità non verificate restano `partial` o `da verificare`; non promuoverle a `done` solo perché il test è stato rinviato.
+- Le campagne vengono avviate manualmente tramite GitHub Actions con l'opzione `run_full_validation=true`. Le build APK restano disabilitate fino alla fase 6 e richiedono anche il gate separato previsto.
+- Le esecuzioni CI già avviate prima dell'entrata in vigore di questa regola non sono considerate nuove campagne autorizzate; non avviare nuove esecuzioni automatiche nel frattempo.
+
+**Prossima soglia:** 35,00%. Nessuna campagna di test prima del raggiungimento documentato di tale percentuale.
