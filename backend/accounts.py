@@ -864,13 +864,7 @@ class AccountStore:
                     (user_id, username, salt, digest, role, now,
                      now + _TEMP_PASSWORD_SECONDS),
                 )
-                db.execute(
-                    """INSERT INTO account_audit_events
-                       (actor_user_id,action,target_user_id,details_json,created_at)
-                       VALUES(?,?,?,?,?)""",
-                    (actor_user_id, "account.created", user_id,
-                     json.dumps({"role": role}, separators=(",", ":")), now),
-                )
+                _append_audit_event(db, actor_user_id, "account.created", user_id, {"role": role}, now)
                 row = db.execute(
                     """SELECT user_id,username,role,created_at,must_change_password,
                               temporary_password_expires_at FROM accounts WHERE user_id=?""",
@@ -911,12 +905,7 @@ class AccountStore:
                 "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
                 (now, target_user_id),
             )
-            db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (actor_user_id, "account.password_reset", target_user_id, "{}", now),
-            )
+            _append_audit_event(db, actor_user_id, "account.password_reset", target_user_id, {}, now)
         return temporary
 
     def change_password(
@@ -956,12 +945,7 @@ class AccountStore:
                 "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
                 (now, user_id),
             )
-            db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (user_id, "account.password_changed", user_id, "{}", now),
-            )
+            _append_audit_event(db, user_id, "account.password_changed", user_id, {}, now)
 
     def set_account_role(
         self, actor_user_id: str, target_user_id: str, role: str
@@ -990,13 +974,7 @@ class AccountStore:
                 "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
                 (now, target_user_id),
             )
-            db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (actor_user_id, "account.role_changed", target_user_id,
-                 json.dumps({"role": role}, separators=(",", ":")), now),
-            )
+            _append_audit_event(db, actor_user_id, "account.role_changed", target_user_id, {"role": role}, now)
             return {
                 "userId": target["user_id"],
                 "username": target["username"],
@@ -1037,12 +1015,7 @@ class AccountStore:
                     (now, target_user_id),
                 )
             action = "account.disabled" if disabled else "account.enabled"
-            db.execute(
-                """INSERT INTO account_audit_events
-                   (actor_user_id,action,target_user_id,details_json,created_at)
-                   VALUES(?,?,?,?,?)""",
-                (actor_user_id, action, target_user_id, "{}", now),
-            )
+            _append_audit_event(db, actor_user_id, action, target_user_id, {}, now)
             return {
                 "userId": target["user_id"],
                 "username": target["username"],
