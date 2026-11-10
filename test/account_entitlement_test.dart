@@ -5,6 +5,27 @@ void main() {
   test('referral claim normalizes and validates code', () {
     const claim = ReferralClaim(referralCode: 'ab12cd34', inviteeUserId: 'user-9');
     expect(claim.validate, returnsNormally);
+    expect(claim.normalizedReferralCode, 'AB12CD34');
+  });
+
+  test('referral claim rejects non-ASCII codes and invalid invitee IDs', () {
+    const unicodeCode = ReferralClaim(
+      referralCode: 'ÀB12CD34',
+      inviteeUserId: 'user-9',
+    );
+    expect(unicodeCode.validate, throwsA(isA<FormatException>()));
+
+    const emptyInvitee = ReferralClaim(
+      referralCode: 'AB12CD34',
+      inviteeUserId: '   ',
+    );
+    expect(emptyInvitee.validate, throwsA(isA<ArgumentError>()));
+
+    final oversizedInvitee = ReferralClaim(
+      referralCode: 'AB12CD34',
+      inviteeUserId: 'u' * 129,
+    );
+    expect(oversizedInvitee.validate, throwsA(isA<ArgumentError>()));
   });
 
   test('referral claim rejects malformed code', () {
