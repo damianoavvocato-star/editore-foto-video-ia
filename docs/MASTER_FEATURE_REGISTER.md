@@ -461,3 +461,6 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - La creazione/lettura del codice personale ora usa una transazione SQLite `BEGIN IMMEDIATE`, serializzando il passaggio di lettura e inserimento: richieste simultanee per lo stesso account non generano codici in conflitto.
 - Gli identificativi account vengono normalizzati con `strip()` e validati come stringhe non vuote entro 128 caratteri anche nel livello di servizio.
 - Aggiunti test backend per richieste concorrenti e identificativi non validi. **Non eseguiti**, in attesa della soglia del 35% concordata.
+
+
+- Il confine HTTP del claim referral applica ora lo stesso formato ASCII alfanumerico e la stessa lunghezza 6–12 del servizio; aggiunti casi API per codice Unicode e codice troppo corto. I test restano intenzionalmente non eseguiti fino al 35%.
