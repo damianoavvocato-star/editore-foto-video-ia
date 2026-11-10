@@ -37,6 +37,36 @@ void main() {
     );
   });
 
+  test('malformed account entitlement fields return format errors', () {
+    expect(
+      () => UserEntitlement.fromJson({'userId': 'u', 'tier': 'enterprise'}),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => UserEntitlement.fromJson({'userId': 'u', 'tier': 'free', 'source': 42}),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => UserEntitlement.fromJson({'userId': 'u', 'tier': 'free', 'validUntil': 42}),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      () => UserEntitlement.fromJson({'userId': '  ', 'tier': 'free'}),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('malformed expiry timestamp is rejected as a format error', () {
+    expect(
+      () => UserEntitlement.fromJson({
+        'userId': 'user-invalid-date',
+        'tier': 'premium',
+        'validUntil': 'not-a-date',
+      }),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
   test('Premium entitlement expires exactly at its validity boundary', () {
     final boundary = DateTime.utc(2027, 1, 1);
     final entitlement = UserEntitlement(
