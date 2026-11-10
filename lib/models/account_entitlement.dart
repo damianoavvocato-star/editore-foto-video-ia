@@ -37,15 +37,43 @@ class UserEntitlement {
       };
 
   factory UserEntitlement.fromJson(Map<String, Object?> json) {
+    final userId = json['userId'];
+    if (userId is! String || userId.trim().isEmpty) {
+      throw const FormatException('ID utente mancante o non valido.');
+    }
+    final rawTier = json['tier'];
+    final tier = SubscriptionTier.values.where((value) => value.name == rawTier);
+    if (rawTier is! String || tier.isEmpty) {
+      throw const FormatException('Livello account non valido.');
+    }
+
+    final rawExpiry = json['validUntil'];
+    DateTime? validUntil;
+    if (rawExpiry != null) {
+      if (rawExpiry is! String) {
+        throw const FormatException('Scadenza Premium non valida.');
+      }
+      validUntil = DateTime.parse(rawExpiry).toUtc();
+    }
+
+    final rawSource = json['source'];
+    EntitlementSource? source;
+    if (rawSource != null) {
+      if (rawSource is! String) {
+        throw const FormatException('Origine del diritto non valida.');
+      }
+      final matches = EntitlementSource.values.where((value) => value.name == rawSource);
+      if (matches.isEmpty) {
+        throw const FormatException('Origine del diritto sconosciuta.');
+      }
+      source = matches.first;
+    }
+
     return UserEntitlement(
-      userId: json['userId'] as String,
-      tier: SubscriptionTier.values.byName(json['tier'] as String),
-      validUntil: json['validUntil'] == null
-          ? null
-          : DateTime.parse(json['validUntil'] as String).toUtc(),
-      source: json['source'] == null
-          ? null
-          : EntitlementSource.values.byName(json['source'] as String),
+      userId: userId.trim(),
+      tier: tier.first,
+      validUntil: validUntil,
+      source: source,
       plan: json['plan'] == null ? null : _validatedPlan(json['plan']),
     );
   }
