@@ -62,9 +62,15 @@ class ReferralStore:
         return row is not None
 
     def create_or_get_code(self, user_id: str) -> str:
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+        if not isinstance(user_id, str):
+            raise ReferralError("Account non valido.")
+        user_id = user_id.strip()
+        if not user_id or len(user_id) > 128:
             raise ReferralError("Account non valido.")
         with self._connect() as db:
+            # Serialize the read-then-create sequence so concurrent requests
+            # for one account return the same code instead of racing on UNIQUE.
+            db.execute("BEGIN IMMEDIATE")
             if not self._active_account(db, user_id):
                 raise ReferralError("Account non attivo.")
             row = db.execute(
@@ -91,6 +97,9 @@ class ReferralStore:
         normalized = code.strip().upper()
         if re.fullmatch(r"[A-Z0-9]{6,12}", normalized, flags=re.ASCII) is None:
             raise ReferralError("Codice invito non valido.")
+        if not isinstance(invitee_user_id, str):
+            raise ReferralError("Account non valido.")
+        invitee_user_id = invitee_user_id.strip()
         if not invitee_user_id or len(invitee_user_id) > 128:
             raise ReferralError("Account non valido.")
         current = int(time.time()) if now is None else int(now)
