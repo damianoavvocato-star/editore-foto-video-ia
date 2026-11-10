@@ -29,6 +29,7 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
   final List<String> _episodeUrls = [];
   final Map<String, Map<String, dynamic>> _episodeResults = {};
   bool _busy = false;
+  bool _cancelBatchRequested = false;
   String? _message;
 
   @override
@@ -116,42 +117,94 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
     });
   }
 
-  Future<void> _analyzeSeries() async {
+  void _moveEpisode(int index, int offset) {
+    final destination = index + offset;
+    if (destination < 0 || destination >= _episodeUrls.length) return;
+    setState(() {
+      final value = _episodeUrls.removeAt(index);
+      _episodeUrls.insert(destination, value);
+    });
+  }
+
+  int get _failedEpisodeCount => _episodeUrls
+      .where((url) => _episodeResults[url]?['platform'] == 'unknown')
+      .length;
+
+  Future<void> _copyEpisodeList() async {
+    if (_episodeUrls.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _episodeUrls.join('\\n')));
+    if (mounted) {
+      setState(() => _message = 'Elenco degli episodi copiato negli appunti.');
+    }
+  }
+
+  void _cancelSeriesAnalysis() {
+    if (!_busy) return;
+    setState(() {
+      _cancelBatchRequested = true;
+      _message = 'Annullamento richiesto: terminerà la richiesta attualmente in corso.';
+    });
+  }
+
+  Future<void> _analyzeSeries({bool retryFailedOnly = false}) async {
     final api = _api;
     if (api == null || _busy || _episodeUrls.isEmpty) return;
+    final urls = retryFailedOnly
+        ? _episodeUrls
+            .where((url) => _episodeResults[url]?['platform'] == 'unknown')
+            .toList()
+        : List<String>.from(_episodeUrls);
+    if (urls.isEmpty) {
+      setState(() => _message = 'Non ci sono episodi da riprovare.');
+      return;
+    }
     setState(() {
       _busy = true;
-      _message = 'Analisi dei collegamenti in corso…';
+      _cancelBatchRequested = false;
+      _message = retryFailedOnly
+          ? 'Nuovo tentativo per ${urls.length} episodi non riconosciuti…'
+          : 'Analisi di ${urls.length} collegamenti in corso…';
     });
-    final results = <String, Map<String, dynamic>>{};
+    var completed = 0;
     try {
-      for (final url in List<String>.from(_episodeUrls)) {
+      for (final url in urls) {
+        if (_cancelBatchRequested) break;
         try {
-          results[url] = await api.analyze(
+          final result = await api.analyze(
             url: url,
             instruction: _instruction.text,
           );
+          if (!mounted) return;
+          setState(() => _episodeResults[url] = result);
         } catch (error) {
-          results[url] = {
-            'platform': 'unknown',
-            'contentAccess': 'not_fetched',
-            'providerState': 'not_configured',
-            'message': error.toString(),
-          };
+          if (!mounted) return;
+          setState(() {
+            _episodeResults[url] = {
+              'platform': 'unknown',
+              'contentAccess': 'not_fetched',
+              'providerState': 'not_configured',
+              'message': error.toString(),
+            };
+          });
         }
-        if (!mounted) return;
-        setState(() {
-          _episodeResults
-            ..clear()
-            ..addAll(results);
-        });
+        completed++;
+        if (mounted) {
+          setState(() => _message =
+              'Collegamenti elaborati: $completed/${urls.length}. Contenuti remoti non scaricati.');
+        }
       }
       if (mounted) {
-        setState(() => _message =
-            'Riconoscimento completato per ${results.length} collegamenti. I contenuti remoti non sono stati scaricati.');
+        setState(() => _message = _cancelBatchRequested
+            ? 'Analisi interrotta dopo $completed/${urls.length} collegamenti. Puoi riprendere con un nuovo tentativo.'
+            : 'Riconoscimento completato per $completed collegamenti. I contenuti remoti non sono stati scaricati.');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _cancelBatchRequested = false;
+        });
+      }
     }
   }
 
@@ -306,10 +359,29 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      TextButton(
-                        onPressed: _busy || _api == null ? null : _analyzeSeries,
-                        child: const Text('Analizza serie'),
-                      ),
+                      if (_busy)
+                        TextButton(
+                          onPressed: _cancelSeriesAnalysis,
+                          child: const Text('Annulla'),
+                        )
+                      else ...[
+                        if (_failedEpisodeCount > 0)
+                          TextButton(
+                            onPressed: _api == null
+                                ? null
+                                : () => _analyzeSeries(retryFailedOnly: true),
+                            child: Text('Riprova errori ($_failedEpisodeCount)'),
+                          ),
+                        TextButton(
+                          onPressed: _api == null ? null : _analyzeSeries,
+                          child: const Text('Analizza serie'),
+                        ),
+                        IconButton(
+                          tooltip: 'Copia elenco episodi',
+                          onPressed: _copyEpisodeList,
+                          icon: const Icon(Icons.copy_all_outlined),
+                        ),
+                      ],
                     ],
                   ),
                   const Text(
@@ -333,12 +405,37 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(_episodeSubtitle(_episodeUrls[index])),
-                      trailing: IconButton(
-                        tooltip: 'Rimuovi episodio',
-                        onPressed: _busy
-                            ? null
-                            : () => _removeEpisode(_episodeUrls[index]),
-                        icon: const Icon(Icons.close, size: 18),
+                      trailing: SizedBox(
+                        width: 132,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              tooltip: 'Sposta in alto',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _busy || index == 0
+                                  ? null
+                                  : () => _moveEpisode(index, -1),
+                              icon: const Icon(Icons.keyboard_arrow_up, size: 19),
+                            ),
+                            IconButton(
+                              tooltip: 'Sposta in basso',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _busy || index == _episodeUrls.length - 1
+                                  ? null
+                                  : () => _moveEpisode(index, 1),
+                              icon: const Icon(Icons.keyboard_arrow_down, size: 19),
+                            ),
+                            IconButton(
+                              tooltip: 'Rimuovi episodio',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _busy
+                                  ? null
+                                  : () => _removeEpisode(_episodeUrls[index]),
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                 ],
