@@ -425,3 +425,11 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - Non è stata dichiarata la localizzazione completa dell'app: le altre schermate e il controllo RTL complessivo restano da verificare/estendere.
 - Test widget e analisi statica non eseguiti, in rispetto della soglia del 35%. La percentuale generale resta 32,76%: questa è una rifinitura di una funzione UI già parziale e non chiude una nuova voce del registro.
 
+### Incremento sviluppo — direzione RTL globale
+
+- La lingua araba imposta ora `TextDirection.rtl` a livello radice di `MaterialApp`, così la direzione coinvolge anche home e schermate non racchiuse nel vecchio wrapper RTL dell'editor.
+- Italiano, inglese, francese e spagnolo mantengono `TextDirection.ltr`.
+- Dichiarati esplicitamente i delegate di localizzazione Material, Widgets e Cupertino.
+- Aggiunto `test/app_localization_test.dart` per la corrispondenza tra le cinque lingue e la direzione attesa; **non eseguito** in rispetto della soglia del 35%.
+- Rimane da verificare visivamente RTL: posizioni di icone/frecce, allineamenti, campi, timeline, overflow e navigazione. Nessuna voce viene promossa a done sulla sola base di questa modifica; avanzamento generale invariato a **32,76%**.
+
