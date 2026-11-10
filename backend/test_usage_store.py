@@ -232,3 +232,14 @@ def test_usage_store_rejects_non_canonical_job_identifiers(tmp_path, identifier)
         store.has_reservation("user-a", identifier, 2)
     with pytest.raises(ValueError, match="job identifier"):
         store.release("user-a", identifier, "2027-01")
+
+
+@pytest.mark.parametrize("limit", [0, -1, 100001, True, False, 1.5, "2", None])
+def test_all_quota_operations_reject_invalid_limits_consistently(tmp_path, limit):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    with pytest.raises(ValueError, match="monthly usage limit"):
+        store.reserve("user-a", "job-a", limit, now=1_800_000_000)
+    with pytest.raises(ValueError, match="monthly usage limit"):
+        store.summary("user-a", limit, now=1_800_000_000)
+    with pytest.raises(ValueError, match="monthly usage limit"):
+        store.has_reservation("user-a", "job-a", limit)
