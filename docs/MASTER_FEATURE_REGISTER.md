@@ -66,6 +66,14 @@
 - Aggiunto test di regressione per un archivio cifrato contenente uno schema account incompatibile. Test aggiunto ma **non eseguito**, in attesa della soglia del 35%.
 - P0-11 resta `partial`: il ripristino applicato/rollback, gli asset media e la replica remota sono ancora fuori perimetro.
 
+## Hardening backup — validazione dell'istante retention
+
+- Centralizzata la validazione del parametro temporale `now` usato dalla pulizia dei backup e delle copie temporanee di restore.
+- Sono ora rifiutati booleani, stringhe numeriche, valori non numerici e timestamp non finiti (NaN e ±infinito), evitando calcoli di scadenza ambigui o comportamenti silenziosi.
+- La validazione avviene anche quando la directory di staging non esiste, così un input invalido non viene accettato solo per assenza della directory.
+- Aggiunto test parametrico per entrambe le procedure di retention; **non eseguito**, in attesa del gate del 35%.
+- P0-11 resta `partial`; nessun test, analisi statica, CI o build è stato avviato. Avanzamento generale invariato: **32,76%**.
+
 ## P2 — MagicIAedit, Studio IA, lingue e strumenti media
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
