@@ -261,3 +261,7 @@ La raccolta manuale degli episodi ora supporta riordino, copia dell'elenco, avan
 
 La schermata iniziale usa ora le stringhe della tabella Copy per intestazione dello studio, slogan, testo hero, descrizioni delle sei scorciatoie, tooltip Premium e conteggio degli elementi dei progetti. I testi sono definiti per italiano, inglese, francese, spagnolo e arabo; il layout mantiene le etichette di navigazione e le azioni già esistenti. Restano da verificare rendering, overflow e direzione RTL nella campagna completa alla soglia del 35%. La localizzazione della home non implica che tutte le altre schermate siano già completamente tradotte.
 
+### Localizzazione — direzione RTL globale per l'arabo
+
+La direzione del testo viene ora applicata al livello radice di MaterialApp in base alla lingua selezionata: arabo RTL per l'intera applicazione, italiano/inglese/francese/spagnolo LTR. In questo modo anche home, schermate di servizio, navigazione e componenti che non avevano una Directionality propria ricevono la direzione corretta. Sono stati dichiarati esplicitamente i delegate Material, Widgets e Cupertino per le localizzazioni Flutter. Aggiunto un test unitario per la mappatura lingua/direzione, non eseguito prima della soglia 35%. Il controllo visivo di allineamenti, icone direzionali e overflow RTL resta parte della campagna completa.
+
