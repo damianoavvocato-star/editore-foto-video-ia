@@ -190,7 +190,7 @@ class HomeDashboard extends StatelessWidget {
   }
 
   Widget _recentProjects(bool compact) {
-    final visible = projects.reversed.take(4).toList();
+    final visible = projects.take(4).toList();
     return Container(
       padding: EdgeInsets.all(compact ? 15 : 19),
       decoration: BoxDecoration(color: const Color(0xFF191A26),
