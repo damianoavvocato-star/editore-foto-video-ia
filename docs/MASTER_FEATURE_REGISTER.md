@@ -521,3 +521,11 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - `_period` e `reserve` condividono la stessa regola di validazione; i timestamp numerici finiti, anche frazionari, mantengono la semantica precedente (periodo UTC e `created_at` intero).
 - Aggiunti test parametrizzati per input non validi e un caso positivo frazionario. **Test non eseguiti**: rimangono riservati alla campagna completa al 35%.
 - Nessuna voce P1 viene promossa a done; avanzamento generale invariato a **32,76%**.
+
+## Quote AI — identificativi canonici di account e job
+
+- Centralizzata la validazione degli identificativi usati dal contatore mensile: account e job devono essere stringhe non vuote, entro i limiti di lunghezza e già canoniche (nessuno spazio iniziale/finale).
+- Applicata la stessa regola a prenotazione, riepilogo, verifica e rilascio della quota, evitando che identificativi equivalenti solo dopo trim creino namespace distinti o risultati incoerenti.
+- Aggiunti test parametrizzati per stringhe vuote, spazi e whitespace iniziale/finale su tutti i percorsi interessati.
+- Test aggiunti ma **non eseguiti**: resta attivo il gate del 35%; nessuna analisi, CI o build avviata.
+- Avanzamento generale invariato: **32,76%**.
