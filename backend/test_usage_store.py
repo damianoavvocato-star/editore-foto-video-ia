@@ -175,3 +175,36 @@ def test_quota_release_rejects_malformed_calendar_period(tmp_path, period):
     with pytest.raises(ValueError, match="period"):
         store.release("user-a", "job-a", period)
 
+@pytest.mark.parametrize(
+    "timestamp",
+    [True, False, "1800000000", float("nan"), float("inf"), float("-inf"), 1e300],
+)
+def test_usage_timestamp_rejects_non_numeric_non_finite_or_out_of_range_values(
+    tmp_path, timestamp
+):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+
+    with pytest.raises(ValueError, match="timestamp"):
+        store.reserve("user-a", "job-invalid", 2, now=timestamp)
+
+    with pytest.raises(ValueError, match="timestamp"):
+        store._period(timestamp)
+
+    with sqlite3.connect(store.database) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM ai_usage_reservations"
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_usage_timestamp_accepts_finite_fractional_epoch(tmp_path):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    result = store.reserve("user-a", "job-fractional", 2, now=1_800_000_000.75)
+
+    assert result["period"] == store._period(1_800_000_000.75)
+    with sqlite3.connect(store.database) as db:
+        created_at = db.execute(
+            "SELECT created_at FROM ai_usage_reservations WHERE job_id=?",
+            ("job-fractional",),
+        ).fetchone()[0]
+    assert created_at == 1_800_000_000
