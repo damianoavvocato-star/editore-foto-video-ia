@@ -101,6 +101,7 @@ flowchart TD
 
 ### 3.4 Universal Creative Studio
 - Tipi di progetto richiesti: script-to-video, document-to-video, slides-to-video, avatar video, talking photo, translate/dub, interactive video, bulk personalization, screen explainer.
+- Nel campo delle lingue di destinazione, normalizzare codici BCP-47, rimuovere duplicati mantenendo l'ordine e rifiutare i token non validi; limite massimo 20.
 - Bozze, anteprima, revisione, consenso, invio esplicito alla coda, stato, retry, annullamento e storico.
 - Nessun provider deve essere dichiarato operativo senza configurazione e chiamata di prova.
 - La coda e le bozze già implementate costituiscono una base, non prova che i video siano già generati realmente.
