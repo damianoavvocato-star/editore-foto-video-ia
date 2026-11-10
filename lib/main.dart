@@ -399,14 +399,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _upsertSavedProject(EditorProject updated) {
-    final projects = [...savedProjects];
-    final index = projects.indexWhere((item) => item.id == updated.id);
-    if (index >= 0) {
-      projects[index] = updated;
-    } else {
-      projects.add(updated);
-    }
-    projects.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final projects = [...savedProjects]
+      ..removeWhere((item) => item.id == updated.id)
+      ..insert(0, updated);
+    // Keep the in-memory dashboard aligned with ProjectStore.listProjects:
+    // every successful save moves that project to the recent-first position.
     setState(() => savedProjects = projects);
   }
 
