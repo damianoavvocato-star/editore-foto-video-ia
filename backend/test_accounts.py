@@ -517,3 +517,24 @@ def test_managed_account_mutations_append_to_verified_audit_hash_chain(tmp_path)
     assert result["valid"] is True
     assert result["count"] == 5
 
+def test_concurrent_audit_appends_preserve_one_contiguous_hash_chain(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    actor = store.register("parallel_audit", "parallel audit password long")
+
+    def append_event(index):
+        return store.record_audit_event(
+            actor["userId"], "audit.concurrent_append", details={"index": index}
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        event_ids = list(executor.map(append_event, range(24)))
+
+    assert len(set(event_ids)) == 24
+    result = store.verify_audit_chain()
+    assert result["valid"] is True
+    assert result["count"] == 24
+    events = store.list_audit_events(limit=100)
+    assert len(events) == 24
+    assert {event["details"]["index"] for event in events} == set(range(24))
