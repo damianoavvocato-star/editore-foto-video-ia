@@ -95,13 +95,17 @@ class ReferralClaim {
   final String referralCode;
   final String inviteeUserId;
 
+  String get normalizedReferralCode => referralCode.trim().toUpperCase();
+
   void validate() {
-    final code = referralCode.trim().toUpperCase();
-    if (!RegExp(r'^[A-Z0-9]{6,12}$').hasMatch(code)) {
+    if (!RegExp(r'^[A-Z0-9]{6,12}
+}
+).hasMatch(normalizedReferralCode)) {
       throw const FormatException('Codice invito non valido.');
     }
-    if (inviteeUserId.trim().isEmpty) {
-      throw ArgumentError('L’ID dell’utente invitato è obbligatorio.');
+    final inviteeId = inviteeUserId.trim();
+    if (inviteeId.isEmpty || inviteeId.length > 128) {
+      throw ArgumentError('L’ID dell’utente invitato non è valido.');
     }
   }
 }
