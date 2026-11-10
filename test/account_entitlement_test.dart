@@ -37,6 +37,27 @@ void main() {
     );
   });
 
+  test('Premium entitlement expires exactly at its validity boundary', () {
+    final boundary = DateTime.utc(2027, 1, 1);
+    final entitlement = UserEntitlement(
+      userId: 'user-boundary',
+      tier: SubscriptionTier.premium,
+      validUntil: boundary,
+    );
+    expect(entitlement.isPremiumAt(boundary.subtract(const Duration(microseconds: 1))), isTrue);
+    expect(entitlement.isPremiumAt(boundary), isFalse);
+    expect(entitlement.isPremiumAt(boundary.add(const Duration(microseconds: 1))), isFalse);
+  });
+
+  test('free entitlement never becomes Premium regardless of expiry', () {
+    final entitlement = UserEntitlement(
+      userId: 'user-free',
+      tier: SubscriptionTier.free,
+      validUntil: DateTime.utc(2099),
+    );
+    expect(entitlement.isPremiumAt(DateTime.utc(2026)), isFalse);
+  });
+
   test('expired premium entitlement is not active', () {
     final entitlement = UserEntitlement(
       userId: 'user-1',
