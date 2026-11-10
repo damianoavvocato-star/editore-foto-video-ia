@@ -115,6 +115,11 @@ flowchart TD
 - Mai aggirare login, DRM, paywall, protezioni tecniche o limitazioni di accesso. Nessuna promessa di compatibilità universale: dichiarare i limiti per ogni piattaforma.
 - UI Flutter disponibile nella navigazione: incolla da appunti, istruzione in linguaggio naturale e presentazione dello stato di riconoscimento. Backend in modalità metadata-only: non scarica né analizza ancora i media. Connettori di estrazione autorizzata, elenco episodi e provider ASR/traduzione/TTS restano da implementare.
 
+
+### Normalizzazione codici lingua Studio
+- I codici BCP-47 accettati comprendono lingua, sottotag script opzionale e regione alfabetica o numerica opzionale (es. `zh-Hant-TW`, `sr-Latn-RS`, `es-419`).
+- Flutter normalizza maiuscole/minuscole e rimuove duplicati mantenendo l'ordine; backend e modello Flutter applicano lo stesso profilo supportato. I token non validi vengono rifiutati.
+
 ### 3.5 Audio, voce, lingue e sottotitoli
 - ASR/trascrizione con timestamp e, quando disponibile, diarizzazione speaker.
 - Traduzione segmentata, glossario e controllo qualità.
