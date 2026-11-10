@@ -497,3 +497,23 @@ def test_audit_hmac_chain_requires_same_server_key(tmp_path, monkeypatch):
     result = store.verify_audit_chain()
     assert result["valid"] is False
     assert result["keyAvailable"] is False
+
+def test_managed_account_mutations_append_to_verified_audit_hash_chain(tmp_path):
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("audit_owner_chain", "owner password long enough")
+    managed = store.create_managed_account(
+        owner["userId"], "audit_managed_chain",
+        "temporary password long enough", "collaborator",
+    )
+
+    temporary = store.reset_account_password(owner["userId"], managed["userId"])
+    store.change_password(
+        managed["userId"], temporary, "permanent password long enough",
+    )
+    store.set_account_role(owner["userId"], managed["userId"], "user")
+    store.set_account_disabled(owner["userId"], managed["userId"], True)
+
+    result = store.verify_audit_chain()
+    assert result["valid"] is True
+    assert result["count"] == 5
+
