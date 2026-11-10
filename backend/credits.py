@@ -48,6 +48,13 @@ class CreditStore:
         if not isinstance(reference_id, str) or not reference_id or len(reference_id) > 128:
             raise CreditError("Riferimento operazione non valido.")
 
+    @staticmethod
+    def _validate_actor_reason(actor_user_id: str, reason: str):
+        if not isinstance(actor_user_id, str) or not actor_user_id.strip() or len(actor_user_id) > 128:
+            raise CreditError("Operatore non valido.")
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 240:
+            raise CreditError("Motivazione non valida.")
+
     def balance(self, user_id: str) -> dict:
         if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
             raise CreditError("Account non valido.")
@@ -64,21 +71,20 @@ class CreditStore:
         if actor_role != "owner":
             raise CreditError("Solo il proprietario può assegnare crediti.")
         self._validate(user_id, amount, reference_id)
-        if not actor_user_id or len(actor_user_id) > 128:
-            raise CreditError("Operatore non valido.")
-        if not isinstance(reason, str) or not reason.strip() or len(reason) > 240:
-            raise CreditError("Motivazione non valida.")
-        return self._apply(user_id, "grant", amount, reference_id, actor_user_id, reason.strip())
+        self._validate_actor_reason(actor_user_id, reason)
+        return self._apply(user_id, "grant", amount, reference_id, actor_user_id.strip(), reason.strip())
 
     def consume(self, user_id: str, amount: int, reference_id: str,
                 reason: str = "AI processing") -> dict:
         self._validate(user_id, amount, reference_id)
-        return self._apply(user_id, "consume", amount, reference_id, user_id, reason)
+        self._validate_actor_reason(user_id, reason)
+        return self._apply(user_id, "consume", amount, reference_id, user_id, reason.strip())
 
     def refund(self, user_id: str, amount: int, reference_id: str,
                actor_user_id: str = "system", reason: str = "AI job refund") -> dict:
         self._validate(user_id, amount, reference_id)
-        return self._apply(user_id, "refund", amount, reference_id, actor_user_id, reason)
+        self._validate_actor_reason(actor_user_id, reason)
+        return self._apply(user_id, "refund", amount, reference_id, actor_user_id.strip(), reason.strip())
 
     def _apply(self, user_id: str, kind: str, amount: int, reference_id: str,
                actor_user_id: str, reason: str) -> dict:
