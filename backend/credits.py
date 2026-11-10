@@ -56,7 +56,7 @@ class CreditStore:
             raise CreditError("Motivazione non valida.")
 
     def balance(self, user_id: str) -> dict:
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+        if not isinstance(user_id, str) or not user_id.strip() or len(user_id) > 128:
             raise CreditError("Account non valido.")
         with self._connect() as db:
             row = db.execute(
