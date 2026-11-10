@@ -470,3 +470,12 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 
 
 - API storico crediti: il parametro `limit` è ora vincolato a 1–100 a livello HTTP (richieste fuori intervallo ricevono 422 invece di essere corrette silenziosamente); aggiunto test autenticazione, isolamento del saldo tra account e limiti di paginazione. Test non eseguiti fino alla soglia del 35%.
+
+## Hardening audit account — 10 novembre 2026
+
+- Le mutazioni degli account gestiti (creazione, reset password, cambio password, modifica ruolo e sospensione) sono state ricondotte al writer comune `_append_audit_event`, così da mantenere la continuità della catena hash verificabile.
+- Aggiunto un test di regressione che esegue le cinque operazioni in sequenza e verifica l'integrità della catena e il numero di eventi registrati.
+- Test **non eseguito**, in conformità alla regola di sviluppo fino alla soglia del 35%.
+- Commit di implementazione: `83b52b5`; commit del test: `52b601c`.
+- Nessuna funzionalità viene promossa a `done` prima della campagna completa. Avanzamento generale invariato: **32,76%**; `main` invariato e PR #1 ancora draft.
+
