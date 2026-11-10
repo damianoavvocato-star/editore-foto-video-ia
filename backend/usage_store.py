@@ -55,6 +55,17 @@ class UsageStore:
         return value
 
     @staticmethod
+    def _validate_limit(limit: int) -> int:
+        """Apply one strict bound to every monthly quota operation."""
+        if (
+            not isinstance(limit, int)
+            or isinstance(limit, bool)
+            or not 1 <= limit <= 100000
+        ):
+            raise ValueError("Invalid monthly usage limit.")
+        return limit
+
+    @staticmethod
     def _validated_timestamp(now: int | float | None = None) -> float:
         """Validate a UTC timestamp before calendar conversion or persistence."""
         timestamp = time.time() if now is None else now
@@ -110,8 +121,7 @@ class UsageStore:
         """Check that a job has a reservation and its original period is within quota."""
         self._validate_identifier(user_id, "account identifier", 128)
         self._validate_identifier(job_id, "job identifier", 64)
-        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
-            raise ValueError("Invalid monthly usage limit.")
+        self._validate_limit(limit)
         with sqlite3.connect(self.database, timeout=10) as db:
             db.execute("PRAGMA busy_timeout = 10000")
             row = db.execute(
@@ -133,8 +143,7 @@ class UsageStore:
     ) -> dict[str, Any]:
         self._validate_identifier(user_id, "account identifier", 128)
         self._validate_identifier(job_id, "job identifier", 64)
-        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
-            raise ValueError("Invalid monthly usage limit.")
+        self._validate_limit(limit)
         timestamp_value = self._validated_timestamp(now)
         period = time.strftime("%Y-%m", time.gmtime(timestamp_value))
         timestamp = int(timestamp_value)
@@ -182,8 +191,7 @@ class UsageStore:
     def summary(self, user_id: str, limit: int, now: int | float | None = None) -> dict[str, Any]:
         """Return the authenticated account's monthly reservation count and quota."""
         self._validate_identifier(user_id, "account identifier", 128)
-        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100000:
-            raise ValueError("Invalid monthly usage limit.")
+        self._validate_limit(limit)
         period = self._period(now)
         with sqlite3.connect(self.database, timeout=10) as db:
             db.execute("PRAGMA busy_timeout = 10000")
