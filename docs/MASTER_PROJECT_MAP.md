@@ -105,6 +105,15 @@ flowchart TD
 - Nessun provider deve essere dichiarato operativo senza configurazione e chiamata di prova.
 - La coda e le bozze già implementate costituiscono una base, non prova che i video siano già generati realmente.
 
+### 3.6 MagicLink IA — link universali e serie da tradurre
+- L'utente può incollare o condividere un URL da siti e piattaforme supportati e descrivere in linguaggio naturale il risultato desiderato.
+- Il sistema riconosce piattaforma e tipo di contenuto quando le informazioni sono accessibili; deve mostrare con chiarezza cosa è stato effettivamente letto e cosa non è accessibile.
+- Per le serie: individuazione degli episodi accessibili, elenco ordinato, selezione di una o più puntate e lavorazione batch con stato, retry e annullamento.
+- Azioni previste: trascrizione, traduzione dei sottotitoli, doppiaggio, riassunto e apertura del materiale in MagicIAedit per il montaggio.
+- Il contenuto remoto può essere elaborato solo tramite accessi, API o importazioni autorizzate e nel rispetto dei termini della piattaforma, dei diritti e del consenso. Se un link non è leggibile, proporre l'importazione di un file che l'utente è autorizzato a utilizzare.
+- Mai aggirare login, DRM, paywall, protezioni tecniche o limitazioni di accesso. Nessuna promessa di compatibilità universale: dichiarare i limiti per ogni piattaforma.
+- La prima base backend riconosce/classifica URL in modalità metadata-only; non scarica né analizza ancora i media. La UI Flutter e i provider di estrazione/ASR/traduzione/TTS restano da implementare.
+
 ### 3.5 Audio, voce, lingue e sottotitoli
 - ASR/trascrizione con timestamp e, quando disponibile, diarizzazione speaker.
 - Traduzione segmentata, glossario e controllo qualità.
