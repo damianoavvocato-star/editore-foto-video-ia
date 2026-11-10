@@ -376,7 +376,7 @@ class _HomePageState extends State<HomePage> {
   VideoPlayerController? videoController;
   AudioPlayer? audioController;
   double zoom = 1;
-  int selectedTab = 0;
+  int selectedTab = 11;
   EditorProject project = const EditorProject(id: 'draft', name: 'Nuovo progetto');
   List<EditorProject> savedProjects = const [];
   bool _loadingSavedProjects = true;
@@ -599,6 +599,24 @@ class _HomePageState extends State<HomePage> {
   }
 
   String t(String key) => Copy.get(widget.language, key);
+
+  Future<void> _startNewProject() async {
+    final oldVideo = videoController;
+    final oldAudio = audioController;
+    setState(() {
+      project = EditorProject(
+        id: 'project_${DateTime.now().millisecondsSinceEpoch}',
+        name: 'Nuovo progetto',
+      );
+      media = null;
+      videoController = null;
+      audioController = null;
+      zoom = 1;
+      selectedTab = 0;
+    });
+    await oldVideo?.dispose();
+    await oldAudio?.dispose();
+  }
 
   Future<void> importMedia({bool photosOnly = false, int? maxFiles}) async {
     final result = await FilePicker.platform.pickFiles(
@@ -866,7 +884,32 @@ class _HomePageState extends State<HomePage> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
-            final editor = selectedTab == 2
+            final editor = selectedTab == 11
+                ? HomeDashboard(
+                    appName: t('app'),
+                    subtitle: t('subtitle'),
+                    newProjectLabel: t('newProject'),
+                    importLabel: t('import'),
+                    videoLabel: t('video'),
+                    photoLabel: t('photo'),
+                    aiLabel: t('ai'),
+                    magicLinkLabel: 'MagicLink IA',
+                    savedProjectsLabel: t('savedProjects'),
+                    noSavedProjectsLabel: t('noSavedProjects'),
+                    projects: savedProjects,
+                    onNewProject: _startNewProject,
+                    onImport: () {
+                      setState(() => selectedTab = 0);
+                      importMedia();
+                    },
+                    onVideo: () => setState(() => selectedTab = 0),
+                    onPhoto: () => setState(() => selectedTab = 1),
+                    onMagic: () => setState(() => selectedTab = 2),
+                    onMagicLink: () => setState(() => selectedTab = 10),
+                    onPremium: () => setState(() => selectedTab = 9),
+                    onOpenProject: _openSavedProject,
+                  )
+                : selectedTab == 2
                 ? MagicIAeditPanel(
                     project: project,
                     onProjectChanged: _applyMagicIAeditProject,
@@ -923,6 +966,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildMobileNavigation(BuildContext context) {
     const destinations = <({int tab, IconData icon, String label})>[
+      (tab: 11, icon: Icons.home_rounded, label: 'Home'),
       (tab: 0, icon: Icons.movie_outlined, label: 'Video'),
       (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
       (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
@@ -1319,6 +1363,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 14),
+          _sideItem(Icons.home_rounded, 'Home', 11),
           FilledButton.icon(
             onPressed: importMedia,
             icon: const Icon(Icons.add),
