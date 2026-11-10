@@ -2541,7 +2541,7 @@ def owner_verify_backup(backup_id: str, request: Request):
 
 
 @app.get('/v1/account/credits')
-def account_get_credits(request: Request, limit: int = 50):
+def account_get_credits(request: Request, limit: int = Query(default=50, ge=1, le=100)):
     account = _request_account(request)
     if account is None:
         raise HTTPException(401, 'Sessione account obbligatoria.')
