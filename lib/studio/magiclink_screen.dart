@@ -5,8 +5,14 @@ import '../services/account_api.dart';
 import '../services/magiclink_api.dart';
 
 class MagicLinkScreen extends StatefulWidget {
-  const MagicLinkScreen({super.key, required this.apiBaseUrl});
+  const MagicLinkScreen({
+    super.key,
+    required this.apiBaseUrl,
+    required this.onImportAuthorizedMedia,
+  });
+
   final String apiBaseUrl;
+  final Future<void> Function() onImportAuthorizedMedia;
 
   @override
   State<MagicLinkScreen> createState() => _MagicLinkScreenState();
@@ -71,6 +77,11 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
     }
     _url.text = value;
     setState(() => _message = 'Collegamento incollato. Ora puoi analizzarlo.');
+  }
+
+  Future<void> _importAuthorizedMedia() async {
+    if (_busy) return;
+    await widget.onImportAuthorizedMedia();
   }
 
   Future<void> _analyze() async {
@@ -238,6 +249,45 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
             ),
           ),
         ],
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.folder_open_outlined,
+                      color: Color(0xFF55D5C9)),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        'Hai già il file o il permesso di utilizzarlo?',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                const Text(
+                  'Puoi importare direttamente foto, video o audio dal dispositivo. '
+                  'Il contenuto verrà aggiunto alla timeline dell’editor: MagicLink '
+                  'non scarica automaticamente i video dai siti esterni.',
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _importAuthorizedMedia,
+                    icon: const Icon(Icons.add_to_photos_outlined),
+                    label: const Text('Importa file autorizzati nell’editor'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 12),
         const Text(
           'MagicLink rispetta i permessi e le limitazioni dei siti. Non aggira login, DRM, paywall o protezioni tecniche.',
