@@ -17,9 +17,15 @@ class UserEntitlement {
   final EntitlementSource? source;
   final String? plan;
 
-  bool get isPremium {
+  bool get isPremium => isPremiumAt(DateTime.now());
+
+  /// Evaluates the entitlement against an explicit instant.
+  ///
+  /// This keeps expiry checks deterministic for callers and tests while the
+  /// server remains the authority that grants or revokes Premium access.
+  bool isPremiumAt(DateTime instant) {
     if (tier != SubscriptionTier.premium) return false;
-    return validUntil == null || validUntil!.isAfter(DateTime.now());
+    return validUntil == null || validUntil!.isAfter(instant);
   }
 
   Map<String, Object?> toJson() => {
