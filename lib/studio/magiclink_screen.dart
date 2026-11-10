@@ -300,7 +300,7 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                         ),
                       ),
                       TextButton(
-                        onPressed: _busy ? null : _analyzeSeries,
+                        onPressed: _busy || _api == null ? null : _analyzeSeries,
                         child: const Text('Analizza serie'),
                       ),
                     ],
@@ -326,8 +326,9 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        _episodeResults[_episodeUrls[index]]?['platform']?.toString() ??
-                            'In attesa di riconoscimento',
+                        _episodeResults[_episodeUrls[index]] == null
+                            ? 'In attesa di riconoscimento'
+                            : '${_episodeResults[_episodeUrls[index]]?['platform'] ?? 'Sito web'} · contenuto non scaricato',
                       ),
                       trailing: IconButton(
                         tooltip: 'Rimuovi episodio',
