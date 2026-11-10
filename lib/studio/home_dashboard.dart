@@ -120,8 +120,8 @@ class HomeDashboard extends StatelessWidget {
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w900, letterSpacing: -1, height: 1.05)),
         const SizedBox(height: 9),
-        const ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 540),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
           child: Text('Foto, video e intelligenza artificiale: tutto quello che ti serve per creare contenuti straordinari, in un solo spazio.',
             style: TextStyle(color: Color(0xFFD6D4E8), height: 1.45, fontSize: 13)),
         ),
