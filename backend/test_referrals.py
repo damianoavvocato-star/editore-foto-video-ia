@@ -89,3 +89,13 @@ def test_referral_history_is_scoped_to_the_signed_in_account(tmp_path):
     assert inviter_history["claims"][0]["role"] == "inviter"
     assert invitee_history["code"] is None
     assert invitee_history["claims"][0]["role"] == "invitee"
+
+
+def test_referral_code_rejects_non_ascii_alphanumeric_values(tmp_path):
+    database = tmp_path / "accounts.sqlite3"
+    _, inviter, invitee, _ = _accounts(database)
+    referrals = ReferralStore(database)
+    referrals.create_or_get_code(inviter)
+
+    with pytest.raises(ReferralError, match="Codice invito non valido"):
+        referrals.claim(invitee, "ÀB12CD34")
