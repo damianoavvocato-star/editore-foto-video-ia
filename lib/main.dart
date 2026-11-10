@@ -940,8 +940,12 @@ class _HomePageState extends State<HomePage> {
                                 apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
                               )
                             : selectedTab == 10
-                                ? const MagicLinkScreen(
-                                    apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
+                                ? MagicLinkScreen(
+                                    apiBaseUrl: const String.fromEnvironment('MEDIA_API_URL'),
+                                    onImportAuthorizedMedia: () async {
+                                      setState(() => selectedTab = 0);
+                                      await importMedia();
+                                    },
                                   )
                             : selectedTab == 9
                                 ? AccountPremiumPage(
