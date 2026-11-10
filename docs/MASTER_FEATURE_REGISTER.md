@@ -59,6 +59,13 @@
 
 > **Aggiornamento Studio 10 novembre 2026:** parser Flutter e validazione API ora supportano sottotag BCP-47 per script (es. `zh-Hant`) e regione alfabetica o numerica (es. `zh-Hant-TW`, `es-419`), mantenendo normalizzazione, deduplicazione e limite di 20 lingue. I test sono stati aggiunti ma restano non eseguiti fino alla soglia del 35%.
 
+## Avanzamento verificato — 10 novembre 2026, coerenza verifica backup/restore
+
+- Rafforzata `BackupStore.verify`: oltre alla decifratura, al controllo SQLite e alla presenza della tabella account, ora richiede le colonne minime dello schema account riconosciuto e l'assenza di violazioni delle foreign key.
+- Allineato così il criterio di verifica al controllo già applicato da `prepare_restore`: un backup con una tabella `accounts` incompatibile non viene più dichiarato valido se non può essere preparato per il ripristino.
+- Aggiunto test di regressione per un archivio cifrato contenente uno schema account incompatibile. Test aggiunto ma **non eseguito**, in attesa della soglia del 35%.
+- P0-11 resta `partial`: il ripristino applicato/rollback, gli asset media e la replica remota sono ancora fuori perimetro.
+
 ## P2 — MagicIAedit, Studio IA, lingue e strumenti media
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
