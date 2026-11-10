@@ -229,3 +229,18 @@ def test_backup_verification_rejects_incompatible_account_schema(tmp_path, monke
     with pytest.raises(BackupError, match="schema account"):
         backups.verify(backup_id)
 
+@pytest.mark.parametrize("invalid_now", [True, False, "100000", float("nan"), float("inf"), float("-inf")])
+def test_backup_prune_rejects_non_finite_or_non_numeric_reference_time(
+    tmp_path, monkeypatch, invalid_now
+):
+    database = tmp_path / "accounts.sqlite3"
+    AccountStore(database)
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    backups = BackupStore(database, tmp_path / "backups")
+    (tmp_path / "backups" / "restore-staging").mkdir()
+
+    with pytest.raises(BackupError, match="Istante di riferimento"):
+        backups.prune(now=invalid_now)
+    with pytest.raises(BackupError, match="Istante di riferimento"):
+        backups.prune_restore_staging(now=invalid_now)
+
