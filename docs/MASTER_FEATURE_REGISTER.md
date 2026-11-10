@@ -73,7 +73,7 @@
 | P2-11 | TTS, doppiaggio e voiceover | User | selezione voce | provider TTS e consenso | tracce audio per lingua | missing |
 | P2-12 | Lip-sync, speaker e talking photo | User | editor avatar | provider e consensi | sincronizzazione misurata e diritti verificati | missing |
 | P2-13 | Sottotitoli SRT/VTT/ASS | User | editor e export | generazione timestamp | import/export e sincronizzazione | partial |
-| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter con clipboard, istruzioni, import locale autorizzato verso timeline e raccolta manuale ordinata fino a 50 URL, rimozione singoli episodi e riconoscimento batch sequenziale | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; nuove interazioni batch/import da verificare alla prossima soglia | partial |
+| P2-14 | MagicLink IA: link, siti e serie multi-episodio | User | schermata Flutter con clipboard, istruzioni, import locale autorizzato verso timeline, raccolta manuale ordinata fino a 50 URL, rimozione, riordino, copia elenco, progresso batch, annullamento tra richieste e retry selettivo dei link falliti | API autenticata di riconoscimento URL e classificazione piattaforma; analisi remota, estrazione, trascrizione, traduzione e doppiaggio non collegati | validazione HTTP(S), blocco host locali/IP privati/porte non standard/credenziali, isolamento account e dichiarazione esplicita di mancato fetch; nuove interazioni batch/import da verificare alla prossima soglia | partial |
 | P2-15 | OCR e sostituzione testi nei video | User | revisione testo | OCR temporale e compositing | testi animati e lingue RTL testati | missing |
 | P2-16 | Batch localizzazione 20+ lingue | User | selezione, stato e ZIP | job per lingua, retry e output | isolamento, annullamento e output separati | missing |
 | P2-17 | Miglioramento foto | User | restore, colorize, rimozione oggetti, sfondo | modelli/provider | qualità, privacy e undo | missing |
@@ -390,3 +390,14 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - La UI dichiara esplicitamente che il batch riconosce i link ma non scarica, riproduce o analizza i video remoti. Non è stata implementata alcuna estrazione automatica della serie.
 - L'analisi batch richiede prima una connessione API valida. I singoli errori vengono conservati come stato dell'episodio senza interrompere gli altri link.
 - Integrazione locale e raccolta batch restano da verificare con la campagna prevista al 35%; nessun test o workflow CI è stato avviato.
+
+
+### Incremento sviluppo MagicLink — controllo del batch
+
+- Aggiunti avanzamento numerico delle richieste e messaggi di stato durante il riconoscimento della raccolta.
+- Aggiunto annullamento cooperativo: la richiesta HTTP già in corso viene lasciata terminare, quindi non vengono avviati gli episodi successivi.
+- Aggiunto retry selettivo dei soli episodi con errore di riconoscimento, senza ripetere quelli già completati.
+- Aggiunti comandi per riordinare gli episodi e copiare l'elenco ordinato negli appunti.
+- La raccolta rimane temporanea nella schermata: persistenza su account/progetto, retry durevole dopo chiusura app e cancellazione effettiva dei job remoti non sono implementati.
+- La modifica non cambia la modalità metadata-only del backend e non accede ai contenuti remoti.
+- Tutto il nuovo flusso resta da verificare alla soglia del 35%, senza test intermedi.
