@@ -56,6 +56,9 @@
 | P1-14 | Formati export e preset | User | preset e compatibilità | FFmpeg codec map | MP4/MOV/AVI/WebM validati con file reali | partial |
 | P1-15 | Font, RTL e gestione risorse mancanti | User | lingua araba e Directionality RTL a livello app già presenti | renderer font shaping e fallback font ancora da completare | layout RTL di base disponibile; test di shaping e device con testi arabi lunghi mancanti | partial |
 
+
+> **Aggiornamento Studio 10 novembre 2026:** parser Flutter e validazione API ora supportano sottotag BCP-47 per script (es. `zh-Hant`) e regione alfabetica o numerica (es. `zh-Hant-TW`, `es-419`), mantenendo normalizzazione, deduplicazione e limite di 20 lingue. I test sono stati aggiunti ma restano non eseguiti fino alla soglia del 35%.
+
 ## P2 — MagicIAedit, Studio IA, lingue e strumenti media
 
 | ID | Funzionalità | Ruoli | Frontend | Backend | Test/accettazione | Stato |
