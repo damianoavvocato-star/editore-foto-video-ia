@@ -194,7 +194,7 @@ class HomeDashboard extends StatelessWidget {
         Row(children: [
           Expanded(child: Text(savedProjectsLabel,
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-          Text('\${projects.length}', style: const TextStyle(color: _muted, fontSize: 12)),
+          Text('${projects.length}', style: const TextStyle(color: _muted, fontSize: 12)),
         ]),
         const SizedBox(height: 10),
         if (visible.isEmpty)
@@ -210,7 +210,7 @@ class HomeDashboard extends StatelessWidget {
             leading: const CircleAvatar(backgroundColor: Color(0x332E9EAD),
               child: Icon(Icons.movie_outlined, color: _cyan, size: 19)),
             title: Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('\${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} elementi'),
+            subtitle: Text('${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} elementi'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => onOpenProject(project),
           )),
