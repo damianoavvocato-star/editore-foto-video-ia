@@ -23,7 +23,7 @@ void main() {
 
     final oversizedInvitee = ReferralClaim(
       referralCode: 'AB12CD34',
-      inviteeUserId: 'u' * 129,
+      inviteeUserId: List.filled(129, 'u').join(),
     );
     expect(oversizedInvitee.validate, throwsA(isA<ArgumentError>()));
   });
