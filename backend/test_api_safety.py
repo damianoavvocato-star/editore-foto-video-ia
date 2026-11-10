@@ -947,3 +947,30 @@ def test_backup_api_is_owner_only_and_requires_encryption_key(tmp_path, monkeypa
     )
     assert verified.status_code == 200
     assert verified.json()["valid"] is True
+
+
+
+def test_credit_history_api_auth_and_bounded_limit(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    from backend.credits import CreditStore
+
+    accounts = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = accounts.bootstrap_owner("credit_api_owner", "owner password long enough")
+    user = accounts.register("credit_api_user", "user password long enough")
+    other = accounts.register("credit_api_other", "other password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: accounts)
+    credits = CreditStore(tmp_path / "credits.sqlite3")
+    credits.grant("owner", owner["userId"], user["userId"], 7, "api-grant", "test grant")
+    credits.grant("owner", owner["userId"], other["userId"], 99, "other-grant", "private")
+    monkeypatch.setattr(server, "_credit_store", lambda: credits)
+    client = TestClient(server.app)
+
+    token, _ = accounts.issue_session(user["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/v1/account/credits").status_code == 401
+    response = client.get("/v1/account/credits", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["balance"]["balance"] == 7
+    assert len(response.json()["transactions"]) == 1
+    assert client.get("/v1/account/credits?limit=0", headers=headers).status_code == 422
+    assert client.get("/v1/account/credits?limit=101", headers=headers).status_code == 422
