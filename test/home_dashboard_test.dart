@@ -18,6 +18,8 @@ void main() {
       photoLabel: 'Editor foto',
       aiLabel: 'Studio IA',
       magicLinkLabel: 'MagicLink IA',
+      studioLabel: 'Synthesia Studio IA',
+      teamLabel: 'TeamStudio',
       savedProjectsLabel: 'Progetti recenti',
       noSavedProjectsLabel: 'Nessun progetto salvato',
       projects: const [project],
@@ -27,6 +29,8 @@ void main() {
       onPhoto: () {},
       onMagic: () => openedMagic = true,
       onMagicLink: () {},
+      onStudio: () {},
+      onTeam: () {},
       onPremium: () {},
       onOpenProject: (_) => openedProject = true,
     ))));
@@ -38,6 +42,8 @@ void main() {
     await tester.tap(find.text('Studio IA'));
     await tester.pump();
     expect(openedMagic, isTrue);
+    await tester.ensureVisible(find.text('Spot pubblicitario'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Spot pubblicitario'));
     await tester.pump();
     expect(openedProject, isTrue);
