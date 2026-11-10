@@ -276,11 +276,39 @@ class JobRegistry(dict[str, dict[str, Any]]):
         self._save(job_id, record)
 
     def pop(self, job_id: str, *default: Any) -> Any:
-        value = dict.pop(self, job_id, *default)
-        with self._connection() as connection:
+        if len(default) > 1:
+            raise TypeError(f"pop expected at most 2 arguments, got {2 + len(default)}")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT payload FROM media_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                if dict.__contains__(self, job_id):
+                    return dict.pop(self, job_id)
+                if default:
+                    return default[0]
+                raise KeyError(job_id)
+            try:
+                values = json.loads(row[0])
+                if not isinstance(values, dict):
+                    values = {}
+            except (TypeError, ValueError):
+                values = {}
             connection.execute("DELETE FROM media_jobs WHERE job_id = ?", (job_id,))
             connection.execute("DELETE FROM render_idempotency WHERE job_id = ?", (job_id,))
-        return value
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        local_value = dict.pop(self, job_id, None)
+        if local_value is not None:
+            return local_value
+        return _PersistentJob(job_id, values, self)
 
     def clear(self) -> None:
         dict.clear(self)
