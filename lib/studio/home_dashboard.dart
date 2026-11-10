@@ -12,6 +12,8 @@ class HomeDashboard extends StatelessWidget {
     required this.photoLabel,
     required this.aiLabel,
     required this.magicLinkLabel,
+    required this.studioLabel,
+    required this.teamLabel,
     required this.savedProjectsLabel,
     required this.noSavedProjectsLabel,
     required this.projects,
@@ -21,15 +23,17 @@ class HomeDashboard extends StatelessWidget {
     required this.onPhoto,
     required this.onMagic,
     required this.onMagicLink,
+    required this.onStudio,
+    required this.onTeam,
     required this.onPremium,
     required this.onOpenProject,
   });
 
   final String appName, subtitle, newProjectLabel, importLabel;
-  final String videoLabel, photoLabel, aiLabel, magicLinkLabel;
+  final String videoLabel, photoLabel, aiLabel, magicLinkLabel, studioLabel, teamLabel;
   final String savedProjectsLabel, noSavedProjectsLabel;
   final List<EditorProject> projects;
-  final VoidCallback onNewProject, onImport, onVideo, onPhoto, onMagic, onMagicLink, onPremium;
+  final VoidCallback onNewProject, onImport, onVideo, onPhoto, onMagic, onMagicLink, onStudio, onTeam, onPremium;
   final ValueChanged<EditorProject> onOpenProject;
 
   static const _muted = Color(0xFFAAA8BC);
@@ -147,6 +151,8 @@ class HomeDashboard extends StatelessWidget {
       (icon: Icons.photo_library_outlined, title: photoLabel, caption: 'Ritocca e valorizza', color: Color(0xFF55D5C9), action: onPhoto),
       (icon: Icons.auto_awesome, title: aiLabel, caption: 'Lascia spazio alla creatività IA', color: Color(0xFFFFB86B), action: onMagic),
       (icon: Icons.link_rounded, title: magicLinkLabel, caption: 'Importa e organizza i contenuti', color: Color(0xFF79B8FF), action: onMagicLink),
+      (icon: Icons.video_camera_front_outlined, title: studioLabel, caption: 'Crea con gli strumenti avanzati', color: Color(0xFFE58ACB), action: onStudio),
+      (icon: Icons.groups_outlined, title: teamLabel, caption: 'Collabora sui tuoi progetti', color: Color(0xFF8FC58B), action: onTeam),
     ];
     return GridView.builder(
       shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
