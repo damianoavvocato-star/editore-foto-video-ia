@@ -26,6 +26,8 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
   );
   RemoteMagicLinkApi? _api;
   Map<String, dynamic>? _result;
+  final List<String> _episodeUrls = [];
+  final Map<String, Map<String, dynamic>> _episodeResults = {};
   bool _busy = false;
   String? _message;
 
@@ -82,6 +84,75 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
   Future<void> _importAuthorizedMedia() async {
     if (_busy) return;
     await widget.onImportAuthorizedMedia();
+  }
+
+  void _addEpisode() {
+    final value = _url.text.trim();
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.hasAuthority ||
+        !{'http', 'https'}.contains(uri.scheme.toLowerCase())) {
+      setState(() => _message = 'Inserisci un link HTTP o HTTPS valido prima di aggiungerlo.');
+      return;
+    }
+    if (_episodeUrls.contains(value)) {
+      setState(() => _message = 'Questo collegamento è già presente nella serie.');
+      return;
+    }
+    if (_episodeUrls.length >= 50) {
+      setState(() => _message = 'Una serie può contenere al massimo 50 collegamenti per raccolta.');
+      return;
+    }
+    setState(() {
+      _episodeUrls.add(value);
+      _message = 'Episodio aggiunto alla raccolta. Puoi aggiungere altri link.';
+      _url.clear();
+    });
+  }
+
+  void _removeEpisode(String value) {
+    setState(() {
+      _episodeUrls.remove(value);
+      _episodeResults.remove(value);
+    });
+  }
+
+  Future<void> _analyzeSeries() async {
+    final api = _api;
+    if (api == null || _busy || _episodeUrls.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _message = 'Analisi dei collegamenti in corso…';
+    });
+    final results = <String, Map<String, dynamic>>{};
+    try {
+      for (final url in List<String>.from(_episodeUrls)) {
+        try {
+          results[url] = await api.analyze(
+            url: url,
+            instruction: _instruction.text,
+          );
+        } catch (error) {
+          results[url] = {
+            'platform': 'unknown',
+            'contentAccess': 'not_fetched',
+            'providerState': 'not_configured',
+            'message': error.toString(),
+          };
+        }
+        if (!mounted) return;
+        setState(() {
+          _episodeResults
+            ..clear()
+            ..addAll(results);
+        });
+      }
+      if (mounted) {
+        setState(() => _message =
+            'Riconoscimento completato per ${results.length} collegamenti. I contenuti remoti non sono stati scaricati.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _analyze() async {
@@ -169,6 +240,14 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _busy ? null : _addEpisode,
+                    icon: const Icon(Icons.playlist_add),
+                    label: const Text('Aggiungi alla serie'),
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Text('Che cosa vuoi che faccia l’IA?',
                   style: Theme.of(context).textTheme.titleSmall),
@@ -201,6 +280,68 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
             ),
           ),
         ),
+        if (_episodeUrls.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.video_library_outlined,
+                        color: Color(0xFF55D5C9)),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Raccolta episodi (${_episodeUrls.length}/50)',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _busy ? null : _analyzeSeries,
+                        child: const Text('Analizza serie'),
+                      ),
+                    ],
+                  ),
+                  const Text(
+                    'Aggiungi manualmente i collegamenti degli episodi nell’ordine desiderato. '
+                    'Questa raccolta organizza e riconosce i link: non estrae né riproduce i video.',
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  for (var index = 0; index < _episodeUrls.length; index++)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        radius: 14,
+                        child: Text('${index + 1}',
+                          style: const TextStyle(fontSize: 11)),
+                      ),
+                      title: Text(
+                        _episodeUrls[index],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        _episodeResults[_episodeUrls[index]]?['platform']?.toString() ??
+                            'In attesa di riconoscimento',
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Rimuovi episodio',
+                        onPressed: _busy
+                            ? null
+                            : () => _removeEpisode(_episodeUrls[index]),
+                        icon: const Icon(Icons.close, size: 18),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (_message != null) ...[
           const SizedBox(height: 12),
           Card(
