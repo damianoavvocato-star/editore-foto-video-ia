@@ -180,6 +180,13 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
     }
   }
 
+  String _episodeSubtitle(String url) {
+    final result = _episodeResults[url];
+    if (result == null) return 'In attesa di riconoscimento';
+    final platform = result['platform']?.toString() ?? 'Sito web';
+    return '$platform · contenuto non scaricato';
+  }
+
   String _platformLabel(String? value) {
     switch (value) {
       case 'tiktok': return 'TikTok';
@@ -325,11 +332,7 @@ class _MagicLinkScreenState extends State<MagicLinkScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(
-                        _episodeResults[_episodeUrls[index]] == null
-                            ? 'In attesa di riconoscimento'
-                            : '${_episodeResults[_episodeUrls[index]]?['platform'] ?? 'Sito web'} · contenuto non scaricato',
-                      ),
+                      subtitle: Text(_episodeSubtitle(_episodeUrls[index])),
                       trailing: IconButton(
                         tooltip: 'Rimuovi episodio',
                         onPressed: _busy
