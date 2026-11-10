@@ -16,6 +16,7 @@ import 'editor/session_timeline_editor.dart';
 import 'editor/magiciaedit_panel.dart';
 import 'editor/remote_export_panel.dart';
 import 'studio/synthesia_studio_screen.dart';
+import 'studio/magiclink_screen.dart';
 import 'team/team_studio_screen.dart';
 
 void main() => runApp(const EditoreApp());
@@ -884,6 +885,10 @@ class _HomePageState extends State<HomePage> {
                             ? const TeamStudioScreen(
                                 apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
                               )
+                            : selectedTab == 10
+                                ? const MagicLinkScreen(
+                                    apiBaseUrl: String.fromEnvironment('MEDIA_API_URL'),
+                                  )
                             : selectedTab == 9
                                 ? AccountPremiumPage(
                                     apiBaseUrl: const String.fromEnvironment('MEDIA_API_URL'),
@@ -922,6 +927,7 @@ class _HomePageState extends State<HomePage> {
       (tab: 1, icon: Icons.photo_outlined, label: 'Foto'),
       (tab: 2, icon: Icons.auto_awesome, label: 'MagicIA'),
       (tab: 7, icon: Icons.video_camera_front_outlined, label: 'Studio'),
+      (tab: 10, icon: Icons.link, label: 'MagicLink'),
       (tab: 8, icon: Icons.groups_outlined, label: 'Team'),
       (tab: 6, icon: Icons.admin_panel_settings_outlined, label: 'Pannelli'),
       (tab: 9, icon: Icons.workspace_premium_outlined, label: 'Premium'),
@@ -1372,6 +1378,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           _sideItem(Icons.video_camera_front_outlined, 'Synthesia Studio IA', 7),
+          _sideItem(Icons.link, 'MagicLink IA', 10),
           _sideItem(Icons.groups_outlined, 'TeamStudio', 8),
           _sideItem(Icons.workspace_premium_outlined, t('premium'), 9),
           const Divider(),
