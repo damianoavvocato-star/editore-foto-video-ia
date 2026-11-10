@@ -61,3 +61,16 @@ def test_credit_ledger_rejects_invalid_actor_and_reason_fields(tmp_path):
         store.consume("user-1", 1, "job-1", reason=None)
     with pytest.raises(CreditError, match="Operatore non valido"):
         store.refund("user-1", 1, "job-1", actor_user_id=" ")
+
+
+
+def test_credit_history_rejects_invalid_limits_and_blank_identifiers(tmp_path):
+    store = CreditStore(tmp_path / "accounts.sqlite3")
+    for invalid in (0, -1, 101, True, 1.5, "10", None):
+        with pytest.raises(CreditError, match="Limite storico non valido"):
+            store.history("user-1", invalid)
+
+    with pytest.raises(CreditError, match="Account non valido"):
+        store.balance("   ")
+    with pytest.raises(CreditError, match="Riferimento operazione non valido"):
+        store.grant("owner", "owner-1", "user-1", 1, "   ", "test")
