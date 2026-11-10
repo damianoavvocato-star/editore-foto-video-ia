@@ -208,3 +208,27 @@ def test_usage_timestamp_accepts_finite_fractional_epoch(tmp_path):
             ("job-fractional",),
         ).fetchone()[0]
     assert created_at == 1_800_000_000
+
+
+@pytest.mark.parametrize("identifier", ["", "   ", " user-a", "user-a ", "\tuser-a"])
+def test_usage_store_rejects_non_canonical_account_identifiers(tmp_path, identifier):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    with pytest.raises(ValueError, match="account identifier"):
+        store.reserve(identifier, "job-1", 2, now=1_800_000_000)
+    with pytest.raises(ValueError, match="account identifier"):
+        store.summary(identifier, 2, now=1_800_000_000)
+    with pytest.raises(ValueError, match="account identifier"):
+        store.has_reservation(identifier, "job-1", 2)
+    with pytest.raises(ValueError, match="account identifier"):
+        store.release(identifier, "job-1", "2027-01")
+
+
+@pytest.mark.parametrize("identifier", ["", "   ", " job-1", "job-1 ", "\tjob-1"])
+def test_usage_store_rejects_non_canonical_job_identifiers(tmp_path, identifier):
+    store = UsageStore(tmp_path / "usage.sqlite3")
+    with pytest.raises(ValueError, match="job identifier"):
+        store.reserve("user-a", identifier, 2, now=1_800_000_000)
+    with pytest.raises(ValueError, match="job identifier"):
+        store.has_reservation("user-a", identifier, 2)
+    with pytest.raises(ValueError, match="job identifier"):
+        store.release("user-a", identifier, "2027-01")
