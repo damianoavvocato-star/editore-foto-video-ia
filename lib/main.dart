@@ -17,6 +17,7 @@ import 'editor/magiciaedit_panel.dart';
 import 'editor/remote_export_panel.dart';
 import 'studio/synthesia_studio_screen.dart';
 import 'studio/magiclink_screen.dart';
+import 'studio/home_dashboard.dart';
 import 'team/team_studio_screen.dart';
 
 void main() => runApp(const EditoreApp());
