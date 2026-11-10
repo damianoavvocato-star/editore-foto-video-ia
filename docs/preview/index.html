@@ -20,16 +20,31 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
 .stagebadge{position:absolute;top:12px;left:12px;background:#10121dcc;border:1px solid #ffffff22;border-radius:8px;padding:6px 9px;font-size:10px}.stagebadge.right{left:auto;right:12px}
 .under{display:flex;align-items:center;justify-content:space-between;padding:11px 2px 0;color:var(--muted);font-size:11px}
 .tools h3{margin:1px 0 16px}.toolgroup{padding:13px 0;border-top:1px solid var(--line)}.toolrow{display:flex;justify-content:space-between;align-items:center;margin:12px 0 5px;color:#d8d5e9;font-size:12px}.value{color:#bcb2ff;font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:#9a86ff}
-.timeline{grid-column:2/4;min-height:220px}.trackhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.ruler{display:flex;justify-content:space-between;color:#85879e;font-size:10px;margin:0 0 7px 98px}.track{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:center;margin:8px 0}.trackname{color:#b9bbcc;font-size:11px}.lane{height:35px;border-radius:8px;background:#202334;position:relative;overflow:hidden;border:1px solid #2b2e43}.clip{position:absolute;top:3px;bottom:3px;border-radius:6px;padding:5px 8px;color:white;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden}.video{left:0;width:42%;background:linear-gradient(100deg,#725ed8,#423c8f)}.image{left:44%;width:24%;background:linear-gradient(100deg,#1b9d93,#146b70)}.audio{left:0;width:68%;background:linear-gradient(100deg,#9e642d,#70441f);opacity:.85}.diamond{position:absolute;top:0;left:24%;color:var(--gold);font-size:10px}.playline{position:absolute;left:43%;top:-1px;bottom:-1px;width:2px;background:#f1c76a;box-shadow:0 0 8px #f1c76a}
-@media(max-width:950px){.app{grid-template-columns:180px 1fr;grid-template-rows:60px auto auto auto}.tools{grid-column:2}.timeline{grid-column:1/-1}nav{grid-row:2/4}.preview{min-height:390px}}
-@media(max-width:620px){.app{display:flex;flex-direction:column;padding:8px}.app nav{display:none}header{min-height:60px}.brand{font-size:15px}.actions .btn:first-child{display:none}.preview{min-height:420px}.tools{order:3}.timeline{order:4}.canvas{width:42%}.timeline{overflow:hidden}.trackname{font-size:9px}.ruler{margin-left:70px}}
+.timeline{grid-column:2/4;min-height:220px}.magiclink-panel{grid-column:2/4;grid-row:2/4;background:linear-gradient(145deg,#171927,#131521);border:1px solid var(--line);border-radius:18px;padding:22px;display:none;align-self:stretch}.magiclink-panel h2{margin:0 0 6px}.magiclink-panel .field{width:100%;padding:13px 14px;border:1px solid #383b55;border-radius:12px;background:#20212e;color:#f4f2ff;font:inherit;margin:8px 0 14px}.magiclink-panel .result{margin-top:16px;padding:16px;border:1px solid #3b3b5a;border-radius:14px;background:#202133;display:none}.magiclink-panel .pill{display:inline-block;border:1px solid #554b7d;background:#302a4d;border-radius:20px;padding:5px 10px;font-size:11px;color:#ddd5ff}.magiclink-panel .actions{justify-content:flex-start;flex-wrap:wrap}.magiclink-panel .note{color:#a5a6ba;font-size:12px;line-height:1.5}.trackhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.ruler{display:flex;justify-content:space-between;color:#85879e;font-size:10px;margin:0 0 7px 98px}.track{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:center;margin:8px 0}.trackname{color:#b9bbcc;font-size:11px}.lane{height:35px;border-radius:8px;background:#202334;position:relative;overflow:hidden;border:1px solid #2b2e43}.clip{position:absolute;top:3px;bottom:3px;border-radius:6px;padding:5px 8px;color:white;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden}.video{left:0;width:42%;background:linear-gradient(100deg,#725ed8,#423c8f)}.image{left:44%;width:24%;background:linear-gradient(100deg,#1b9d93,#146b70)}.audio{left:0;width:68%;background:linear-gradient(100deg,#9e642d,#70441f);opacity:.85}.diamond{position:absolute;top:0;left:24%;color:var(--gold);font-size:10px}.playline{position:absolute;left:43%;top:-1px;bottom:-1px;width:2px;background:#f1c76a;box-shadow:0 0 8px #f1c76a}
+@media(max-width:950px){.app{grid-template-columns:180px 1fr;grid-template-rows:60px auto auto auto}.tools{grid-column:2}.magiclink-panel{grid-column:2;grid-row:auto}.timeline{grid-column:1/-1}nav{grid-row:2/4}.preview{min-height:390px}}
+@media(max-width:620px){.app{display:flex;flex-direction:column;padding:8px}.app nav{display:none}.magiclink-panel{grid-column:1/-1}header{min-height:60px}.brand{font-size:15px}.actions .btn:first-child{display:none}.preview{min-height:420px}.tools{order:3}.timeline{order:4}.canvas{width:42%}.timeline{overflow:hidden}.trackname{font-size:9px}.ruler{margin-left:70px}}
 </style>
 </head>
 <body style="margin:0;min-height:100vh;background:#0b0c14;color:#f4f2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif"><main class="app">
 <header><div class="brand"><div class="logo">M</div><div>MagicIAedit<div class="tag">CREATIVE AI STUDIO</div></div></div><div class="actions"><span style="color:#aaa9bb;font-size:11px">Demo grafica · Progetto di esempio</span><button class="btn">Salva</button><button class="btn primary">Esporta ↗</button></div></header>
-<nav><div class="navtitle">WORKSPACE</div><div class="navitem active">▣　Editor video</div><div class="navitem">▧　Editor foto</div><div class="navitem">✦　MagicIAedit AI</div><div class="navitem">▦　Modelli</div><div class="navitem">♫　Audio</div><div class="navtitle">IL TUO SPAZIO</div><div class="navitem">▤　Progetti</div><div class="navitem">⚙　Impostazioni</div><div class="premium"><b>MagicIAedit Premium</b><span style="font-size:11px;color:#c5c0e3">Più strumenti creativi, un solo studio.</span></div></nav>
+<nav><div class="navtitle">WORKSPACE</div><div class="navitem active">▣　Editor video</div><div class="navitem">▧　Editor foto</div><div class="navitem">✦　MagicIAedit AI</div><div class="navitem">🔗　MagicLink IA</div><div class="navitem">▦　Modelli</div><div class="navitem">♫　Audio</div><div class="navtitle">IL TUO SPAZIO</div><div class="navitem">▤　Progetti</div><div class="navitem">⚙　Impostazioni</div><div class="premium"><b>MagicIAedit Premium</b><span style="font-size:11px;color:#c5c0e3">Più strumenti creativi, un solo studio.</span></div></nav>
 <section class="preview"><div class="sectionhead"><div><h3>Anteprima progetto</h3><div class="sub">Visualizzazione del risultato creativo</div></div><div style="display:flex;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:20px;background:#18332f;border:1px solid #2e6b62;color:#9de9dc;font-size:9px;letter-spacing:1px;font-weight:800"><i style="width:6px;height:6px;border-radius:50%;background:#55d6c5;display:inline-block"></i>LIVE</span><span style="color:#a8a0d7;font-size:11px">9:16　⌄</span></div></div><div class="stage"><span class="stagebadge">DEMO INTERATTIVA</span><span class="stagebadge right">100%</span><div class="canvas"><div class="sun"></div><div class="mount"></div></div><button class="play" id="playButton" type="button" aria-label="Riproduci anteprima">▶</button><div class="scrub"><span id="scrubProgress"></span></div></div><div class="under"><span>00:00:04.2 / 00:00:18.0</span><span><button class="btn" type="button" id="zoomOut" aria-label="Riduci zoom">－</button>　<span id="zoomLabel">100%</span>　<button class="btn" type="button" id="zoomIn" aria-label="Aumenta zoom">＋</button></span></div></section>
 <aside class="tools"><h3>✦　Regolazione colore</h3><div class="sub">Clip selezionata · Video principale</div><div class="toolgroup"><div class="toolrow"><span>Esposizione</span><span class="value" id="exposureVal">+0.0</span></div><input type="range" min="-5" max="5" step=".1" value="0" oninput="exposureVal.textContent=(this.value>0?'+':'')+Number(this.value).toFixed(1)"><div class="toolrow"><span>Contrasto</span><span class="value" id="contrastVal">1.0</span></div><input type="range" min="0" max="2" step=".1" value="1" oninput="contrastVal.textContent=Number(this.value).toFixed(1)"><div class="toolrow"><span>Saturazione</span><span class="value" id="satVal">1.0</span></div><input type="range" min="0" max="2" step=".1" value="1" oninput="satVal.textContent=Number(this.value).toFixed(1)"></div><div class="toolgroup"><div class="toolrow"><b>Controlli avanzati</b><span>⌄</span></div><div class="toolrow"><span>Temperatura</span><span class="value">0</span></div><input type="range" min="-100" max="100" value="0"><div class="toolrow"><span>Luci</span><span class="value">0.0</span></div><input type="range" min="-1" max="1" step=".1" value="0"></div><button class="btn" id="resetColor" type="button" style="width:100%;margin-top:10px">↺　Ripristina</button></aside>
+<section class="magiclink-panel" id="magiclinkPanel">
+  <div style="max-width:900px;margin:auto;width:100%">
+    <div class="tag">SMART LINK WORKSPACE</div>
+    <h2>MagicLink IA</h2>
+    <div class="sub" style="font-size:13px;margin:8px 0 22px">Incolla un collegamento e descrivi cosa vuoi ottenere. Dalla traduzione di una puntata all'organizzazione di un'intera serie.</div>
+    <label for="magicUrl">Link del contenuto</label>
+    <input class="field" id="magicUrl" type="url" placeholder="https://www.tiktok.com/@creator/video/…" autocomplete="url">
+    <div class="actions"><button class="btn" id="pasteMagic" type="button">📋 Incolla dagli appunti</button><span class="sub">TikTok · YouTube · Instagram · Vimeo · Siti web</span></div>
+    <label for="magicInstruction" style="display:block;margin-top:18px">Che cosa vuoi che faccia l'IA?</label>
+    <textarea class="field" id="magicInstruction" rows="3">Traduci tutte le puntate in italiano e crea sottotitoli sincronizzati</textarea>
+    <div class="actions"><button class="btn primary" id="analyzeMagic" type="button">✦ Analizza collegamento</button><button class="btn" id="clearMagic" type="button">Cancella</button></div>
+    <div class="result" id="magicResult" aria-live="polite"></div>
+    <p class="sub" style="line-height:1.6;margin-top:18px">Questa è un'anteprima grafica interattiva. Il riconoscimento reale richiede accesso autorizzato e connettori server. Nessun video viene scaricato in questa demo; non vengono aggirati login, DRM, paywall o limitazioni delle piattaforme.</p>
+  </div>
+</section>
 <section class="timeline"><div class="trackhead"><div><h3 style="margin:0">Timeline</h3><div class="sub">Tracce, clip e punti chiave</div></div><span style="background:#25263a;border-radius:9px;padding:7px 10px;font-variant-numeric:tabular-nums">00:04.2</span></div><div class="ruler"><span>0s</span><span>4s</span><span>8s</span><span>12s</span><span>16s</span></div><div class="track"><div class="trackname">▣　Video</div><div class="lane"><div class="clip video">Video principale</div><span class="diamond" style="left:24%">◆</span><span class="diamond" style="left:35%">◆</span><span class="playline"></span></div></div><div class="track"><div class="trackname">▧　Foto</div><div class="lane"><div class="clip image">Foto 01</div></div></div><div class="track"><div class="trackname">♫　Audio</div><div class="lane"><div class="clip audio">Traccia audio</div></div></div></section>
 </main>
 <script>
@@ -45,7 +60,12 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
    navItems.forEach(entry=>entry.classList.remove('active'));
    item.classList.add('active');
    const title=item.textContent.trim().replace(/^\S+\s*/, '');
-   document.querySelector('.sectionhead h3').textContent=title || 'Anteprima progetto';
+   const magic=title.toLowerCase().includes('magiclink');
+   document.querySelector('.preview').style.display=magic?'none':'flex';
+   document.querySelector('.tools').style.display=magic?'none':'block';
+   document.querySelector('.timeline').style.display=magic?'none':'block';
+   document.getElementById('magiclinkPanel').style.display=magic?'block':'none';
+   if(!magic) document.querySelector('.sectionhead h3').textContent=title || 'Anteprima progetto';
  }));
  play.addEventListener('click',()=>{
    playing=!playing; play.textContent=playing?'Ⅱ':'▶';
@@ -63,6 +83,39 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
    zoomLabel.textContent=zoom+'%';
  }
  document.getElementById('zoomIn').addEventListener('click',()=>setZoom(zoom+10));
+ document.getElementById('pasteMagic').addEventListener('click',async()=>{
+   const field=document.getElementById('magicUrl');
+   try{
+     const value=await navigator.clipboard.readText();
+     if(!value.trim()) throw new Error('Appunti vuoti');
+     field.value=value.trim();
+     document.getElementById('magicResult').style.display='block';
+     document.getElementById('magicResult').textContent='Link incollato dagli appunti. Premi “Analizza collegamento” per il riconoscimento dimostrativo.';
+   }catch(e){
+     document.getElementById('magicResult').style.display='block';
+     document.getElementById('magicResult').textContent='Il browser non ha concesso l’accesso agli appunti: incolla il link manualmente nel campo.';
+   }
+ });
+ document.getElementById('analyzeMagic').addEventListener('click',()=>{
+   const value=document.getElementById('magicUrl').value.trim();
+   const result=document.getElementById('magicResult');
+   let platform='Sito web';
+   try{
+     const host=new URL(value).hostname.toLowerCase();
+     if(host==='tiktok.com'||host.endsWith('.tiktok.com'))platform='TikTok';
+     else if(host==='youtu.be'||host.endsWith('.youtube.com'))platform='YouTube';
+     else if(host==='instagram.com'||host.endsWith('.instagram.com'))platform='Instagram';
+     else if(host==='vimeo.com'||host.endsWith('.vimeo.com'))platform='Vimeo';
+     else if(!['http:','https:'].includes(new URL(value).protocol))throw new Error();
+   }catch(e){result.style.display='block';result.textContent='Inserisci un link HTTP o HTTPS valido.';return;}
+   result.style.display='block';
+   result.innerHTML='<span class="pill">'+platform+' · riconoscimento demo</span><h3>Collegamento riconosciuto</h3><p>La richiesta è pronta per il flusso MagicLink. In questa anteprima non viene recuperato il contenuto remoto e non parte alcuna traduzione reale.</p><ul><li>Trascrizione e sottotitoli</li><li>Traduzione in italiano</li><li>Doppiaggio IA</li><li>Organizzazione episodi e montaggio MagicIAedit</li></ul><p class="sub">Per l'elaborazione reale servono un connettore autorizzato e provider attivi. Se il sito non consente l'accesso, importa un file che sei autorizzato a usare.</p>';
+ });
+ document.getElementById('clearMagic').addEventListener('click',()=>{
+   document.getElementById('magicUrl').value='';
+   document.getElementById('magicResult').style.display='none';
+ });
+
  document.getElementById('zoomOut').addEventListener('click',()=>setZoom(zoom-10));
  function applyColor(){
    const [exposure,contrast,saturation,temperature,highlights]=sliders.map(el=>Number(el.value));
