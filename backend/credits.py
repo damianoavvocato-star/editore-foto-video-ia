@@ -41,11 +41,11 @@ class CreditStore:
 
     @staticmethod
     def _validate(user_id: str, amount: int, reference_id: str):
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+        if not isinstance(user_id, str) or not user_id.strip() or len(user_id) > 128:
             raise CreditError("Account non valido.")
         if not isinstance(amount, int) or isinstance(amount, bool) or not 1 <= amount <= 1_000_000:
             raise CreditError("Quantità crediti non valida.")
-        if not isinstance(reference_id, str) or not reference_id or len(reference_id) > 128:
+        if not isinstance(reference_id, str) or not reference_id.strip() or len(reference_id) > 128:
             raise CreditError("Riferimento operazione non valido.")
 
     @staticmethod
@@ -146,7 +146,8 @@ class CreditStore:
     def history(self, user_id: str, limit: int = 50) -> list[dict]:
         if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
             raise CreditError("Account non valido.")
-        limit = max(1, min(100, limit if isinstance(limit, int) and not isinstance(limit, bool) else 50))
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise CreditError("Limite storico non valido: deve essere compreso tra 1 e 100.")
         with self._connect() as db:
             rows = db.execute(
                 """SELECT transaction_id,kind,amount,reference_id,reason,created_at
