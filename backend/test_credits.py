@@ -48,3 +48,16 @@ def test_only_owner_can_grant_and_history_is_user_scoped(tmp_path):
     store.grant("owner", "owner-1", "user-1", 5, "grant-1", "test")
     assert store.history("user-1")[0]["kind"] == "grant"
     assert store.history("user-2") == []
+
+
+
+def test_credit_ledger_rejects_invalid_actor_and_reason_fields(tmp_path):
+    store = CreditStore(tmp_path / "accounts.sqlite3")
+    with pytest.raises(CreditError, match="Operatore non valido"):
+        store.grant("owner", None, "user-1", 5, "grant-1", "test")
+    with pytest.raises(CreditError, match="Motivazione non valida"):
+        store.grant("owner", "owner-1", "user-1", 5, "grant-1", "   ")
+    with pytest.raises(CreditError, match="Motivazione non valida"):
+        store.consume("user-1", 1, "job-1", reason=None)
+    with pytest.raises(CreditError, match="Operatore non valido"):
+        store.refund("user-1", 1, "job-1", actor_user_id=" ")
