@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from backend.accounts import AccountStore
@@ -99,3 +101,29 @@ def test_referral_code_rejects_non_ascii_alphanumeric_values(tmp_path):
 
     with pytest.raises(ReferralError, match="Codice invito non valido"):
         referrals.claim(invitee, "ÀB12CD34")
+
+
+
+def test_concurrent_referral_code_requests_return_one_stable_code(tmp_path):
+    database = tmp_path / "accounts.sqlite3"
+    _, inviter, _, _ = _accounts(database)
+    referrals = ReferralStore(database)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        codes = list(executor.map(lambda _: referrals.create_or_get_code(inviter), range(16)))
+
+    assert len(set(codes)) == 1
+    assert len(codes[0]) == 10
+
+
+def test_referral_store_rejects_invalid_account_identifiers(tmp_path):
+    database = tmp_path / "accounts.sqlite3"
+    _, inviter, invitee, _ = _accounts(database)
+    referrals = ReferralStore(database)
+
+    with pytest.raises(ReferralError, match="Account non valido"):
+        referrals.create_or_get_code("   ")
+    with pytest.raises(ReferralError, match="Account non valido"):
+        referrals.claim(None, "ABC12345")
+    with pytest.raises(ReferralError, match="Account non valido"):
+        referrals.claim(" " * 129, "ABC12345")
