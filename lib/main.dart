@@ -24,6 +24,9 @@ void main() => runApp(const EditoreApp());
 
 enum AppLanguage { it, en, fr, es, ar }
 
+TextDirection textDirectionForLanguage(AppLanguage language) =>
+    language == AppLanguage.ar ? TextDirection.rtl : TextDirection.ltr;
+
 class EditoreApp extends StatefulWidget {
   const EditoreApp({super.key});
 
@@ -60,7 +63,15 @@ class _EditoreAppState extends State<EditoreApp> {
         Locale('es'),
         Locale('ar'),
       ],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      builder: (context, child) => Directionality(
+        textDirection: textDirectionForLanguage(language),
+        child: child ?? const SizedBox.shrink(),
+      ),
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -888,9 +899,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final isArabic = widget.language == AppLanguage.ar;
     return Directionality(
-      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: textDirectionForLanguage(widget.language),
       child: Scaffold(
         appBar: AppBar(
           title: Row(
