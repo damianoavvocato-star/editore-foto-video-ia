@@ -433,3 +433,8 @@ L'avanzamento generale verificato è attualmente **32,76%**. Da questa decisione
 - Aggiunto `test/app_localization_test.dart` per la corrispondenza tra le cinque lingue e la direzione attesa; **non eseguito** in rispetto della soglia del 35%.
 - Rimane da verificare visivamente RTL: posizioni di icone/frecce, allineamenti, campi, timeline, overflow e navigazione. Nessuna voce viene promossa a done sulla sola base di questa modifica; avanzamento generale invariato a **32,76%**.
 
+
+
+### Studio IA — normalizzazione codici lingua
+
+Il campo delle lingue di destinazione accetta codici separati da virgole, normalizza automaticamente maiuscole/minuscole (ad esempio `EN-us` → `en-US`), elimina duplicati mantenendo l'ordine scelto e ignora separatori vuoti. I token con formato non valido non vengono corretti silenziosamente: restano visibili alla validazione della richiesta e vengono rifiutati prima dell'invio. Il limite server/client resta da 1 a 20 lingue. Test unitari aggiunti ma non eseguiti: la prossima campagna completa resta fissata al 35,00%.
