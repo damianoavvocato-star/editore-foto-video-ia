@@ -529,3 +529,10 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Aggiunti test parametrizzati per stringhe vuote, spazi e whitespace iniziale/finale su tutti i percorsi interessati.
 - Test aggiunti ma **non eseguiti**: resta attivo il gate del 35%; nessuna analisi, CI o build avviata.
 - Avanzamento generale invariato: **32,76%**.
+
+## Quote AI — validazione uniforme del limite mensile
+
+- Estratta una singola regola `_validate_limit` per prenotazione, riepilogo e verifica delle prenotazioni, con intervallo ammesso 1–100000 e rifiuto esplicito di booleani, float, stringhe e valori nulli.
+- Aggiunti test parametrizzati che verificano la stessa risposta di validazione in tutti e tre i percorsi pubblici.
+- I test sono stati aggiunti ma **non eseguiti**: resta attivo il gate del 35%. Nessuna analisi statica, CI, build o APK avviati.
+- Avanzamento generale invariato: **32,76%**.
