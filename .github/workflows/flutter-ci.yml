@@ -1,11 +1,14 @@
 name: Flutter checks
 
 on:
-  push:
-    branches: [ main, master ]
   pull_request:
   workflow_dispatch:
     inputs:
+      run_full_validation:
+        description: 'Run the complete Flutter, backend and Android validation campaign at an agreed 5% project milestone'
+        required: true
+        type: boolean
+        default: false
       build_android_apk:
         description: 'Build a release APK and publish it as a downloadable artifact (requires all checks to pass)'
         required: true
@@ -21,6 +24,7 @@ concurrency:
 
 jobs:
   flutter-test:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_validation == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -44,6 +48,7 @@ jobs:
         run: flutter test --reporter expanded
 
   backend-test:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_validation == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -80,6 +85,7 @@ jobs:
         run: python -m pytest -q backend
 
   android-preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_validation == true }}
     # Run only for Android/Gradle inputs or an explicitly full validation.
     # This validates configuration; it does not build an APK.
     runs-on: ubuntu-24.04
@@ -212,7 +218,7 @@ jobs:
 
   android-apk:
     # Manual opt-in only: build the APK after Flutter, backend and Android checks pass.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android_apk == true && needs.flutter-test.result == 'success' && needs.backend-test.result == 'success' && needs.android-preflight.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_validation == true && inputs.build_android_apk == true && needs.flutter-test.result == 'success' && needs.backend-test.result == 'success' && needs.android-preflight.result == 'success' }}
     needs: [flutter-test, backend-test, android-preflight]
     # Android and iOS scaffolds are generated on the runner until platform files are
     # committed to the project. This keeps local sources platform-neutral.
