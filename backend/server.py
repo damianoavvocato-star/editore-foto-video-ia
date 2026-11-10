@@ -606,7 +606,11 @@ class OwnerPremiumGrant(BaseModel):
 
 
 class ReferralClaimRequest(BaseModel):
-    code: str = Field(min_length=6, max_length=12)
+    code: str = Field(
+        min_length=6,
+        max_length=12,
+        pattern=r"^[A-Za-z0-9]{6,12}$",
+    )
 
 
 class OwnerCreditGrant(BaseModel):
