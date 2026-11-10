@@ -16,6 +16,19 @@ class HomeDashboard extends StatelessWidget {
     required this.teamLabel,
     required this.savedProjectsLabel,
     required this.noSavedProjectsLabel,
+    required this.studioHeading,
+    required this.actionLine,
+    required this.heroEyebrow,
+    required this.heroHeadline,
+    required this.heroDescription,
+    required this.videoCaption,
+    required this.photoCaption,
+    required this.aiCaption,
+    required this.magicLinkCaption,
+    required this.studioCaption,
+    required this.teamCaption,
+    required this.premiumTooltip,
+    required this.itemsLabel,
     required this.projects,
     required this.onNewProject,
     required this.onImport,
@@ -32,6 +45,9 @@ class HomeDashboard extends StatelessWidget {
   final String appName, subtitle, newProjectLabel, importLabel;
   final String videoLabel, photoLabel, aiLabel, magicLinkLabel, studioLabel, teamLabel;
   final String savedProjectsLabel, noSavedProjectsLabel;
+  final String studioHeading, actionLine, heroEyebrow, heroHeadline, heroDescription;
+  final String videoCaption, photoCaption, aiCaption, magicLinkCaption, studioCaption, teamCaption;
+  final String premiumTooltip, itemsLabel;
   final List<EditorProject> projects;
   final VoidCallback onNewProject, onImport, onVideo, onPhoto, onMagic, onMagicLink, onStudio, onTeam, onPremium;
   final ValueChanged<EditorProject> onOpenProject;
@@ -56,9 +72,9 @@ class HomeDashboard extends StatelessWidget {
                 _hero(context, compact),
                 const SizedBox(height: 24),
                 Row(children: [
-                  const Expanded(child: Text('Il tuo studio, senza limiti',
+                  Expanded(child: Text(studioHeading,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.4))),
-                  if (!compact) const Text('CREA · MODIFICA · CONDIVIDI',
+                  if (!compact) Text(actionLine,
                     style: TextStyle(color: _muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w700)),
                 ]),
                 const SizedBox(height: 13),
@@ -89,8 +105,8 @@ class HomeDashboard extends StatelessWidget {
       Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12)),
     ])),
     if (!compact) OutlinedButton.icon(onPressed: onPremium,
-      icon: const Icon(Icons.workspace_premium_outlined, size: 18), label: const Text('Premium')),
-    if (compact) IconButton(tooltip: 'Premium', onPressed: onPremium,
+      icon: const Icon(Icons.workspace_premium_outlined, size: 18), label: Text(premiumTooltip)),
+    if (compact) IconButton(tooltip: premiumTooltip, onPressed: onPremium,
       icon: const Icon(Icons.workspace_premium_outlined)),
   ]);
 
@@ -116,17 +132,17 @@ class HomeDashboard extends StatelessWidget {
             color: const Color(0x2BFFFFFF), borderRadius: BorderRadius.circular(30),
             border: Border.all(color: const Color(0x557E9DFF)),
           ),
-          child: const Text('CREATIVE AI STUDIO',
+          child: Text(heroEyebrow,
             style: TextStyle(fontSize: 9, letterSpacing: 1.8, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 16),
-        Text('Dai vita alle tue idee.',
+        Text(heroHeadline,
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w900, letterSpacing: -1, height: 1.05)),
         const SizedBox(height: 9),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 540),
-          child: Text('Foto, video e intelligenza artificiale: tutto quello che ti serve per creare contenuti straordinari, in un solo spazio.',
+          child: Text(heroDescription,
             style: TextStyle(color: Color(0xFFD6D4E8), height: 1.45, fontSize: 13)),
         ),
         const SizedBox(height: 22),
@@ -147,12 +163,12 @@ class HomeDashboard extends StatelessWidget {
 
   Widget _toolGrid(bool compact) {
     final items = <({IconData icon, String title, String caption, Color color, VoidCallback action})>[
-      (icon: Icons.movie_creation_outlined, title: videoLabel, caption: 'Taglia, monta e rifinisci', color: Color(0xFF9C8BFF), action: onVideo),
-      (icon: Icons.photo_library_outlined, title: photoLabel, caption: 'Ritocca e valorizza', color: Color(0xFF55D5C9), action: onPhoto),
-      (icon: Icons.auto_awesome, title: aiLabel, caption: 'Lascia spazio alla creatività IA', color: Color(0xFFFFB86B), action: onMagic),
-      (icon: Icons.link_rounded, title: magicLinkLabel, caption: 'Importa e organizza i contenuti', color: Color(0xFF79B8FF), action: onMagicLink),
-      (icon: Icons.video_camera_front_outlined, title: studioLabel, caption: 'Crea con gli strumenti avanzati', color: Color(0xFFE58ACB), action: onStudio),
-      (icon: Icons.groups_outlined, title: teamLabel, caption: 'Collabora sui tuoi progetti', color: Color(0xFF8FC58B), action: onTeam),
+      (icon: Icons.movie_creation_outlined, title: videoLabel, caption: videoCaption, color: Color(0xFF9C8BFF), action: onVideo),
+      (icon: Icons.photo_library_outlined, title: photoLabel, caption: photoCaption, color: Color(0xFF55D5C9), action: onPhoto),
+      (icon: Icons.auto_awesome, title: aiLabel, caption: aiCaption, color: Color(0xFFFFB86B), action: onMagic),
+      (icon: Icons.link_rounded, title: magicLinkLabel, caption: magicLinkCaption, color: Color(0xFF79B8FF), action: onMagicLink),
+      (icon: Icons.video_camera_front_outlined, title: studioLabel, caption: studioCaption, color: Color(0xFFE58ACB), action: onStudio),
+      (icon: Icons.groups_outlined, title: teamLabel, caption: teamCaption, color: Color(0xFF8FC58B), action: onTeam),
     ];
     return GridView.builder(
       shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -218,7 +234,7 @@ class HomeDashboard extends StatelessWidget {
               leading: const CircleAvatar(backgroundColor: Color(0x332E9EAD),
                 child: Icon(Icons.movie_outlined, color: _cyan, size: 19)),
               title: Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} elementi'),
+              subtitle: Text('${project.tracks.fold<int>(0, (count, track) => count + track.clips.length)} $itemsLabel'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onOpenProject(project),
             ),
