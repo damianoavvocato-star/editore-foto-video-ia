@@ -31,7 +31,7 @@ STUDIO_TASKS = {
     "bulk_personalization",
     "screen_explainer",
 }
-LANGUAGE_PATTERN = re.compile(r"^[a-z]{2,3}(?:-[A-Z]{2})?$")
+LANGUAGE_PATTERN = re.compile(r"^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$")
 ASSET_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SUPPORTED_DOCUMENT_EXTENSIONS = {
     ".pdf", ".docx", ".pptx", ".txt", ".md", ".rtf",
@@ -51,7 +51,7 @@ class StudioJobRequest(BaseModel):
     title: str = Field(default="Nuovo video IA", min_length=1, max_length=120)
     script: str = Field(default="", max_length=30000)
     sourceAssetIds: list[str] = Field(default_factory=list, max_length=20)
-    sourceLanguage: str | None = Field(default=None, max_length=8)
+    sourceLanguage: str | None = Field(default=None, max_length=16)
     targetLanguages: list[str] = Field(default_factory=lambda: ["it-IT"], max_length=20)
     avatarMode: Literal["stock", "generated", "personal", "none"] = "none"
     avatarConsent: bool = False
