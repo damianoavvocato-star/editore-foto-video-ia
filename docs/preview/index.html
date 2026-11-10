@@ -26,14 +26,14 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
 </style>
 </head>
 <body style="margin:0;min-height:100vh;background:#0b0c14;color:#f4f2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif"><main class="app">
-<header><div class="brand"><div class="logo">M</div><div>MagicIAedit<div class="tag">CREATIVE AI STUDIO</div></div></div><div class="actions"><span style="color:#aaa9bb;font-size:11px">Demo grafica · Progetto di esempio</span><button class="btn">Salva</button><button class="btn primary">Esporta ↗</button></div></header>
+<header><div class="brand"><div class="logo">M</div><div>MagicIAedit<div class="tag">CREATIVE AI STUDIO</div></div></div><div class="actions"><span style="color:#aaa9bb;font-size:11px">Demo grafica · Progetto di esempio</span><button class="btn" id="headerMagicLink" type="button">🔗 MagicLink IA</button><button class="btn">Salva</button><button class="btn primary">Esporta ↗</button></div></header>
 <nav><div class="navtitle">WORKSPACE</div><div class="navitem active">▣　Editor video</div><div class="navitem">▧　Editor foto</div><div class="navitem">✦　MagicIAedit AI</div><div class="navitem">🔗　MagicLink IA</div><div class="navitem">▦　Modelli</div><div class="navitem">♫　Audio</div><div class="navtitle">IL TUO SPAZIO</div><div class="navitem">▤　Progetti</div><div class="navitem">⚙　Impostazioni</div><div class="premium"><b>MagicIAedit Premium</b><span style="font-size:11px;color:#c5c0e3">Più strumenti creativi, un solo studio.</span></div></nav>
 <section class="preview"><div class="sectionhead"><div><h3>Anteprima progetto</h3><div class="sub">Visualizzazione del risultato creativo</div></div><div style="display:flex;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:20px;background:#18332f;border:1px solid #2e6b62;color:#9de9dc;font-size:9px;letter-spacing:1px;font-weight:800"><i style="width:6px;height:6px;border-radius:50%;background:#55d6c5;display:inline-block"></i>LIVE</span><span style="color:#a8a0d7;font-size:11px">9:16　⌄</span></div></div><div class="stage"><span class="stagebadge">DEMO INTERATTIVA</span><span class="stagebadge right">100%</span><div class="canvas"><div class="sun"></div><div class="mount"></div></div><button class="play" id="playButton" type="button" aria-label="Riproduci anteprima">▶</button><div class="scrub"><span id="scrubProgress"></span></div></div><div class="under"><span>00:00:04.2 / 00:00:18.0</span><span><button class="btn" type="button" id="zoomOut" aria-label="Riduci zoom">－</button>　<span id="zoomLabel">100%</span>　<button class="btn" type="button" id="zoomIn" aria-label="Aumenta zoom">＋</button></span></div></section>
 <aside class="tools"><h3>✦　Regolazione colore</h3><div class="sub">Clip selezionata · Video principale</div><div class="toolgroup"><div class="toolrow"><span>Esposizione</span><span class="value" id="exposureVal">+0.0</span></div><input type="range" min="-5" max="5" step=".1" value="0" oninput="exposureVal.textContent=(this.value>0?'+':'')+Number(this.value).toFixed(1)"><div class="toolrow"><span>Contrasto</span><span class="value" id="contrastVal">1.0</span></div><input type="range" min="0" max="2" step=".1" value="1" oninput="contrastVal.textContent=Number(this.value).toFixed(1)"><div class="toolrow"><span>Saturazione</span><span class="value" id="satVal">1.0</span></div><input type="range" min="0" max="2" step=".1" value="1" oninput="satVal.textContent=Number(this.value).toFixed(1)"></div><div class="toolgroup"><div class="toolrow"><b>Controlli avanzati</b><span>⌄</span></div><div class="toolrow"><span>Temperatura</span><span class="value">0</span></div><input type="range" min="-100" max="100" value="0"><div class="toolrow"><span>Luci</span><span class="value">0.0</span></div><input type="range" min="-1" max="1" step=".1" value="0"></div><button class="btn" id="resetColor" type="button" style="width:100%;margin-top:10px">↺　Ripristina</button></aside>
 <section class="magiclink-panel" id="magiclinkPanel">
   <div style="max-width:900px;margin:auto;width:100%">
     <div class="tag">SMART LINK WORKSPACE</div>
-    <h2>MagicLink IA</h2>
+    <div class="sectionhead" style="margin-top:8px"><h2>MagicLink IA</h2><button class="btn" id="backToEditor" type="button">← Torna all’editor</button></div>
     <div class="sub" style="font-size:13px;margin:8px 0 22px">Incolla un collegamento e descrivi cosa vuoi ottenere. Dalla traduzione di una puntata all'organizzazione di un'intera serie.</div>
     <label for="magicUrl">Link del contenuto</label>
     <input class="field" id="magicUrl" type="url" placeholder="https://www.tiktok.com/@creator/video/…" autocomplete="url">
@@ -56,6 +56,10 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
  const sliders=[...document.querySelectorAll('.tools input[type=range]')];
  let playing=false, zoom=100, position=28, timer=null;
  const navItems=[...document.querySelectorAll('.navitem')];
+ function showWorkspace(magic){
+   navItems.forEach(entry=>entry.classList.toggle('active',magic?entry.textContent.toLowerCase().includes('magiclink'):entry.textContent.toLowerCase().includes('editor video')));
+   showWorkspace(magic);
+ }
  navItems.forEach(item=>item.addEventListener('click',()=>{
    navItems.forEach(entry=>entry.classList.remove('active'));
    item.classList.add('active');
@@ -67,6 +71,8 @@ nav{grid-row:2/4}.navtitle{color:var(--muted);font-size:10px;letter-spacing:1.4p
    document.getElementById('magiclinkPanel').style.display=magic?'block':'none';
    if(!magic) document.querySelector('.sectionhead h3').textContent=title || 'Anteprima progetto';
  }));
+ document.getElementById('headerMagicLink').addEventListener('click',()=>showWorkspace(true));
+ document.getElementById('backToEditor').addEventListener('click',()=>showWorkspace(false));
  play.addEventListener('click',()=>{
    playing=!playing; play.textContent=playing?'Ⅱ':'▶';
    play.setAttribute('aria-label',playing?'Metti in pausa':'Riproduci anteprima');
