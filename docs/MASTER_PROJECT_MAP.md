@@ -73,7 +73,7 @@ flowchart TD
 ## 3. Mappa delle funzioni del prodotto
 
 ### 3.1 Editor foto e video manuale
-- Importazione di foto e video, selezione multipla, libreria media, progetti salvati e riaperti; la libreria ordina i progetti per ultima modifica (più recente in cima), con ordinamento stabile per nome in caso di parità.
+- Importazione di foto e video, selezione multipla, libreria media, progetti salvati e riaperti; la libreria ordina i progetti per ultima modifica (più recente in cima), con ordinamento stabile per nome in caso di parità. La home mostra i quattro più recenti nello stesso ordine, senza invertire la lista.
 - Timeline multi-traccia, taglio, trim, split, riordino, transizioni, testo, titoli, sticker, filtri, effetti, audio, voiceover, musica e sottotitoli.
 - Controlli avanzati da completare: keyframe, curve di velocità, maschere, tracking, chroma key, stabilizzazione, color grading, LUT/HDR, multicamera, proxy e anteprima fluida.
 - Player con zoom durante playback; mantenere zoom anche sul video già esportato.
