@@ -233,3 +233,16 @@ La numerazione è una sequenza di controllo, non una promessa di completamento b
 - Sicurezza: `docs/SECURITY_OPERATIONS.md` e `docs/ACCOUNT_AUTH_FOUNDATION.md`.
 - Studio IA: `docs/STUDIO_JOB_ORCHESTRATION.md`, `docs/SYNTHESIA_PROVIDER_INTEGRATION.md`.
 - Branding e operazioni: `docs/MAGICIAEDIT_BRANDING.md`, `docs/MAGICIAEDIT_OPERATIONS.md`.
+
+
+## 12. Regola concordata: sviluppo e test per soglie del 5%
+
+A partire dal 10 novembre 2026, il lavoro segue un ciclo a soglie:
+- Da **32,76%** fino a **34,99%**: soltanto sviluppo, integrazione e documentazione. Niente test automatici, analisi statica o preflight.
+- A **35%, 40%, 45%, 50%** e poi ogni 5 punti fino al **100%**: una campagna completa di verifica e correzione di tutti i problemi rilevati.
+- Tra una soglia e la successiva: solo sviluppo, senza ripetere i test.
+- Il progresso è calcolato sulle funzionalità effettivamente implementate secondo i criteri del registro, non sul numero di schermate o righe di codice. Le funzionalità non testate non vengono marcate `done`.
+- GitHub Actions non deve avviare i job di test su ogni commit/PR. La campagna completa si avvia manualmente impostando `run_full_validation=true` nel workflow **Flutter checks**.
+- Il job APK resta separato e non deve essere abilitato prima della fase 6.
+
+La prossima campagna autorizzata è al **35,00%**. La percentuale generale corrente resta **32,76%** fino a un aggiornamento sostenuto da nuove funzionalità completate; nessun test viene anticipato per inseguire la soglia.
