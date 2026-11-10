@@ -7,6 +7,7 @@ release requirements.
 from __future__ import annotations
 
 import hashlib
+import math
 import io
 import os
 import re
@@ -47,6 +48,18 @@ class BackupStore:
     @staticmethod
     def _valid_id(backup_id: str) -> bool:
         return isinstance(backup_id, str) and re.fullmatch(r"[a-f0-9]{32}", backup_id) is not None
+
+    @staticmethod
+    def _validated_timestamp(now: int | float | None) -> float:
+        if now is None:
+            return time.time()
+        if (
+            isinstance(now, bool)
+            or not isinstance(now, (int, float))
+            or not math.isfinite(now)
+        ):
+            raise BackupError("Istante di riferimento non valido.")
+        return float(now)
 
     def create(self) -> dict:
         if not self.database.is_file():
@@ -131,6 +144,7 @@ class BackupStore:
                     raise BackupError("Backup oltre la dimensione massima consentita.")
         except (tarfile.TarError, OSError) as exc:
             raise BackupError("Archivio backup danneggiato.") from exc
+        timestamp = self._validated_timestamp(now)
         stage_dir = self.directory / "restore-staging"
         stage_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
@@ -199,7 +213,6 @@ class BackupStore:
         stage_dir = self.directory / "restore-staging"
         if stage_dir.is_symlink() or not stage_dir.is_dir():
             return {"dryRun": dry_run, "eligibleCount": 0, "deletedCount": 0, "eligibleStageIds": [], "deletedStageIds": []}
-        timestamp = time.time() if now is None else float(now)
         cutoff = timestamp - max_age_seconds
         eligible = []
         for path in stage_dir.iterdir():
@@ -246,7 +259,7 @@ class BackupStore:
             raise BackupError("Numero minimo di backup da conservare non valido.")
         if not isinstance(dry_run, bool):
             raise BackupError("Modalità anteprima non valida.")
-        timestamp = time.time() if now is None else float(now)
+        timestamp = self._validated_timestamp(now)
         cutoff = timestamp - retention_days * 24 * 60 * 60
         candidates = []
         for path in self.directory.iterdir():
