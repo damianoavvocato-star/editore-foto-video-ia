@@ -545,3 +545,65 @@ def test_failed_registry_insert_does_not_publish_in_memory_job(tmp_path, monkeyp
 
     assert job_id not in jobs
     assert JobRegistry(jobs.database).get(job_id) is None
+
+
+def test_all_top_level_job_mapping_mutators_are_persisted(tmp_path):
+    database = tmp_path / "jobs.sqlite3"
+    jobs = JobRegistry(database)
+    job_id = "7" * 32
+    jobs[job_id] = {"state": "succeeded", "keep": True}
+    record = jobs[job_id]
+
+    assert record.setdefault("message", "ready") == "ready"
+    assert record.setdefault("message", "ignored") == "ready"
+    record |= {"progress": 1.0}
+    assert record.pop("message") == "ready"
+    assert record.pop("missing", "fallback") == "fallback"
+
+    restored = JobRegistry(database)[job_id]
+    assert restored == {"state": "succeeded", "keep": True, "progress": 1.0}
+
+    record["temporary"] = "remove"
+    assert record.popitem() == ("temporary", "remove")
+    assert "temporary" not in JobRegistry(database)[job_id]
+
+    record.clear()
+    assert JobRegistry(database)[job_id] == {}
+
+
+def test_failed_job_mapping_mutators_restore_snapshot(tmp_path, monkeypatch):
+    import pytest
+
+    database = tmp_path / "jobs.sqlite3"
+    jobs = JobRegistry(database)
+    job_id = "8" * 32
+    jobs[job_id] = {"state": "succeeded", "message": "stable"}
+    record = jobs[job_id]
+    original = dict(record)
+
+    def fail_save(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(jobs, "_save", fail_save)
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.setdefault("extra", "not persisted")
+    assert record == original
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.pop("message")
+    assert record == original
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.popitem()
+    assert record == original
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.clear()
+    assert record == original
+
+    with pytest.raises(OSError, match="disk unavailable"):
+        record.__ior__({"extra": "not persisted"})
+    assert record == original
+    assert JobRegistry(database)[job_id] == original
+
