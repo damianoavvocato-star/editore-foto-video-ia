@@ -22,11 +22,12 @@ class _PersistentJob(dict):
         self._job_id = job_id
         self._registry = registry
 
-    def _persist_mutation(self, mutation: Any) -> None:
+    def _persist_mutation(self, mutation: Any) -> Any:
         previous = dict(self)
         try:
-            mutation()
+            result = mutation()
             self._registry._save(self._job_id, self)
+            return result
         except Exception:
             dict.clear(self)
             dict.update(self, previous)
