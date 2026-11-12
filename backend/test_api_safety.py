@@ -1,3 +1,4 @@
+import pytest
 """API safety regression tests: upload extension validation and health endpoint."""
 import io
 from fastapi.testclient import TestClient
@@ -82,23 +83,22 @@ def test_cancelling_completed_job_does_not_change_terminal_state():
     assert server.jobs[job_id]['state'] == 'completed'
 
 
-def test_configured_token_rejects_missing_and_incorrect_credentials(monkeypatch):
+def test_legacy_shared_token_is_not_accepted_as_account_identity(monkeypatch):
     monkeypatch.setattr(server, 'TOKEN', 'test-secret-token')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
     client = TestClient(server.app)
     assert client.get('/v1/jobs/' + 'e' * 32).status_code == 401
     assert client.get(
-        '/v1/jobs/' + 'e' * 32, headers={'Authorization': 'Bearer wrong-token'}
+        '/v1/jobs/' + 'e' * 32, headers={'Authorization': 'Bearer test-secret-token'}
     ).status_code == 401
 
 
-def test_configured_token_accepts_correct_credentials(monkeypatch):
+def test_legacy_shared_token_cannot_access_user_jobs(monkeypatch):
     monkeypatch.setattr(server, 'TOKEN', 'test-secret-token')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
     client = TestClient(server.app)
-    response = client.get(
-        '/v1/jobs/' + 'f' * 32,
-        headers={'Authorization': 'Bearer test-secret-token'},
-    )
-    assert response.status_code == 404
+    response = client.get('/v1/jobs/' + 'f' * 32, headers={'Authorization': 'Bearer test-secret-token'})
+    assert response.status_code == 401
 
 
 def test_render_rejects_too_many_tracks():
@@ -118,3 +118,859 @@ def test_render_rejects_malformed_track():
     client = TestClient(server.app)
     response = client.post('/v1/render/jobs', json={'project': {'tracks': ['not-a-track']}})
     assert response.status_code == 422
+
+
+def test_missing_server_token_fails_closed_outside_local_development(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', False)
+    client = TestClient(server.app)
+    assert client.get('/health').status_code == 200
+    response = client.get('/v1/jobs/' + '1' * 32)
+    assert response.status_code == 401
+    assert response.json()['detail'] == 'Sessione account obbligatoria.'
+
+
+def test_insecure_mode_requires_explicit_local_opt_in(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', True)
+    local_client = TestClient(server.app, client=('127.0.0.1', 12345))
+    response = local_client.get('/v1/jobs/' + '2' * 32)
+    assert response.status_code == 404
+
+
+def test_insecure_mode_rejects_non_loopback_clients(monkeypatch):
+    monkeypatch.setattr(server, 'TOKEN', '')
+    monkeypatch.setattr(server, 'ALLOW_INSECURE_LOCAL', True)
+    remote_client = TestClient(server.app, client=('203.0.113.10', 12345))
+    response = remote_client.get('/v1/jobs/' + '2' * 32)
+    assert response.status_code == 403
+    assert response.json()['detail'] == 'Unauthenticated access is restricted to local connections'
+
+
+
+def test_render_failure_does_not_expose_server_traceback(tmp_path, monkeypatch):
+    job_id = '9' * 32
+    monkeypatch.setattr(server, 'ROOT', tmp_path)
+    monkeypatch.setattr(server.shutil, 'which', lambda _binary: None)
+    server.jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'Queued'}
+    server.cancel_events[job_id] = __import__('threading').Event()
+
+    try:
+        server._render_job(job_id, {'tracks': []}, {})
+        status = TestClient(server.app).get('/v1/jobs/' + job_id)
+        assert status.status_code == 200
+        payload = status.json()
+        assert payload['state'] == 'failed'
+        assert payload['error'] == (
+            'Errore interno durante il rendering. Consultare i log del server.'
+        )
+        assert 'Traceback' not in str(payload)
+        assert str(tmp_path) not in str(payload)
+    finally:
+        server.jobs.pop(job_id, None)
+        server.cancel_events.pop(job_id, None)
+
+
+def test_owner_totp_api_requires_second_factor_before_session(tmp_path, monkeypatch):
+    import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+    from backend.totp import code_at
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    token, _ = store.issue_session(owner["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    status = client.get("/v1/owner/security/totp", headers=headers)
+    assert status.status_code == 200 and status.json()["enabled"] is False
+
+    setup = client.post(
+        "/v1/owner/security/totp/setup",
+        headers=headers,
+        json={"password": "owner password long enough"},
+    )
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert setup.json()["otpauthUri"].startswith("otpauth://totp/")
+
+    confirm = client.post(
+        "/v1/owner/security/totp/setup/confirm",
+        headers=headers,
+        json={"code": code_at(secret, int(time.time()))},
+    )
+    assert confirm.status_code == 200
+    recovery = confirm.json()["recoveryCodes"]
+    assert len(recovery) == 10
+
+    missing = client.post(
+        "/v1/auth/login",
+        json={"username": "api_owner", "password": "owner password long enough"},
+    )
+    assert missing.status_code == 401
+    assert missing.json()["detail"]["code"] == "two_factor_required"
+    assert "accessToken" not in missing.json()
+
+    login = client.post(
+        "/v1/auth/login",
+        json={
+            "username": "api_owner",
+            "password": "owner password long enough",
+            "totpCode": code_at(secret, int(time.time()) + 30),
+        },
+    )
+    assert login.status_code == 200
+    assert login.json()["accessToken"]
+    assert client.get(
+        "/v1/owner/security/totp", headers={
+            "Authorization": "Bearer " + login.json()["accessToken"]
+        }
+    ).json()["enabled"] is True
+
+
+def test_non_owner_cannot_manage_owner_totp(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "api_admin", "admin password long enough", "admin"
+    )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(admin["userId"])
+    response = TestClient(server.app).get(
+        "/v1/owner/security/totp",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+def test_owner_totp_login_fails_closed_when_encryption_key_is_missing(tmp_path, monkeypatch):
+    import time
+    clock = 1_700_000_000
+    monkeypatch.setattr(time, "time", lambda: clock)
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+    from backend.totp import code_at
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("api_owner", "owner password long enough")
+    secret = store.begin_totp_setup(owner["userId"], "owner password long enough")
+    store.confirm_totp_setup(owner["userId"], code_at(secret, int(time.time())))
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.delenv("MEDIA_TOTP_ENCRYPTION_KEY")
+    response = TestClient(server.app).post(
+        "/v1/auth/login",
+        json={
+            "username": "api_owner",
+            "password": "owner password long enough",
+            "totpCode": code_at(secret, int(time.time()) + 30),
+        },
+    )
+    assert response.status_code == 503
+    assert "accessToken" not in response.json()
+
+
+def test_account_management_routes_apply_role_permissions(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("perm_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "perm_admin", "admin password long enough", "admin"
+    )
+    support = store.create_managed_account(
+        owner["userId"], "perm_support", "support password long enough", "support"
+    )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    regular = store.register("perm_user", "regular password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/v1/owner/accounts", headers=headers(admin["userId"])).status_code == 200
+    assert client.get("/v1/owner/accounts", headers=headers(support["userId"])).status_code == 200
+    assert client.get("/v1/owner/accounts", headers=headers(regular["userId"])).status_code == 403
+
+    created = client.post(
+        "/v1/owner/accounts",
+        headers=headers(admin["userId"]),
+        json={
+            "username": "created_user",
+            "temporaryPassword": "temporary password long",
+            "role": "user",
+        },
+    )
+    assert created.status_code == 200
+    elevated = client.post(
+        "/v1/owner/accounts",
+        headers=headers(admin["userId"]),
+        json={
+            "username": "created_admin",
+            "temporaryPassword": "temporary password long",
+            "role": "admin",
+        },
+    )
+    assert elevated.status_code == 403
+
+    reset = client.post(
+        f"/v1/owner/accounts/{regular['userId']}/reset-password",
+        headers=headers(support["userId"]),
+    )
+    assert reset.status_code == 200
+    assert reset.json()["temporaryPassword"]
+
+    # A support account cannot reset an administrator's password.
+    admin_reset = client.post(
+        f"/v1/owner/accounts/{admin['userId']}/reset-password",
+        headers=headers(support["userId"]),
+    )
+    assert admin_reset.status_code == 403
+
+    assert client.get("/v1/owner/audit", headers=headers(admin["userId"])).status_code == 403
+    assert client.get(
+        "/v1/owner/security/totp", headers=headers(admin["userId"])
+    ).status_code == 403
+
+
+def test_owner_permission_override_is_enforced_by_api(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("perm_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "perm_admin", "admin password long enough", "admin"
+    )
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    target = store.register("premium_target", "target password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    owner_token, _ = store.issue_session(owner["userId"])
+    admin_token, _ = store.issue_session(admin["userId"])
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    denied = client.get(
+        f"/v1/owner/accounts/{target['userId']}/premium-grants",
+        headers=admin_headers,
+    )
+    assert denied.status_code == 200  # billing.read is a default admin permission
+
+    override = client.put(
+        f"/v1/owner/accounts/{admin['userId']}/permissions",
+        headers=owner_headers,
+        json={"permission": "billing.grant", "effect": "deny"},
+    )
+    assert override.status_code == 200
+    denied_after_override = client.post(
+        f"/v1/owner/accounts/{target['userId']}/premium-grants",
+        headers=admin_headers,
+        json={"plan": "premium", "reason": "test"},
+    )
+    assert denied_after_override.status_code == 403
+
+
+def test_owner_totp_setup_password_attempts_are_rate_limited(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+
+    monkeypatch.setenv("MEDIA_TOTP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("rate_owner", "owner password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(owner["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    client = TestClient(server.app)
+
+    for _ in range(10):
+        response = client.post(
+            "/v1/owner/security/totp/setup",
+            headers=headers,
+            json={"password": "incorrect owner password"},
+        )
+        assert response.status_code == 422
+    blocked = client.post(
+        "/v1/owner/security/totp/setup",
+        headers=headers,
+        json={"password": "owner password long enough"},
+    )
+    assert blocked.status_code == 429
+
+
+def test_collaborator_billing_read_is_limited_to_self(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("billing_owner", "owner password long enough")
+    collaborator = store.create_managed_account(
+        owner["userId"], "billing_collab", "collab password long enough", "collaborator"
+    )
+    store.change_password(
+        collaborator["userId"], None, "collab changed password long enough"
+    )
+    other = store.register("billing_other", "other account password long")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    token, _ = store.issue_session(collaborator["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    client = TestClient(server.app)
+
+    own = client.get(
+        f"/v1/owner/accounts/{collaborator['userId']}/premium-grants",
+        headers=headers,
+    )
+    other_account = client.get(
+        f"/v1/owner/accounts/{other['userId']}/premium-grants",
+        headers=headers,
+    )
+    assert own.status_code == 200
+    assert other_account.status_code == 403
+
+
+def test_authenticated_session_inventory_and_revocation_api(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    import hashlib
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    first = store.register("session_user", "session user password long")
+    other = store.register("session_other", "session other password long")
+    _, first_token, _ = store.login("session_user", "session user password long")
+    _, second_token, _ = store.login("session_user", "session user password long")
+    _, other_token, _ = store.login("session_other", "session other password long")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    first_headers = {"Authorization": f"Bearer {first_token}"}
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    inventory = client.get("/v1/auth/sessions", headers=first_headers)
+    assert inventory.status_code == 200
+    sessions = inventory.json()["sessions"]
+    current = next(item for item in sessions if item["current"])
+    assert current["sessionId"] == hashlib.sha256(first_token.encode()).hexdigest()
+    other_session_id = hashlib.sha256(second_token.encode()).hexdigest()
+
+    forbidden = client.delete(
+        f"/v1/auth/sessions/{other_session_id}",
+        headers=other_headers,
+    )
+    assert forbidden.status_code == 404
+
+    revoked = client.delete(
+        f"/v1/auth/sessions/{other_session_id}",
+        headers=first_headers,
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["currentSessionRevoked"] is False
+    assert store.resolve_session(second_token) is None
+    assert store.resolve_session(first_token) is not None
+    assert store.resolve_session(other_token) is not None
+
+def test_interrupted_upload_removes_partial_file(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+
+    class InterruptedUpload:
+        filename = 'interrupted.png'
+        calls = 0
+
+        async def read(self, _size):
+            self.calls += 1
+            if self.calls == 1:
+                return b'partial-bytes'
+            raise OSError('simulated client disconnect')
+
+        async def close(self):
+            return None
+
+    request = SimpleNamespace(
+        state=SimpleNamespace(account=None, local_dev=True)
+    )
+    with pytest.raises(OSError, match='simulated client disconnect'):
+        asyncio.run(server.upload_asset(request, InterruptedUpload()))
+
+    assert list(tmp_path.iterdir()) == []
+
+
+
+
+def test_render_api_retries_same_idempotent_request_after_restart(tmp_path, monkeypatch):
+    from backend.job_store import JobRegistry
+
+    monkeypatch.setattr(server, "ALLOW_INSECURE_LOCAL", True)
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setattr(server, "_render_job", lambda *_args: None)
+    monkeypatch.setattr(server, "cancel_events", {})
+    database = tmp_path / "jobs.sqlite3"
+    first_registry = JobRegistry(database)
+    monkeypatch.setattr(server, "jobs", first_registry)
+    client = TestClient(server.app)
+    headers = {"Idempotency-Key": "restart-render-key"}
+    body = {"project": {"tracks": []}, "settings": {"resolution": "p720"}}
+
+    first = client.post("/v1/render/jobs", json=body, headers=headers)
+    assert first.status_code == 200
+    first_job_id = first.json()["jobId"]
+    assert first_registry[first_job_id]["state"] == "queued"
+
+    # Recreate the registry to model a server restart: the old worker is gone.
+    restored_registry = JobRegistry(database)
+    monkeypatch.setattr(server, "jobs", restored_registry)
+    assert restored_registry[first_job_id]["error"] == "worker_interrupted"
+
+    changed = client.post(
+        "/v1/render/jobs",
+        json={"project": {"tracks": []}, "settings": {"resolution": "p1080"}},
+        headers=headers,
+    )
+    assert changed.status_code == 409
+
+    retry = client.post("/v1/render/jobs", json=body, headers=headers)
+    assert retry.status_code == 200
+    retry_job_id = retry.json()["jobId"]
+    assert retry_job_id != first_job_id
+    assert restored_registry[first_job_id]["state"] == "failed"
+    assert restored_registry[retry_job_id]["state"] == "queued"
+
+
+
+def test_magic_worker_start_failure_releases_job_claim_and_monthly_quota(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    from backend.usage_store import UsageStore
+    from types import SimpleNamespace
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("magic_owner", "magic owner password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "a" * 32
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"test-image")
+    store.claim_media_resource("asset", asset_id, user["userId"])
+    usage = UsageStore(tmp_path / "usage.sqlite3")
+
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: SimpleNamespace(
+        has_premium=lambda _user_id: False
+    ))
+    monkeypatch.setattr(server, "_ai_monthly_limit", lambda _premium: 3)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "jobs", {})
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    class FailingThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated thread startup failure")
+
+    client = TestClient(server.app)
+    with client:
+        # Start the TestClient portal before replacing Thread, so only the
+        # endpoint's worker launch is simulated as unavailable.
+        monkeypatch.setattr(server.threading, "Thread", FailingThread)
+        response = client.post(
+            "/v1/ai/jobs",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"task": "magicIAedit", "assetIds": [asset_id]},
+        )
+
+    assert response.status_code == 503
+    with store._connect() as db:
+        job_claims = db.execute(
+            "SELECT COUNT(*) FROM media_ownership WHERE resource_type='job' AND owner_user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    import sqlite3
+    with sqlite3.connect(usage.database) as db:
+        reservations = db.execute(
+            "SELECT COUNT(*) FROM ai_usage_reservations WHERE user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    assert job_claims == 0
+    assert reservations == 0
+    assert server.jobs == {}
+    assert server.cancel_events == {}
+
+
+
+
+def test_magic_ai_idempotency_prevents_duplicate_quota_and_restart_recharge(tmp_path, monkeypatch):
+    import sqlite3
+    from types import SimpleNamespace
+
+    from backend.accounts import AccountStore
+    from backend.job_store import JobRegistry
+    from backend.usage_store import UsageStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("magic_idem", "magic idempotency password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "e" * 32
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / f"{asset_id}.jpg").write_bytes(b"test-image")
+    store.claim_media_resource("asset", asset_id, user["userId"])
+
+    usage = UsageStore(tmp_path / "accounts.sqlite3")
+    database = tmp_path / "jobs.sqlite3"
+    registry = JobRegistry(database)
+    monkeypatch.setattr(server, "ASSETS", assets)
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "_usage_store", lambda: usage)
+    monkeypatch.setattr(server, "_entitlement_store", lambda: SimpleNamespace(
+        has_premium=lambda _user_id: False
+    ))
+    monkeypatch.setattr(server, "_ai_monthly_limit", lambda _premium: 5)
+    monkeypatch.setattr(server, "provider_configured", lambda: True)
+    monkeypatch.setattr(server, "jobs", registry)
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    starts = []
+
+    class DeferredThread:
+        def __init__(self, target, args, daemon):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def start(self):
+            starts.append(self)
+
+    client = TestClient(server.app)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": "magic-ia-idempotency-01",
+    }
+    body = {"task": "magicIAedit", "assetIds": [asset_id], "options": {}}
+    with client:
+        # Keep the TestClient portal alive before replacing the worker thread.
+        monkeypatch.setattr(server.threading, "Thread", DeferredThread)
+        first = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert first.status_code == 200
+        first_job_id = first.json()["jobId"]
+
+        replay = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert replay.status_code == 200
+        assert replay.json()["jobId"] == first_job_id
+        assert replay.json()["replayed"] is True
+
+        changed = client.post(
+            "/v1/ai/jobs",
+            json={**body, "options": {"style": "cinematic"}},
+            headers=headers,
+        )
+        assert changed.status_code == 409
+
+        assert len(starts) == 1
+        assert usage.summary(user["userId"], 5)["used"] == 1
+
+        # A process restart marks the old daemon job interrupted. Replaying
+        # its key must not silently enqueue a second job or consume quota again.
+        restored = JobRegistry(database)
+        monkeypatch.setattr(server, "jobs", restored)
+        assert restored[first_job_id]["error"] == "worker_interrupted"
+        after_restart = client.post("/v1/ai/jobs", json=body, headers=headers)
+        assert after_restart.status_code == 200
+        assert after_restart.json()["jobId"] == first_job_id
+        assert after_restart.json()["replayed"] is True
+
+    assert len(starts) == 1
+    assert usage.summary(user["userId"], 5)["used"] == 1
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM media_jobs").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM render_idempotency").fetchone()[0] == 1
+
+
+
+def test_render_worker_start_failure_releases_claim_and_allows_idempotent_retry(tmp_path, monkeypatch):
+    import json
+    import sqlite3
+    from backend.accounts import AccountStore
+    from backend.job_store import JobRegistry
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    user = store.register("render_owner", "render owner password long")
+    token, _ = store.issue_session(user["userId"])
+    asset_id = "c" * 32
+    store.claim_media_resource("asset", asset_id, user["userId"])
+    registry = JobRegistry(tmp_path / "jobs.sqlite3")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setattr(server, "jobs", registry)
+    monkeypatch.setattr(server, "cancel_events", {})
+
+    class FailingThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated render worker startup failure")
+
+    body = {
+        "project": {"tracks": [{"kind": "video", "clips": [
+            {"kind": "image", "assetId": asset_id, "durationMs": 1000}
+        ]}]},
+        "settings": {"resolution": "p720"},
+    }
+    client = TestClient(server.app)
+    with client:
+        monkeypatch.setattr(server.threading, "Thread", FailingThread)
+        first = client.post(
+            "/v1/render/jobs", json=body,
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "render-start-failure"},
+        )
+        second = client.post(
+            "/v1/render/jobs", json=body,
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "render-start-failure"},
+        )
+
+    assert first.status_code == 503
+    assert second.status_code == 503
+    with sqlite3.connect(registry.database) as db:
+        rows = db.execute("SELECT job_id, payload FROM media_jobs ORDER BY updated_at").fetchall()
+        mapping = db.execute(
+            "SELECT job_id FROM render_idempotency WHERE idempotency_key=?",
+            ("render-start-failure",),
+        ).fetchone()
+    assert len(rows) == 2
+    failed_ids = [job_id for job_id, _ in rows]
+    assert len(set(failed_ids)) == 2
+    assert all(json.loads(payload)["error"] == "worker_start_failed" for _, payload in rows)
+    assert mapping[0] == failed_ids[-1]
+    assert registry[failed_ids[0]]["state"] == "failed"
+    assert registry[failed_ids[1]]["state"] == "failed"
+    assert server.cancel_events == {}
+    with store._connect() as db:
+        job_claims = db.execute(
+            "SELECT COUNT(*) FROM media_ownership WHERE resource_type='job' AND owner_user_id=?",
+            (user["userId"],),
+        ).fetchone()[0]
+    assert job_claims == 0
+    assert store.owns_media_resource("asset", asset_id, user["userId"]) is True
+
+
+
+def test_upload_accepts_pdf_document(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+    response = TestClient(server.app).post(
+        '/v1/assets',
+        files={'file': ('brief.pdf', io.BytesIO(b'%PDF-1.7\\nexample'), 'application/pdf')},
+    )
+    assert response.status_code == 200
+    asset_id = response.json()['assetId']
+    assert (tmp_path / f'{asset_id}.pdf').read_bytes().startswith(b'%PDF-')
+
+
+def test_upload_rejects_fake_pdf_extension(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, 'ASSETS', tmp_path)
+    response = TestClient(server.app).post(
+        '/v1/assets',
+        files={'file': ('fake.pdf', io.BytesIO(b'not a pdf'), 'application/pdf')},
+    )
+    assert response.status_code == 415
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_admin_dashboard_is_admin_only_and_returns_aggregates(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("dashboard_owner", "owner password long enough")
+    admin = store.create_managed_account(
+        owner["userId"], "dashboard_admin", "admin password long enough", "admin"
+    )
+    support = store.create_managed_account(
+        owner["userId"], "dashboard_support", "support password long enough", "support"
+    )
+    user = store.register("dashboard_user", "user password long enough")
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/v1/admin/dashboard", headers=headers(admin["userId"]))
+    assert response.status_code == 200
+    dashboard = response.json()["dashboard"]
+    assert dashboard["totalAccounts"] == 4
+    assert dashboard["activeAccounts"] == 4
+    assert dashboard["disabledAccounts"] == 0
+    assert dashboard["accountsByRole"]["admin"] == 1
+    assert dashboard["createdLast30Days"] == 4
+    assert "username" not in dashboard
+
+    assert client.get("/v1/admin/dashboard", headers=headers(owner["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(support["userId"])).status_code == 403
+    assert client.get("/v1/admin/dashboard", headers=headers(user["userId"])).status_code == 403
+    # Protected staff routes use 403 for callers without an authenticated staff identity.
+    assert client.get("/v1/admin/dashboard").status_code == 403
+
+
+def test_support_ticket_owner_isolation_and_staff_reply(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("ticket_owner", "owner password long enough")
+    support = store.create_managed_account(owner["userId"], "ticket_support", "support password long enough", "support")
+    admin = store.create_managed_account(owner["userId"], "ticket_admin", "admin password long enough", "admin")
+    first = store.register("ticket_first", "first password long enough")
+    second = store.register("ticket_second", "second password long enough")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    store.change_password(admin["userId"], None, "admin changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    def headers(uid):
+        token, _ = store.issue_session(uid)
+        return {"Authorization": f"Bearer {token}"}
+    created = client.post("/v1/support/tickets", headers=headers(first["userId"]),
+        json={"subject": "Problema esportazione", "message": "Non riesco a esportare il mio progetto."})
+    assert created.status_code == 200
+    ticket_id = created.json()["ticket"]["ticketId"]
+    assert client.get(f"/v1/support/tickets/{ticket_id}", headers=headers(second["userId"])).status_code == 404
+    assert client.get("/v1/support/tickets", headers=headers(second["userId"])).json()["tickets"] == []
+    assert client.get("/v1/support/tickets", headers=headers(support["userId"])).status_code == 200
+    assert client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(support["userId"]), json={"assigneeUserId": support["userId"]}).status_code == 403
+    assigned = client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(admin["userId"]), json={"assigneeUserId": support["userId"]})
+    assert assigned.status_code == 200
+    assert assigned.json()["ticket"]["assignedToUserId"] == support["userId"]
+    assert client.get("/v1/support/tickets", headers=headers(support["userId"])).json()["tickets"][0]["assignedToUserId"] == support["userId"]
+    assert client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(admin["userId"]), json={"assigneeUserId": first["userId"]}).status_code == 422
+    unassigned = client.put(f"/v1/support/tickets/{ticket_id}/assignment",
+        headers=headers(owner["userId"]), json={"assigneeUserId": None})
+    assert unassigned.status_code == 200
+    assert unassigned.json()["ticket"]["assignedToUserId"] is None
+    reply = client.post(f"/v1/support/tickets/{ticket_id}/messages", headers=headers(support["userId"]),
+        json={"message": "Stiamo verificando il problema.", "status": "waiting_user"})
+    assert reply.status_code == 200 and reply.json()["ticket"]["status"] == "waiting_user"
+    assert len(reply.json()["ticket"]["messages"]) == 2
+    user_reply = client.post(f"/v1/support/tickets/{ticket_id}/messages", headers=headers(first["userId"]),
+        json={"message": "Grazie, resto in attesa."})
+    assert user_reply.status_code == 200 and user_reply.json()["ticket"]["status"] == "open"
+
+
+def test_support_ticket_requires_auth_and_valid_input(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("ticket_owner2", "owner password long enough")
+    support = store.create_managed_account(owner["userId"], "ticket_support2", "support password long enough", "support")
+    store.change_password(support["userId"], None, "support changed password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    client = TestClient(server.app)
+    token, _ = store.issue_session(support["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.post("/v1/support/tickets", json={"subject": "Problema account", "message": "Ho bisogno di assistenza."}).status_code == 401
+    assert client.get("/v1/support/tickets", headers=headers).status_code == 200
+    assert client.get("/v1/support/tickets").status_code == 401
+    assert client.post("/v1/support/tickets", headers=headers, json={"subject": "x", "message": "y"}).status_code == 422
+
+
+def test_owner_audit_integrity_endpoint_is_owner_only(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = store.bootstrap_owner("audit_chain_owner", "owner password long enough")
+    user = store.register("audit_chain_user", "user password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    store.record_audit_event(owner["userId"], "account.created", user["userId"], {"role": "user"})
+    client = TestClient(server.app)
+
+    owner_token, _ = store.issue_session(owner["userId"])
+    user_token, _ = store.issue_session(user["userId"])
+    owner_response = client.get(
+        "/v1/owner/audit/integrity",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_response.status_code == 200
+    assert owner_response.json()["valid"] is True
+
+    denied = client.get(
+        "/v1/owner/audit/integrity",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert denied.status_code == 403
+
+
+
+def test_backup_api_is_owner_only_and_requires_encryption_key(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from backend.accounts import AccountStore
+
+    database = tmp_path / "accounts.sqlite3"
+    store = AccountStore(database)
+    owner = store.bootstrap_owner("backup_api_owner", "owner password long enough")
+    user = store.register("backup_api_user", "user password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: store)
+    monkeypatch.setenv("MEDIA_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.delenv("MEDIA_BACKUP_ENCRYPTION_KEY", raising=False)
+    client = TestClient(server.app)
+
+    def headers(user_id):
+        token, _ = store.issue_session(user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    assert client.post("/v1/owner/backups", headers=headers(user["userId"])).status_code == 403
+    missing_key = client.post("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert missing_key.status_code == 503
+
+    monkeypatch.setenv("MEDIA_BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    created = client.post("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert created.status_code == 200
+    backup_id = created.json()["backupId"]
+    listed = client.get("/v1/owner/backups", headers=headers(owner["userId"]))
+    assert listed.status_code == 200
+    assert listed.json()["backups"][0]["backupId"] == backup_id
+    verified = client.post(
+        f"/v1/owner/backups/{backup_id}/verify",
+        headers=headers(owner["userId"]),
+    )
+    assert verified.status_code == 200
+    assert verified.json()["valid"] is True
+
+
+
+def test_credit_history_api_auth_and_bounded_limit(tmp_path, monkeypatch):
+    from backend.accounts import AccountStore
+    from backend.credits import CreditStore
+
+    accounts = AccountStore(tmp_path / "accounts.sqlite3")
+    owner = accounts.bootstrap_owner("credit_api_owner", "owner password long enough")
+    user = accounts.register("credit_api_user", "user password long enough")
+    other = accounts.register("credit_api_other", "other password long enough")
+    monkeypatch.setattr(server, "_account_store", lambda: accounts)
+    credits = CreditStore(tmp_path / "credits.sqlite3")
+    credits.grant("owner", owner["userId"], user["userId"], 7, "api-grant", "test grant")
+    credits.grant("owner", owner["userId"], other["userId"], 99, "other-grant", "private")
+    monkeypatch.setattr(server, "_credit_store", lambda: credits)
+    client = TestClient(server.app)
+
+    token, _ = accounts.issue_session(user["userId"])
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/v1/account/credits").status_code == 401
+    response = client.get("/v1/account/credits", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["balance"]["balance"] == 7
+    assert len(response.json()["transactions"]) == 1
+    assert client.get("/v1/account/credits?limit=0", headers=headers).status_code == 422
+    assert client.get("/v1/account/credits?limit=101", headers=headers).status_code == 422

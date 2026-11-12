@@ -77,7 +77,7 @@ class ProjectStore {
         .where((entity) => entity is File && entity.path.endsWith('.editproj'))
         .cast<File>()
         .toList();
-    final projects = <EditorProject>[];
+    final projects = <({EditorProject project, DateTime modifiedAt})>[];
     for (final file in files) {
       try {
         final decoded = jsonDecode(await file.readAsString());
@@ -88,7 +88,10 @@ class ProjectStore {
           final expectedName = '${_safeName(project.id)}.editproj';
           if (file.uri.pathSegments.isNotEmpty &&
               file.uri.pathSegments.last == expectedName) {
-            projects.add(project);
+            projects.add((
+              project: project,
+              modifiedAt: await file.lastModified(),
+            ));
           }
         }
       } on FormatException {
@@ -98,13 +101,20 @@ class ProjectStore {
         // project must not prevent the library screen from listing the others.
       } on ArgumentError {
         // Reject unsafe IDs (including path traversal attempts) without
-        // allowing one malformed file to break the entire project library.
+        // allowing one malformed file to break the entire library screen.
       } on FileSystemException {
         // A file may be removed while the directory is being scanned.
       }
     }
-    projects.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return projects;
+    // The library is a recent-projects view: last edited first, with a stable
+    // name tie-breaker when multiple files share the same timestamp.
+    projects.sort((a, b) {
+      final byDate = b.modifiedAt.compareTo(a.modifiedAt);
+      return byDate != 0
+          ? byDate
+          : a.project.name.toLowerCase().compareTo(b.project.name.toLowerCase());
+    });
+    return projects.map((entry) => entry.project).toList();
   }
 
   Future<void> delete(String projectId, Directory directory) async {
@@ -136,5 +146,39 @@ class ProjectStore {
       );
     }
     return value;
+  }
+}
+
+/// Serializes writes for the same project so rapid timeline edits cannot race
+/// while replacing the primary, temporary, and backup files.
+class ProjectSaveQueue {
+  ProjectSaveQueue({ProjectStore store = const ProjectStore()}) : _store = store;
+
+  final ProjectStore _store;
+  final Map<String, Future<void>> _pending = {};
+
+  Future<void> save(EditorProject project, Directory directory) {
+    final key = '${directory.absolute.path}/${project.id}';
+    return _enqueue(key, () => _store.save(project, directory));
+  }
+
+  /// Serializes deletion after any pending save for the same project.
+  /// This prevents an in-flight autosave from recreating a project just
+  /// after the user has confirmed its deletion.
+  Future<void> delete(String projectId, Directory directory) {
+    final key = '${directory.absolute.path}/$projectId';
+    return _enqueue(key, () => _store.delete(projectId, directory));
+  }
+
+  Future<void> _enqueue(String key, Future<void> Function() operation) {
+    final previous = _pending[key] ?? Future<void>.value();
+    final next = previous.then(
+      (_) => operation(),
+      onError: (Object _, StackTrace __) => operation(),
+    );
+    _pending[key] = next;
+    return next.whenComplete(() {
+      if (identical(_pending[key], next)) _pending.remove(key);
+    });
   }
 }

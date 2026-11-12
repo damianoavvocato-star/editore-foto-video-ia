@@ -4,66 +4,1146 @@ Implements authenticated asset upload, render jobs and job polling.
 AI endpoints intentionally return 503 until a real model provider is configured.
 """
 from __future__ import annotations
-import os, uuid, shutil, subprocess, threading, time, traceback, hmac
+import os, uuid, shutil, subprocess, threading, time, logging, ipaddress, hashlib, json, math
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
+from backend.magiciaedit import MagicIAError, create_magic_plan, provider_configured
+from backend.accounts import AccountError, AccountStore, SecurityConfigurationError
+from backend.authorization import PermissionError as PolicyError, PermissionPolicy
+from backend.entitlements import EntitlementError, EntitlementStore
+from backend.referrals import ReferralError, ReferralStore
+from backend.credits import CreditError, CreditStore
+from backend.backups import BackupError, BackupStore
+from backend.job_store import JobRegistry
+from backend.usage_store import UsageLimitError, UsageStore
+from backend.media_cleanup import cleanup_stale_media
+from backend.studio import StudioJobRequest, StudioJobStore, StudioRequestError
+from backend.studio_queue import StudioJobQueue, StudioQueueError
+from backend.magiclink import MagicLinkRequest, describe_link
+from backend.team_workspace import TeamWorkspaceError, TeamWorkspaceStore
 
 ROOT = Path(os.getenv('MEDIA_DATA_DIR', './media_data')).resolve()
 ASSETS, OUTPUTS = ROOT/'assets', ROOT/'outputs'
-ASSETS.mkdir(parents=True, exist_ok=True); OUTPUTS.mkdir(parents=True, exist_ok=True)
+ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+ASSETS.mkdir(parents=True, exist_ok=True, mode=0o700)
+OUTPUTS.mkdir(parents=True, exist_ok=True, mode=0o700)
+for _private_dir in (ROOT, ASSETS, OUTPUTS):
+    try:
+        os.chmod(_private_dir, 0o700)
+    except OSError:
+        logging.warning("Unable to restrict media directory permissions")
 TOKEN = os.getenv('MEDIA_API_TOKEN', '')
+# Insecure unauthenticated mode is opt-in and intended only for local development.
+ALLOW_INSECURE_LOCAL = os.getenv('MEDIA_ALLOW_INSECURE_LOCAL', '').strip().lower() == 'true'
 FFMPEG = os.getenv('FFMPEG_PATH', 'ffmpeg')
 app = FastAPI(title='Editore Foto Video IA Media API', version='0.2.0')
+
+
+def _team_store() -> TeamWorkspaceStore:
+    return TeamWorkspaceStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _studio_store() -> StudioJobStore:
+    return StudioJobStore(os.getenv('MEDIA_STUDIO_DB', str(ROOT / 'studio.sqlite3')))
+
+
+def _studio_queue() -> StudioJobQueue:
+    return StudioJobQueue(os.getenv('MEDIA_STUDIO_QUEUE_DB', str(ROOT / 'studio_queue.sqlite3')))
+
+
+def _studio_user(request: Request) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'È richiesto un account per usare Studio IA.')
+    return account
+
+
+@app.get('/v1/studio/capabilities')
+def studio_capabilities(request: Request):
+    _studio_user(request)
+    return {
+        'studioDrafts': True,
+        'reviewedJobQueue': True,
+        'scriptToVideo': 'planned',
+        'documentToVideo': 'planned',
+        'slidesToVideo': 'planned',
+        'avatarStudio': 'planned',
+        'voiceStudio': 'planned',
+        'translationAndDubbing': 'planned',
+        'interactiveVideo': 'planned',
+        'bulkPersonalization': 'planned',
+        'screenExplainer': 'planned',
+        'maxLanguagesPerDraft': 20,
+        'providerConfigured': False,
+        'generationAvailable': False,
+        'message': 'La creazione dei progetti è disponibile; la generazione richiede ancora un provider video autorizzato e verificato.',
+    }
+
+
+@app.get('/v1/magiclink/capabilities')
+def magiclink_capabilities(request: Request):
+    _studio_user(request)
+    return {
+        'urlRecognition': True,
+        'platformClassification': True,
+        'remoteContentExtraction': False,
+        'transcriptionAvailable': False,
+        'translationAvailable': False,
+        'dubbingAvailable': False,
+        'providerConfigured': False,
+        'message': 'MagicLink riconosce il link; l’analisi dei contenuti e le elaborazioni richiedono ancora connettori e provider autorizzati.',
+    }
+
+
+@app.post('/v1/magiclink/analyze')
+def magiclink_analyze(body: MagicLinkRequest, request: Request):
+    _studio_user(request)
+    # Metadata-only by design: never fetch an arbitrary user-supplied URL here.
+    return describe_link(body)
+
+
+@app.post('/v1/studio/jobs')
+def studio_create_job(body: StudioJobRequest, request: Request):
+    account = _studio_user(request)
+    try:
+        body.validate_policy()
+    except StudioRequestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    for asset_id in body.sourceAssetIds:
+        _require_resource_owner(request, 'asset', asset_id)
+        if not any(
+            path.is_file() and path.resolve().parent == ASSETS.resolve()
+            for path in ASSETS.glob(asset_id + '.*')
+        ):
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+    key = request.headers.get('Idempotency-Key', '').strip() or None
+    if key is not None and (len(key) > 128 or any(ord(ch) < 33 for ch in key)):
+        raise HTTPException(422, 'Chiave idempotenza non valida.')
+    try:
+        draft, created = _studio_store().create_draft(account['userId'], body, key)
+    except StudioRequestError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {**draft, 'created': created}
+
+
+@app.get('/v1/studio/jobs')
+def studio_list_jobs(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    account = _studio_user(request)
+    return {'jobs': _studio_store().list_for_user(account['userId'], limit)}
+
+
+@app.post('/v1/studio/jobs/{job_id}/enqueue')
+def studio_enqueue_job(job_id: str, request: Request):
+    """Persist an explicitly reviewed draft in the durable queue; never calls a provider."""
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    draft = _studio_store().get(account['userId'], job_id)
+    if draft is None:
+        raise HTTPException(404, 'Progetto Studio non trovato.')
+    try:
+        body = StudioJobRequest.model_validate(draft['request'])
+        body.validate_policy()
+    except (StudioRequestError, ValueError) as exc:
+        raise HTTPException(422, 'La bozza non supera la validazione prima dell’accodamento.') from exc
+    for asset_id in body.sourceAssetIds:
+        _require_resource_owner(request, 'asset', asset_id)
+        if not any(
+            path.is_file() and path.resolve().parent == ASSETS.resolve()
+            for path in ASSETS.glob(asset_id + '.*')
+        ):
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+    # Apply the same free/premium monthly allowance used by MagicIAedit.
+    # The stable draft-scoped key makes retries and repeated taps idempotent.
+    is_premium = _entitlement_store().has_premium(account['userId'])
+    usage_key = f'studio-{job_id}'
+    try:
+        usage = _usage_store().reserve(
+            account['userId'], usage_key, _ai_monthly_limit(is_premium)
+        )
+    except UsageLimitError as exc:
+        raise HTTPException(
+            429,
+            detail={
+                'code': 'monthly_ai_quota_exceeded',
+                'message': 'Hai raggiunto il limite mensile di elaborazioni IA del tuo piano.',
+                'limit': exc.limit,
+                'period': exc.period,
+            },
+        ) from exc
+    try:
+        queued, created = _studio_queue().enqueue(
+            account['userId'], body, idempotency_key=f'studio-draft:{job_id}'
+        )
+    except (StudioRequestError, StudioQueueError) as exc:
+        # Do not consume quota when durable queue persistence was rejected.
+        try:
+            _usage_store().release(account['userId'], usage_key, usage['period'])
+        except Exception:
+            logging.exception('Unable to release Studio quota after queue rejection')
+        status = 422 if isinstance(exc, StudioRequestError) else 409
+        raise HTTPException(status, str(exc)) from exc
+    return {
+        **queued,
+        'created': created,
+        'sourceDraftId': job_id,
+        'tier': 'premium' if is_premium else 'free',
+        'usage': usage,
+        'providerSubmissionEnabled': False,
+        'message': 'Richiesta salvata nella coda; nessuna chiamata al provider è stata avviata.',
+    }
+
+
+@app.get('/v1/studio/queue')
+def studio_list_queue(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    account = _studio_user(request)
+    return {'jobs': _studio_queue().list_for_user(account['userId'], limit)}
+
+
+@app.get('/v1/studio/queue/{queue_job_id}')
+def studio_get_queued_job(queue_job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(queue_job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    queued = _studio_queue().get(account['userId'], queue_job_id)
+    if queued is None:
+        raise HTTPException(404, 'Lavoro in coda non trovato.')
+    return queued
+
+
+@app.get('/v1/studio/jobs/{job_id}')
+def studio_get_job(job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    draft = _studio_store().get(account['userId'], job_id)
+    if draft is None:
+        raise HTTPException(404, 'Progetto Studio non trovato.')
+    return draft
+
+
+@app.delete('/v1/studio/jobs/{job_id}')
+def studio_delete_job(job_id: str, request: Request):
+    account = _studio_user(request)
+    if not _valid_id(job_id):
+        raise HTTPException(400, 'Identificativo job non valido.')
+    if not _studio_store().delete_draft(account['userId'], job_id):
+        raise HTTPException(404, 'Bozza Studio non trovata o non eliminabile.')
+    return {'jobId': job_id, 'deleted': True}
+
+def _render_dimensions(project: dict[str, Any], resolution: str) -> tuple[int, int]:
+    """Scale the project's aspect ratio so its longer side matches the preset."""
+    long_side = {
+        'p720': 1280,
+        'p1080': 1920,
+        'p1440': 2560,
+        'p2160': 3840,
+    }.get(resolution, 1920)
+    try:
+        source_width = max(1, min(7680, int(project.get('width', 1080))))
+        source_height = max(1, min(7680, int(project.get('height', 1920))))
+    except (TypeError, ValueError):
+        source_width, source_height = 1080, 1920
+    if source_width >= source_height:
+        width = long_side
+        height = max(2, round(long_side * source_height / source_width))
+    else:
+        height = long_side
+        width = max(2, round(long_side * source_width / source_height))
+    # H.264-compatible dimensions are even; keep the computed aspect ratio
+    # within one pixel when an odd source ratio is selected.
+    return width + width % 2, height + height % 2
+
 
 def _valid_id(value: str) -> bool:
     # IDs are always UUID hex generated by this service; reject path fragments.
     return len(value) == 32 and all(ch in '0123456789abcdef' for ch in value.lower())
-jobs: dict[str, dict[str, Any]] = {}
+jobs: dict[str, dict[str, Any]] = JobRegistry(ROOT / 'jobs.sqlite3')
 cancel_events: dict[str, threading.Event] = {}
+try:
+    _retention_hours = int(os.getenv('MEDIA_TEMP_RETENTION_HOURS', '24'))
+except ValueError:
+    _retention_hours = 24
+if not 1 <= _retention_hours <= 720:
+    _retention_hours = 24
+_cleanup_result = cleanup_stale_media(
+    ASSETS,
+    ROOT / 'work',
+    active_job_ids={
+        job_id for job_id, job in jobs.items()
+        if job.get('state') in JobRegistry.ACTIVE_STATES
+    },
+    older_than_seconds=_retention_hours * 60 * 60,
+)
+if _cleanup_result['removed_files'] or _cleanup_result['removed_directories']:
+    logging.info('Removed stale media temp files: %s', _cleanup_result)
+
 lock = threading.Lock()
+# FFmpeg processes are tracked per render so DELETE can stop expensive work,
+# not merely mark the job cancelled while the encoder keeps running.
+active_render_processes: dict[str, subprocess.Popen] = {}
+
+
+class RenderCancelled(RuntimeError):
+    """Raised when a render worker is stopped by an explicit cancellation."""
+
+
+def _run_ffmpeg(job_id: str, command: list[str], timeout: float) -> subprocess.CompletedProcess:
+    cancel_event = cancel_events.setdefault(job_id, threading.Event())
+    if cancel_event.is_set():
+        raise RenderCancelled("Rendering annullato")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    # Register under the same lock used by DELETE. This closes the race where
+    # cancellation arrives just as FFmpeg is being started.
+    with lock:
+        if cancel_event.is_set():
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        else:
+            active_render_processes[job_id] = process
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except OSError:
+                pass
+            process.communicate()
+            raise RuntimeError("FFmpeg ha superato il tempo massimo")
+    finally:
+        with lock:
+            if active_render_processes.get(job_id) is process:
+                active_render_processes.pop(job_id, None)
+    if cancel_event.is_set():
+        raise RenderCancelled("Rendering annullato")
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _stop_render_process(job_id: str) -> None:
+    process = active_render_processes.get(job_id)
+    if process is None:
+        return
+    try:
+        process.terminate()
+    except OSError:
+        logging.info("FFmpeg process for job %s already exited", job_id)
+        return
+    # Do not let a stuck encoder occupy a worker indefinitely after DELETE.
+    # Give FFmpeg a short graceful-shutdown window, then force termination.
+    try:
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            logging.info("FFmpeg process for job %s exited during forced stop", job_id)
+    except OSError:
+        logging.info("Unable to wait for FFmpeg process for job %s", job_id)
 
 @app.middleware('http')
 async def auth(request, call_next):
-    if TOKEN and request.url.path != '/health':
-        provided = request.headers.get('authorization', '')
-        expected = f'Bearer {TOKEN}'
-        if not hmac.compare_digest(provided.encode('utf-8'), expected.encode('utf-8')):
+    # Auth endpoints validate their own credentials; every media endpoint uses
+    # an individual, revocable account session. The legacy shared token is not
+    # accepted for user data because it cannot provide per-user isolation.
+    if request.url.path == '/health' or request.url.path.startswith('/v1/auth/'):
+        return await call_next(request)
+    account = _account_store().resolve_session(_bearer_token(request))
+    if account is not None:
+        if account.get('mustChangePassword'):
             from starlette.responses import JSONResponse
-            return JSONResponse({'detail':'Unauthorized'}, status_code=401)
-    return await call_next(request)
+            return JSONResponse(
+                {'detail': 'È necessario cambiare la password prima di continuare.',
+                 'code': 'password_change_required'},
+                status_code=428,
+            )
+        request.state.account = account
+        request.state.local_dev = False
+        return await call_next(request)
+    # Explicit local-only escape hatch for isolated development and tests.
+    # It is never available to non-loopback peers and must be disabled in production.
+    peer_host = request.client.host if request.client is not None else ''
+    try:
+        is_loopback = ipaddress.ip_address(peer_host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if ALLOW_INSECURE_LOCAL:
+        if is_loopback:
+            request.state.account = None
+            request.state.local_dev = True
+            return await call_next(request)
+        from starlette.responses import JSONResponse
+        return JSONResponse({'detail': 'Unauthenticated access is restricted to local connections'}, status_code=403)
+    from starlette.responses import JSONResponse
+    return JSONResponse({'detail': 'Sessione account obbligatoria.'}, status_code=401)
+
+
+class AuthPasswordChange(BaseModel):
+    currentPassword: str | None = Field(default=None, max_length=1024)
+    newPassword: str = Field(min_length=12, max_length=1024)
+
+
+class AuthCredentials(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=1024)
+    totpCode: str | None = Field(default=None, min_length=6, max_length=64)
+
+
+class OwnerTotpSetupStart(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class OwnerTotpCode(BaseModel):
+    code: str = Field(min_length=6, max_length=64)
+
+
+class OwnerTotpDisable(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+    code: str = Field(min_length=6, max_length=64)
+
+
+def _account_store() -> AccountStore:
+    return AccountStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _bearer_token(request) -> str | None:
+    value = request.headers.get('authorization', '')
+    scheme, _, token = value.partition(' ')
+    return token.strip() if scheme.lower() == 'bearer' and token.strip() else None
+
+
+def _bootstrap_owner(store: AccountStore) -> None:
+    username = os.getenv('MEDIA_OWNER_USERNAME', '').strip()
+    password = os.getenv('MEDIA_OWNER_PASSWORD', '')
+    if username and password:
+        store.bootstrap_owner(username, password)
+
+
+def _request_account(request: Request) -> dict[str, Any] | None:
+    """Return the middleware-verified account; None is local-dev only."""
+    account = getattr(request.state, 'account', None)
+    if account is None and not getattr(request.state, 'local_dev', False):
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    return account
+
+
+def _require_resource_owner(request: Request, resource_type: str, resource_id: str) -> None:
+    account = _request_account(request)
+    if account is None:  # explicit loopback-only development mode
+        return
+    if not _account_store().owns_media_resource(resource_type, resource_id, account['userId']):
+        # 404 avoids disclosing whether another user's identifier exists.
+        raise HTTPException(404, 'Risorsa non trovata.')
+
+
+def _claim_resource(request: Request, resource_type: str, resource_id: str) -> None:
+    account = _request_account(request)
+    if account is None:
+        return
+    try:
+        _account_store().claim_media_resource(resource_type, resource_id, account['userId'])
+    except AccountError as exc:
+        raise HTTPException(409, 'Impossibile associare la risorsa all’account.') from exc
+
+
+@app.post('/v1/auth/register')
+def register_account(body: AuthCredentials):
+    if os.getenv('MEDIA_ALLOW_REGISTRATION', '').strip().lower() != 'true':
+        raise HTTPException(403, 'Registrazione non disponibile.')
+    store = _account_store()
+    _bootstrap_owner(store)
+    try:
+        account = store.register(body.username, body.password)
+        token, expires = store.issue_session(account['userId'])
+    except AccountError as exc:
+        raise HTTPException(409 if 'già utilizzato' in str(exc) else 422, str(exc)) from exc
+    return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
+
+
+@app.post('/v1/auth/login')
+def login_account(body: AuthCredentials, request: Request):
+    store = _account_store()
+    _bootstrap_owner(store)
+    client_ip = request.client.host if request.client else 'unknown'
+    if not store.login_allowed(client_ip, body.username):
+        raise HTTPException(429, 'Troppi tentativi. Riprova più tardi.')
+    try:
+        account, token, expires = store.login(
+            body.username, body.password, body.totpCode
+        )
+    except SecurityConfigurationError as exc:
+        # Never issue a password-only session when 2FA cannot be decrypted.
+        raise HTTPException(503, 'Autenticazione a due fattori temporaneamente non disponibile.') from exc
+    except AccountError as exc:
+        newly_blocked = store.record_login_failure(client_ip, body.username)
+        reason = "second_factor_required" if str(exc) == "Secondo fattore non valido o richiesto." else "invalid_credentials"
+        store.record_audit_event(None, "auth.login_failed", details={"reason": reason})
+        if newly_blocked:
+            from backend.security_notifications import dispatch_security_alert
+            dispatch_security_alert("auth.login_rate_limited", None, None, "account_or_ip_threshold")
+        if reason == "second_factor_required" and not body.totpCode:
+            raise HTTPException(
+                401,
+                detail={"code": "two_factor_required",
+                        "message": "Inserisci il codice dell'app di autenticazione o un codice di recupero."},
+            ) from exc
+        raise HTTPException(401, 'Credenziali non valide.') from exc
+    store.clear_login_failures(client_ip, body.username)
+    new_ip = store.record_login_success(account["userId"], account["role"], client_ip)
+    from backend.security_notifications import dispatch_security_alert
+    dispatch_security_alert("auth.new_session", account["userId"], account["role"])
+    if new_ip:
+        dispatch_security_alert("auth.new_ip", account["userId"], account["role"], "unseen_client_network")
+    return {'user': account, 'accessToken': token, 'tokenType': 'Bearer', 'expiresAt': expires}
+
+
+
+@app.post('/v1/auth/change-password')
+def change_account_password(body: AuthPasswordChange, request: Request):
+    store = _account_store()
+    account = store.resolve_session(_bearer_token(request))
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    try:
+        store.change_password(
+            account['userId'], body.currentPassword, body.newPassword
+        )
+        token, expires = store.issue_session(account['userId'])
+    except AccountError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        'user': store.resolve_session(token),
+        'accessToken': token,
+        'tokenType': 'Bearer',
+        'expiresAt': expires,
+    }
+
+
+@app.get('/v1/auth/me')
+def current_account(request: Request):
+    store = _account_store()
+    account = store.resolve_session(_bearer_token(request))
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    return {'user': account}
+
+
+@app.get('/v1/auth/sessions')
+def list_account_sessions(request: Request):
+    store = _account_store()
+    token = _bearer_token(request)
+    account = store.resolve_session(token)
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    current_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    sessions = store.list_active_sessions(account["userId"])
+    for session in sessions:
+        session["current"] = session["sessionId"] == current_hash
+    return {"sessions": sessions}
+
+
+@app.delete('/v1/auth/sessions/{session_id}')
+def revoke_account_session(session_id: str, request: Request):
+    store = _account_store()
+    token = _bearer_token(request)
+    account = store.resolve_session(token)
+    if account is None:
+        raise HTTPException(401, 'Sessione non valida o scaduta.')
+    current_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    if not store.revoke_session_by_id(account["userId"], session_id):
+        raise HTTPException(404, 'Sessione non trovata o già revocata.')
+    is_current = session_id == current_hash
+    store.record_audit_event(
+        account["userId"], "auth.session_revoked", account["userId"],
+        {"current": is_current},
+    )
+    return {"ok": True, "currentSessionRevoked": is_current}
+
+
+@app.delete('/v1/auth/logout')
+def logout_account(request: Request):
+    store = _account_store()
+    token = _bearer_token(request)
+    account = store.resolve_session(token)
+    if not store.revoke_session(token):
+        raise HTTPException(401, 'Sessione non valida o già revocata.')
+    if account is not None:
+        store.record_audit_event(
+            account["userId"], "auth.logout", account["userId"],
+            {"role": account["role"]},
+        )
+    return {'ok': True}
+
+
+
+class OwnerPermissionOverride(BaseModel):
+    permission: str = Field(min_length=3, max_length=64)
+    effect: str = Field(pattern=r"^(allow|deny)$")
+
+
+class OwnerSetRole(BaseModel):
+    role: str = Field(min_length=3, max_length=32)
+
+
+class OwnerCreateAccount(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    temporaryPassword: str = Field(min_length=12, max_length=1024)
+    role: str = Field(min_length=3, max_length=32)
+
+
+class OwnerPremiumGrant(BaseModel):
+    plan: str = Field(pattern=r"^(premium|family)$")
+    expiresAt: int | None = None
+    reason: str = Field(default="Premium omaggio", min_length=1, max_length=240)
+
+
+class ReferralClaimRequest(BaseModel):
+    code: str = Field(
+        min_length=6,
+        max_length=12,
+        pattern=r"^[A-Za-z0-9]{6,12}$",
+    )
+
+
+class OwnerCreditGrant(BaseModel):
+    amount: int = Field(ge=1, le=1_000_000)
+    referenceId: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=240)
+
+
+def _require_owner(request: Request) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None or account.get('role') != 'owner':
+        raise HTTPException(403, 'Operazione riservata al proprietario.')
+    return account
+
+
+def _require_permission(request: Request, permission: str) -> dict[str, Any]:
+    account = _request_account(request)
+    if account is None or not _permission_policy().has_permission(
+        account["userId"], account["role"], permission
+    ):
+        raise HTTPException(403, "Permesso insufficiente.")
+    return account
+
+
+@app.get('/v1/owner/security/totp')
+def owner_totp_status(request: Request):
+    owner = _require_owner(request)
+    return {"enabled": _account_store().totp_enabled(owner["userId"])}
+
+
+@app.post('/v1/owner/security/totp/setup')
+def owner_totp_setup_start(body: OwnerTotpSetupStart, request: Request):
+    owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
+    try:
+        secret = store.begin_totp_setup(owner["userId"], body.password)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        if "Password" in str(exc):
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "password_invalid"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_setup_threshold")
+        raise HTTPException(403 if 'proprietario' in str(exc) else 422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
+    from urllib.parse import quote
+    issuer = "EditoreFotoVideoIA"
+    label = quote(f"{issuer}:{owner['username']}")
+    uri = (
+        f"otpauth://totp/{label}?secret={secret}&issuer={issuer}"
+        "&algorithm=SHA1&digits=6&period=30"
+    )
+    # This is the only response that reveals the pending seed. Do not log or persist it in audit.
+    return {"secret": secret, "otpauthUri": uri, "algorithm": "SHA1", "digits": 6, "period": 30}
+
+
+@app.post('/v1/owner/security/totp/setup/confirm')
+def owner_totp_setup_confirm(body: OwnerTotpCode, request: Request):
+    owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
+    try:
+        recovery_codes = store.confirm_totp_setup(owner["userId"], body.code)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        if "Codice di verifica" in str(exc):
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_setup_failed", owner["userId"], {"reason": "code_invalid"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_enrollment_threshold")
+        raise HTTPException(422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
+    # Recovery codes are displayed once; only their hashes remain on the server.
+    return {"enabled": True, "recoveryCodes": recovery_codes}
+
+
+@app.delete('/v1/owner/security/totp')
+def owner_totp_disable(body: OwnerTotpDisable, request: Request):
+    owner = _require_owner(request)
+    store = _account_store()
+    client_ip = request.client.host if request.client else "unknown"
+    if not store.login_allowed(client_ip, owner["username"]):
+        raise HTTPException(429, "Troppi tentativi. Riprova più tardi.")
+    try:
+        store.disable_totp(owner["userId"], body.password, body.code)
+    except SecurityConfigurationError as exc:
+        raise HTTPException(503, 'Configurazione della sicurezza non disponibile.') from exc
+    except AccountError as exc:
+        if "Password" in str(exc) or "Secondo fattore" in str(exc):
+            newly_blocked = store.record_login_failure(client_ip, owner["username"])
+            store.record_audit_event(owner["userId"], "security.totp_disable_failed", owner["userId"], {"reason": "reauthentication_failed"})
+            if newly_blocked:
+                from backend.security_notifications import dispatch_security_alert
+                dispatch_security_alert("auth.login_rate_limited", owner["userId"], owner["role"], "totp_disable_threshold")
+        raise HTTPException(422, str(exc)) from exc
+    store.clear_login_failures(client_ip, owner["username"])
+    return {"enabled": False, "sessionsRevoked": True}
+
+
+class TeamProjectCreate(BaseModel):
+    name: str = Field(min_length=3, max_length=100)
+    description: str = Field(default="", max_length=1000)
+
+
+class TeamInvitationCreate(BaseModel):
+    collaboratorUserId: str = Field(min_length=1, max_length=128)
+
+
+class TeamInvitationResponse(BaseModel):
+    accept: bool
+
+
+class TeamCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class TeamApprovalCreate(BaseModel):
+    note: str = Field(default="", max_length=2000)
+
+
+class TeamApprovalResponse(BaseModel):
+    decision: str = Field(pattern=r"^(approved|changes_requested)$")
+    note: str = Field(default="", max_length=2000)
+
+
+class SupportTicketCreate(BaseModel):
+    subject: str = Field(min_length=5, max_length=120)
+    message: str = Field(min_length=10, max_length=4000)
+
+
+class SupportTicketReply(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    status: str | None = Field(default=None, pattern=r"^(open|waiting_user|resolved|escalated)$")
+
+
+class SupportTicketAssignment(BaseModel):
+    assigneeUserId: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+@app.post('/v1/team/projects')
+def team_project_create(body: TeamProjectCreate, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        return {"project": _team_store().create_project(actor["userId"], body.name, body.description)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get('/v1/team/projects')
+def team_project_list(request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"projects": _team_store().list_projects(actor["userId"])}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/invitations')
+def team_invite(project_id: str, body: TeamInvitationCreate, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        return {"invitation": _team_store().invite_member(
+            actor["userId"], project_id, body.collaboratorUserId)}
+    except TeamWorkspaceError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message else 422, message) from exc
+
+
+@app.get('/v1/team/invitations')
+def team_list_invitations(request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"invitations": _team_store().list_invitations(actor["userId"])}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.put('/v1/team/projects/{project_id}/invitation')
+def team_respond_invitation(project_id: str, body: TeamInvitationResponse, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"invitation": _team_store().respond_invitation(
+            actor["userId"], project_id, body.accept)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get('/v1/team/projects/{project_id}/members')
+def team_list_members(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"members": _team_store().list_members(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.delete('/v1/team/projects/{project_id}/members/{member_user_id}')
+def team_revoke_member(project_id: str, member_user_id: str, request: Request):
+    actor = _require_permission(request, "team.manage")
+    try:
+        revoked = _team_store().revoke_member(actor["userId"], project_id, member_user_id)
+        if not revoked:
+            raise HTTPException(404, "Collaboratore non trovato.")
+        return {"revoked": True}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get('/v1/team/projects/{project_id}/comments')
+def team_list_comments(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"comments": _team_store().list_comments(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/comments')
+def team_add_comment(project_id: str, body: TeamCommentCreate, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"comment": _team_store().add_comment(actor["userId"], project_id, body.body)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/v1/team/projects/{project_id}/approvals')
+def team_request_approval(project_id: str, body: TeamApprovalCreate, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approval": _team_store().request_approval(actor["userId"], project_id, body.note)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.put('/v1/team/approvals/{approval_id}')
+def team_respond_approval(approval_id: str, body: TeamApprovalResponse, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approval": _team_store().respond_approval(
+            actor["userId"], approval_id, body.decision, body.note)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.get('/v1/team/projects/{project_id}/approvals')
+def team_list_approvals(project_id: str, request: Request):
+    actor = _request_account(request)
+    if actor is None:
+        raise HTTPException(401, "Sessione account obbligatoria.")
+    try:
+        return {"approvals": _team_store().list_approvals(actor["userId"], project_id)}
+    except TeamWorkspaceError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/v1/support/tickets')
+def support_ticket_create(body: SupportTicketCreate, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    try: ticket = _account_store().create_support_ticket(account["userId"], body.subject, body.message)
+    except AccountError as exc: raise HTTPException(422, str(exc)) from exc
+    return {"ticket": ticket}
+
+
+@app.get('/v1/support/tickets')
+def support_ticket_list(request: Request, status: str | None = None,
+                        limit: int = Query(default=50, ge=1, le=100),
+                        offset: int = Query(default=0, ge=0, le=1_000_000)):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    staff = account.get("role") in {"owner", "admin", "support"}
+    if staff: _require_permission(request, "support.tickets.read")
+    try:
+        rows = _account_store().list_support_tickets(
+            owner_user_id=None if staff else account["userId"], status=status, limit=limit, offset=offset)
+    except AccountError as exc: raise HTTPException(422, str(exc)) from exc
+    return {"tickets": rows, "limit": limit, "offset": offset}
+
+
+@app.put('/v1/support/tickets/{ticket_id}/assignment')
+def support_ticket_assign(ticket_id: str, body: SupportTicketAssignment, request: Request):
+    actor = _require_permission(request, "support.tickets.assign")
+    try:
+        ticket = _account_store().assign_support_ticket(
+            ticket_id, actor["userId"], body.assigneeUserId
+        )
+    except AccountError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message else 422, message) from exc
+    return {"ticket": ticket}
+
+
+@app.get('/v1/support/tickets/{ticket_id}')
+def support_ticket_detail(ticket_id: str, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    ticket = _account_store().get_support_ticket(ticket_id)
+    if ticket is None: raise HTTPException(404, "Ticket non trovato.")
+    if account.get("role") in {"owner", "admin", "support"}:
+        _require_permission(request, "support.tickets.read")
+    elif ticket["ownerUserId"] != account["userId"]:
+        # Hide whether another customer's ticket identifier exists.
+        raise HTTPException(404, "Ticket non trovato.")
+    return {"ticket": ticket}
+
+
+@app.post('/v1/support/tickets/{ticket_id}/messages')
+def support_ticket_reply(ticket_id: str, body: SupportTicketReply, request: Request):
+    account = _request_account(request)
+    if account is None: raise HTTPException(401, "Sessione account obbligatoria.")
+    ticket = _account_store().get_support_ticket(ticket_id)
+    if ticket is None: raise HTTPException(404, "Ticket non trovato.")
+    staff = account.get("role") in {"owner", "admin", "support"}
+    if staff: _require_permission(request, "support.tickets.reply")
+    elif ticket["ownerUserId"] != account["userId"]: raise HTTPException(404, "Ticket non trovato.")
+    try:
+        updated = _account_store().reply_support_ticket(
+            ticket_id, account["userId"], body.message, account["role"], body.status)
+    except AccountError as exc:
+        message = str(exc)
+        raise HTTPException(404 if "non trovato" in message or "non disponibile" in message else 422, message) from exc
+    return {"ticket": updated}
+
+
+@app.get('/v1/admin/dashboard')
+def admin_dashboard(request: Request):
+    actor = _require_permission(request, "accounts.read")
+    if actor.get("role") != "admin":
+        raise HTTPException(403, "Console riservata agli amministratori.")
+    return {"dashboard": _account_store().admin_dashboard_stats()}
+
+
+@app.get('/v1/owner/accounts')
+def owner_list_accounts(
+    request: Request, limit: int = 100, q: str | None = Query(default=None, max_length=64)
+):
+    _require_permission(request, "accounts.read")
+    return {'accounts': _account_store().list_accounts(limit, q)}
+
+
+@app.post('/v1/owner/accounts')
+def owner_create_account(body: OwnerCreateAccount, request: Request):
+    owner = _require_permission(request, "accounts.create")
+    try:
+        account = _account_store().create_managed_account(
+            owner['userId'], body.username, body.temporaryPassword, body.role
+        )
+    except AccountError as exc:
+        status = 409 if 'già utilizzato' in str(exc) else 422
+        if 'proprietario' in str(exc):
+            status = 403
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+
+@app.post('/v1/owner/accounts/{user_id}/reset-password')
+def owner_reset_account_password(user_id: str, request: Request):
+    owner = _require_permission(request, "accounts.password_reset")
+    try:
+        temporary = _account_store().reset_account_password(
+            owner['userId'], user_id
+        )
+    except AccountError as exc:
+        message = str(exc)
+        status = 404 if 'non trovato' in message else 403 if (
+            'proprietario' in message or 'riservata' in message
+            or 'insufficiente' in message or 'può reimpostare' in message
+        ) else 422
+        raise HTTPException(status, message) from exc
+    # This is the only response containing the generated temporary credential.
+    return {'userId': user_id, 'temporaryPassword': temporary, 'mustChangePassword': True}
+
+
+@app.post('/v1/owner/accounts/{user_id}/role')
+def owner_set_account_role(user_id: str, body: OwnerSetRole, request: Request):
+    owner = _require_permission(request, "accounts.update")
+    try:
+        account = _account_store().set_account_role(
+            owner['userId'], user_id, body.role
+        )
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+@app.post('/v1/owner/accounts/{user_id}/disable')
+def owner_disable_account(user_id: str, request: Request):
+    owner = _require_permission(request, "accounts.disable")
+    try:
+        account = _account_store().set_account_disabled(owner['userId'], user_id, True)
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+@app.post('/v1/owner/accounts/{user_id}/enable')
+def owner_enable_account(user_id: str, request: Request):
+    owner = _require_permission(request, "accounts.disable")
+    try:
+        account = _account_store().set_account_disabled(owner['userId'], user_id, False)
+    except AccountError as exc:
+        status = 404 if 'non trovato' in str(exc) else 403 if 'proprietario' in str(exc) else 422
+        raise HTTPException(status, str(exc)) from exc
+    return {'user': account}
+
+
+@app.get('/v1/owner/audit/integrity')
+def owner_audit_integrity(request: Request):
+    _require_owner(request)
+    return _account_store().verify_audit_chain()
+
+
+@app.get('/v1/owner/audit')
+def owner_audit_events(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    action: str | None = None,
+    actorUserId: str | None = None,
+    targetUserId: str | None = None,
+    since: int | None = None,
+    until: int | None = None,
+):
+    _require_permission(request, "audit.read")
+    if since is not None and until is not None and since > until:
+        raise HTTPException(422, "Intervallo temporale audit non valido.")
+    page_size = max(1, min(100, limit))
+    events = _account_store().list_audit_events(
+        limit=page_size + 1,
+        offset=offset,
+        action=action,
+        actor_user_id=actorUserId,
+        target_user_id=targetUserId,
+        since=since,
+        until=until,
+    )
+    has_more = len(events) > page_size
+    return {
+        'events': events[:page_size],
+        'limit': page_size,
+        'offset': max(0, min(1_000_000, offset)),
+        'hasMore': has_more,
+    }
+
 
 @app.get('/health')
 def health():
-    return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': False}
+    return {'ok': True, 'ffmpeg': shutil.which(FFMPEG) is not None, 'aiProvider': provider_configured()}
 
 @app.post('/v1/assets')
-async def upload_asset(file: UploadFile = File(...)):
+async def upload_asset(request: Request, file: UploadFile = File(...)):
+    _request_account(request)
     # Never trust a client filename; retain only a small allow-list of media extensions.
     suffix = Path(file.filename or '').suffix.lower()
-    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v', '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac'}
+    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v', '.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.pdf', '.docx', '.pptx', '.txt', '.md', '.rtf'}
     if suffix not in allowed:
         raise HTTPException(415, 'Formato file non supportato')
     asset_id = uuid.uuid4().hex
     destination = ASSETS / f'{asset_id}{suffix}'
+    partial = ASSETS / f'.{asset_id}{suffix}.part'
     size = 0
     try:
-        with destination.open('wb') as out:
+        # Stream into a private temporary file and publish atomically only
+        # after the complete upload passes size and non-empty checks.
+        with partial.open('xb') as out:
             while chunk := await file.read(1024*1024):
                 size += len(chunk)
-                if size > 1024*1024*1024:
-                    raise HTTPException(413, 'File superiore a 1 GB')
+                max_size = 50 * 1024 * 1024 if suffix in {'.pdf', '.docx', '.pptx', '.txt', '.md', '.rtf'} else 400 * 1024 * 1024
+                if size > max_size:
+                    raise HTTPException(413, 'Documento superiore a 50 MB' if max_size < 400 * 1024 * 1024 else 'File superiore a 400 MB')
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, 'File vuoto')
+        with partial.open('rb') as uploaded:
+            document_header = uploaded.read(5)
+        if suffix == '.pdf':
+            valid_document = document_header == b'%PDF-'
+        elif suffix in {'.docx', '.pptx'}:
+            valid_document = document_header[:4] == bytes((80, 75, 3, 4))
+        elif suffix == '.rtf':
+            valid_document = document_header.lower() == b'{\\rtf'
+        elif suffix in {'.txt', '.md'}:
+            try:
+                partial.read_bytes()[:65536].decode('utf-8-sig')
+                valid_document = True
+            except UnicodeDecodeError:
+                valid_document = False
+        else:
+            valid_document = True
+        if not valid_document:
+            raise HTTPException(415, 'Il contenuto del documento non corrisponde al formato dichiarato')
+        os.chmod(partial, 0o600)
+        os.replace(partial, destination)
     except Exception:
+        partial.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
         raise
     finally:
         await file.close()
+    try:
+        _claim_resource(request, 'asset', asset_id)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
     return {'assetId': asset_id, 'size': size}
 
 class RenderBody(BaseModel):
@@ -71,39 +1151,465 @@ class RenderBody(BaseModel):
     settings: dict[str, Any] = {}
 
 @app.post('/v1/render/jobs')
-def create_render(body: RenderBody):
+def create_render(
+    body: RenderBody,
+    request: Request,
+    idempotency_key: str | None = Header(
+        default=None, alias='Idempotency-Key', max_length=128
+    ),
+):
+    account = _request_account(request)
+    request_fingerprint = None
+    idempotency_scope = None
+    if idempotency_key is not None:
+        if (
+            not 8 <= len(idempotency_key) <= 128
+            or any(ord(character) < 33 or ord(character) > 126 for character in idempotency_key)
+        ):
+            raise HTTPException(400, 'Header Idempotency-Key non valido.')
+        try:
+            canonical_request = json.dumps(
+                {'project': body.project, 'settings': body.settings},
+                ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, 'Richiesta di rendering non valida.') from exc
+        request_fingerprint = hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+        scope_identity = account['userId'] if account is not None else 'local-development'
+        idempotency_scope = hashlib.sha256(
+            ('render:' + scope_identity).encode('utf-8')
+        ).hexdigest()
     # Bound project complexity before starting background FFmpeg work.
     tracks = body.project.get('tracks', [])
     if not isinstance(tracks, list) or len(tracks) > 64:
         raise HTTPException(422, 'Numero di tracce non valido (massimo 64)')
     total_clips = 0
+    referenced_assets: set[str] = set()
     for track in tracks:
         if not isinstance(track, dict) or not isinstance(track.get('clips', []), list):
             raise HTTPException(422, 'Struttura della traccia non valida')
+        track_kind = str(track.get('kind', '')).lower()
+        for clip in track.get('clips', []):
+            if not isinstance(clip, dict):
+                raise HTTPException(422, 'Struttura della clip non valida')
+            clip_kind = str(clip.get('kind', '')).lower()
+            # Text overlays are rendered from their text payload and do not
+            # reference an uploaded asset. Every other clip must use a UUID
+            # generated by this API before any background job is started.
+            if clip_kind != 'text' and track_kind != 'text':
+                asset_id = clip.get('assetId')
+                if not isinstance(asset_id, str) or not _valid_id(asset_id):
+                    raise HTTPException(422, 'Identificativo media non valido')
+                referenced_assets.add(asset_id)
         total_clips += len(track.get('clips', []))
     if total_clips > 500:
         raise HTTPException(422, 'Troppe clip nel progetto (massimo 500)')
-    job_id = uuid.uuid4().hex
+    if account is not None:
+        for asset_id in referenced_assets:
+            _require_resource_owner(request, 'asset', asset_id)
     with lock:
-        jobs[job_id] = {'state':'queued','progress':0.0,'message':'In coda'}
+        job_id = uuid.uuid4().hex
+        job_record = {'state':'queued','progress':0.0,'message':'In coda'}
+        if idempotency_key is not None:
+            # SQLite enforces a unique account-scoped reservation across
+            # concurrent backend instances; the in-memory lock is not relied on.
+            job_record.update({
+                '_idempotency_scope': idempotency_scope,
+                '_idempotency_key': idempotency_key,
+                '_request_fingerprint': request_fingerprint,
+            })
+            try:
+                job_id, created = jobs.create_idempotent_job(
+                    job_id, job_record, idempotency_scope,
+                    idempotency_key, request_fingerprint,
+                )
+            except ValueError as exc:
+                from backend.job_store import IdempotencyConflict
+                if isinstance(exc, IdempotencyConflict):
+                    raise HTTPException(
+                        409,
+                        'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
+                    ) from exc
+                raise
+            if not created:
+                return {'jobId': job_id}
+        else:
+            jobs[job_id] = job_record
+        try:
+            _claim_resource(request, 'job', job_id)
+        except Exception:
+            jobs.pop(job_id, None)
+            raise
         cancel_events[job_id] = threading.Event()
-    threading.Thread(target=_render_job, args=(job_id, body.project, body.settings), daemon=True).start()
+    try:
+        worker = threading.Thread(
+            target=_render_job, args=(job_id, body.project, body.settings), daemon=True,
+        )
+        worker.start()
+    except Exception as exc:
+        # Keep the failed record for diagnostics and idempotent retry, but do
+        # not leave an account-owned ghost job behind when no worker exists.
+        with lock:
+            cancel_events.pop(job_id, None)
+            jobs[job_id].update(
+                state='failed', progress=0.0,
+                message='Avvio del rendering non riuscito. Riprova.',
+                error='worker_start_failed',
+            )
+        if account is not None:
+            try:
+                _account_store().release_media_resource('job', job_id, account['userId'])
+            except Exception:
+                logging.exception('Unable to release render job ownership after worker startup failure')
+        raise HTTPException(
+            503, 'Impossibile avviare il rendering. Riprova più tardi.'
+        ) from exc
     return {'jobId': job_id}
 
+
+def _keyframe_expression(keyframes: list[dict[str, Any]], property_name: str, variable: str) -> str | None:
+    """Build a bounded, piecewise-linear FFmpeg expression for one clip property."""
+    points = []
+    limits = {
+        'positionX': (-1000.0, 1000.0),
+        'positionY': (-1000.0, 1000.0),
+        'scale': (0.1, 5.0),
+        'rotation': (-180.0, 180.0),
+        'opacity': (0.0, 1.0),
+    }
+    minimum, maximum = limits[property_name]
+    for point in keyframes:
+        if not isinstance(point, dict) or point.get('property') != property_name:
+            continue
+        time_ms, raw_value = point.get('timeMs'), point.get('value')
+        if (isinstance(time_ms, bool) or not isinstance(time_ms, int) or time_ms < 0
+                or isinstance(raw_value, bool) or not isinstance(raw_value, (int, float))
+                or not math.isfinite(float(raw_value)) or not minimum <= float(raw_value) <= maximum):
+            raise RuntimeError(f'Keyframe non valido: {property_name}')
+        points.append((time_ms / 1000.0, float(raw_value)))
+    if not points:
+        return None
+    # Stable sort preserves input order so the last duplicate timestamp wins.
+    points.sort(key=lambda item: item[0])
+    unique = []
+    for point in points:
+        if unique and unique[-1][0] == point[0]:
+            unique[-1] = point
+        else:
+            unique.append(point)
+    expression = f'{unique[-1][1]:.8f}'
+    for index in range(len(unique) - 2, -1, -1):
+        left_time, left_value = unique[index]
+        right_time, right_value = unique[index + 1]
+        if right_time == left_time:
+            expression = f'{right_value:.8f}'
+            continue
+        interpolated = (
+            f'({left_value:.8f}+({right_value-left_value:.8f})*'
+            f'({variable}-{left_time:.6f})/{right_time-left_time:.6f})'
+        )
+        expression = (
+            f'if(lt({variable},{right_time:.6f}),{interpolated},{expression})'
+        )
+    first_time, first_value = unique[0]
+    if first_time > 0:
+        expression = f'if(lt({variable},{first_time:.6f}),{first_value:.8f},{expression})'
+    return expression
+
+
+def _render_primary_alpha_layers(
+    job_id: str, project: dict, settings: dict, work: Path,
+    width: int, height: int, fps: int,
+) -> tuple[Path, float]:
+    """Composite primary video/image tracks while preserving per-clip alpha.
+
+    This path is selected when a primary clip has opacity keyframes. Each
+    source remains an RGBA layer until it is composited in track order; the
+    resulting opaque timeline is then passed through the existing overlay and
+    audio export pipeline.
+    """
+    tracks = project.get('tracks', [])
+    visual_tracks = []
+    for track in tracks:
+        if not isinstance(track, dict) or track.get('muted'):
+            continue
+        track_kind = str(track.get('kind', '')).lower()
+        if track_kind in {'audio', 'overlay', 'sticker', 'text'}:
+            continue
+        visual_clips = [
+            clip for clip in track.get('clips', [])
+            if isinstance(clip, dict)
+            and str(clip.get('kind', '')).lower() not in {'audio', 'overlay', 'sticker', 'text'}
+        ]
+        if visual_clips:
+            visual_tracks.append(visual_clips)
+    flattened = [clip for track in visual_tracks for clip in track]
+    if not flattened:
+        raise RuntimeError('Nessuna clip video principale da comporre.')
+
+    # Prepare timeline positions and alpha envelopes for same-track
+    # cross-fades. The next clip moves left by the requested overlap, matching
+    # the overlap produced by the legacy xfade export path.
+    prepared_tracks = []
+    for track_clips in visual_tracks:
+        ordered = sorted(
+            track_clips,
+            key=lambda item: max(0, int(item.get('startMs', 0))),
+        )
+        starts = [max(0, int(clip.get('startMs', 0))) / 1000.0 for clip in ordered]
+        durations = [
+            max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+            for clip in ordered
+        ]
+        fade_ins = [0.0] * len(ordered)
+        fade_outs = [0.0] * len(ordered)
+        transition_ins = ['fade'] * len(ordered)
+        for clip_index, clip in enumerate(ordered[:-1]):
+            raw_ms = clip.get('transitionAfterMs', 0)
+            if isinstance(raw_ms, bool) or not isinstance(raw_ms, int) or raw_ms < 0:
+                raise RuntimeError('Durata transizione non valida')
+            if not raw_ms:
+                continue
+            transition_type = str(clip.get('transitionAfter', 'fade')).lower()
+            if transition_type not in {
+                'fade', 'dissolve', 'wipeleft', 'wiperight',
+                'slideleft', 'slideright',
+            }:
+                raise RuntimeError(
+                    f'Transizione {transition_type} non ancora supportata '
+                    'nel compositing alpha multitraccia.'
+                )
+            transition = min(
+                raw_ms / 1000.0,
+                durations[clip_index] * 0.45,
+                durations[clip_index + 1] * 0.45,
+            )
+            # Keep the outgoing clip opaque beneath the incoming clip.
+            # The incoming alpha ramp alone produces a true cross-dissolve
+            # when composited over the still-visible outgoing frame.
+            fade_ins[clip_index + 1] = max(fade_ins[clip_index + 1], transition)
+            transition_ins[clip_index + 1] = transition_type
+            requested_next_start = starts[clip_index + 1]
+            transition_start = starts[clip_index] + durations[clip_index] - transition
+            # Preserve an intentional overlap; otherwise create the requested
+            # overlap. Do not move a clip before the outgoing clip's start.
+            starts[clip_index + 1] = max(
+                starts[clip_index],
+                min(requested_next_start, transition_start),
+            )
+        prepared_tracks.append([
+            (
+                clip, starts[index], fade_ins[index], fade_outs[index],
+                transition_ins[index],
+            )
+            for index, clip in enumerate(ordered)
+        ])
+
+    prepared_flattened = [item for track in prepared_tracks for item in track]
+    total_duration = max(
+        start + max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+        for clip, start, _fade_in, _fade_out, _transition_type in prepared_flattened
+    )
+    cmd = [FFMPEG, '-y', '-threads', '1']
+    graph = [
+        f'color=c=black:s={width}x{height}:r={fps}:d={total_duration:.6f}[base0]'
+    ]
+    current = '[base0]'
+    input_index = 0
+    layer_number = 0
+
+    for track_clips in prepared_tracks:
+        for (
+            clip, start, transition_fade_in, transition_fade_out,
+            transition_in_type,
+        ) in track_clips:
+            asset_id = clip.get('assetId')
+            if not isinstance(asset_id, str) or not _valid_id(asset_id):
+                raise RuntimeError('Clip senza assetId valido')
+            matches = [
+                path for path in ASSETS.glob(asset_id + '.*')
+                if path.is_file() and path.resolve().parent == ASSETS.resolve()
+            ]
+            if not matches:
+                raise RuntimeError(f'Asset non trovato: {asset_id}')
+            source = matches[0]
+            duration = max(0.1, int(clip.get('durationMs', 3000)) / 1000.0)
+            if str(clip.get('kind', '')).lower() == 'image':
+                cmd += ['-thread_queue_size', '1', '-loop', '1', '-t', f'{duration:.6f}', '-i', str(source)]
+            else:
+                source_start = max(0, int(clip.get('sourceStartMs', 0))) / 1000.0
+                if source_start:
+                    cmd += ['-ss', f'{source_start:.6f}']
+                cmd += ['-thread_queue_size', '1', '-i', str(source)]
+
+            keyframes = clip.get('keyframes') or []
+            if not isinstance(keyframes, list) or len(keyframes) > 100:
+                raise RuntimeError('Numero di keyframe non valido (massimo 100 per clip)')
+            supported = {'positionX', 'positionY', 'scale', 'rotation', 'opacity'}
+            if any(not isinstance(point, dict) or point.get('property') not in supported for point in keyframes):
+                raise RuntimeError('Proprietà keyframe non supportata')
+
+            grade = clip.get('colorGrade') or {}
+            if not isinstance(grade, dict):
+                raise RuntimeError('Impostazioni color grading non valide')
+            def grade_value(name, fallback, minimum, maximum):
+                raw = grade.get(name, fallback)
+                if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+                    raise RuntimeError(f'Valore color grading non valido: {name}')
+                return max(minimum, min(maximum, float(raw)))
+
+            brightness = max(-1.0, min(1.0, float(clip.get('brightness', 0.0))))
+            contrast = grade_value('contrast', clip.get('contrast', 1.0), 0.0, 3.0)
+            saturation = grade_value('saturation', clip.get('saturation', 1.0), 0.0, 3.0)
+            exposure = grade_value('exposure', 0.0, -5.0, 5.0)
+            temperature = grade_value('temperature', 0.0, -100.0, 100.0) / 200.0
+            tint = grade_value('tint', 0.0, -100.0, 100.0) / 200.0
+            highlights = grade_value('highlights', 0.0, -1.0, 1.0)
+            shadows = grade_value('shadows', 0.0, -1.0, 1.0)
+            filters = [
+                f'trim=duration={duration:.6f}',
+                'setpts=PTS-STARTPTS',
+                f'fps={fps}',
+                f'scale={width}:{height}:force_original_aspect_ratio=decrease',
+                'format=rgba',
+                f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black@0',
+                'setsar=1',
+                f'eq=brightness={brightness}:contrast={contrast}:saturation={saturation}',
+            ]
+            if exposure:
+                filters.append(f'exposure=exposure={exposure:.6f}')
+            if any((temperature, tint, highlights, shadows)):
+                filters.append(
+                    'colorbalance='
+                    f'rs={max(-1.0,min(1.0,temperature-tint/2+shadows/2)):.6f}:'
+                    f'gs={max(-1.0,min(1.0,tint+shadows/2)):.6f}:'
+                    f'bs={max(-1.0,min(1.0,-temperature-tint/2-shadows/2)):.6f}:'
+                    f'rh={max(-1.0,min(1.0,temperature-tint/2+highlights/2)):.6f}:'
+                    f'gh={max(-1.0,min(1.0,tint+highlights/2)):.6f}:'
+                    f'bh={max(-1.0,min(1.0,-temperature-tint/2-highlights/2)):.6f}'
+                )
+            rotation = float(clip.get('rotationDegrees', 0.0)) % 360.0
+            if rotation:
+                filters.append(f'rotate={math.radians(rotation):.6f}:ow={width}:oh={height}:c=black@0')
+
+            scale_expr = _keyframe_expression(keyframes, 'scale', 't')
+            x_expr = _keyframe_expression(keyframes, 'positionX', 't')
+            y_expr = _keyframe_expression(keyframes, 'positionY', 't')
+            rotation_expr = _keyframe_expression(keyframes, 'rotation', 't')
+            opacity_expr = _keyframe_expression(keyframes, 'opacity', 'T')
+            if scale_expr is not None:
+                filters.append(
+                    f"scale=w='max(2,ceil({width}*({scale_expr})/2)*2)':"
+                    f"h='max(2,ceil({height}*({scale_expr})/2)*2)':eval=frame"
+                )
+                filters.append(
+                    f"pad=w='max(iw,{width})':h='max(ih,{height})':"
+                    "x='(ow-iw)/2':y='(oh-ih)/2':color=black@0"
+                )
+                crop_x = f'(iw-ow)/2-({x_expr or "0"})'
+                crop_y = f'(ih-oh)/2-({y_expr or "0"})'
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{crop_x}))':"
+                    f"y='max(0,min(ih-oh,{crop_y}))'"
+                )
+            elif x_expr is not None or y_expr is not None:
+                filters.append(f'pad={width * 3}:{height * 3}:{width}:{height}:color=black@0')
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{width}-({x_expr or '0'})))':"
+                    f"y='max(0,min(ih-oh,{height}-({y_expr or '0'})))'"
+                )
+            if rotation_expr is not None:
+                filters.append(
+                    f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black@0"
+                )
+            alpha_factors = [opacity_expr or '1']
+            if transition_fade_in > 0 and transition_in_type in {'fade', 'dissolve'}:
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"max(0,T/{transition_fade_in:.6f}),1)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'wipeleft':
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"if(lt(X,W*T/{transition_fade_in:.6f}),1,0),1)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'wiperight':
+                alpha_factors.append(
+                    f"if(lt(T,{transition_fade_in:.6f}),"
+                    f"if(gt(X,W*(1-T/{transition_fade_in:.6f})),1,0),1)"
+                )
+            if transition_fade_out > 0:
+                fade_out_start = max(0.0, duration - transition_fade_out)
+                alpha_factors.append(
+                    f"if(gt(T,{fade_out_start:.6f}),"
+                    f"max(0,({duration:.6f}-T)/{transition_fade_out:.6f}),1)"
+                )
+            if opacity_expr is not None or transition_fade_in > 0 or transition_fade_out > 0:
+                alpha_expression = '*'.join(f'({factor})' for factor in alpha_factors)
+                filters.append(
+                    f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+                    f"a='alpha(X,Y)*({alpha_expression})'"
+                )
+            filters.append(f'setpts=PTS-STARTPTS+{start:.6f}/TB')
+            layer_label = f'[primary{layer_number}]'
+            graph.append(f'[{input_index}:v]{",".join(filters)}{layer_label}')
+            mixed_label = f'[primarymix{layer_number}]'
+            overlay_x = '0'
+            if transition_fade_in > 0 and transition_in_type == 'slideleft':
+                overlay_x = (
+                    f"if(lt(t,{start + transition_fade_in:.6f}),"
+                    f"{width}*(1-(t-{start:.6f})/{transition_fade_in:.6f}),0)"
+                )
+            elif transition_fade_in > 0 and transition_in_type == 'slideright':
+                overlay_x = (
+                    f"if(lt(t,{start + transition_fade_in:.6f}),"
+                    f"-{width}*(1-(t-{start:.6f})/{transition_fade_in:.6f}),0)"
+                )
+            graph.append(
+                f"{current}{layer_label}overlay=x='{overlay_x}':y=0:format=auto:"
+                f'eof_action=pass:repeatlast=0:shortest=0{mixed_label}'
+            )
+            current = mixed_label
+            input_index += 1
+            layer_number += 1
+
+    intermediate = work / 'primary_alpha_composite.mp4'
+    cmd += [
+        # Bound filter-graph worker threads: RGBA 720p frames can otherwise
+        # exhaust constrained shared-memory pools on mobile/container hosts.
+        # Also bound simple filter pipelines used by automatic format conversion;
+        # complex-graph threads alone do not constrain those auxiliary pipelines.
+        '-filter_threads', '1',
+        '-filter_complex_threads', '1',
+        '-filter_complex', ';'.join(graph),
+        '-map', current, '-an', '-t', f'{total_duration:.6f}',
+        '-c:v', 'libx264', '-threads', '1', '-preset', 'ultrafast',
+        '-crf', '16', '-pix_fmt', 'yuv420p', '-r', str(fps),
+        str(intermediate),
+    ]
+    result = _run_ffmpeg(job_id, cmd, timeout=max(180, total_duration * 20))
+    if result.returncode:
+        raise RuntimeError('FFmpeg compositing alpha: ' + result.stderr[-1800:])
+    return intermediate, total_duration
+
+
 def _render_job(job_id: str, project: dict, settings: dict):
-    work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True)
+    work = ROOT/'work'/job_id; work.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(work, 0o700)
+    except OSError:
+        pass
+    output: Path | None = None
     try:
         if cancel_events.get(job_id, threading.Event()).is_set():
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
             return
         if not shutil.which(FFMPEG): raise RuntimeError('FFmpeg non installato sul server')
-        width = int(project.get('width', 1080)); height = int(project.get('height', 1920))
+        res = str(settings.get('resolution', 'p1080'))
+        width, height = _render_dimensions(project, res)
         fps = max(24, min(120, int(settings.get('fps', project.get('fps', 30)))))
-        res = str(settings.get('resolution','p1080'))
-        if res == 'p720': width,height=1280,720
-        elif res == 'p1080': width,height=1920,1080
-        elif res == 'p1440': width,height=2560,1440
-        elif res == 'p2160': width,height=3840,2160
         clips=[]
         audio_clips=[]
         overlay_clips=[]
@@ -123,24 +1629,112 @@ def _render_job(job_id: str, project: dict, settings: dict):
         if not clips: raise RuntimeError('Il progetto non contiene clip video o immagini renderizzabili')
         segments=[]
         clip_durations=[]
-        for index, clip in enumerate(clips):
+        primary_opacity_requested = any(
+            str(track.get('kind', '')).lower() not in {'audio', 'overlay', 'sticker', 'text'}
+            and any(
+                isinstance(point, dict)
+                and point.get('property') == 'opacity'
+                for clip in track.get('clips', [])
+                if isinstance(clip, dict)
+                for point in (clip.get('keyframes') or [])
+            )
+            for track in project.get('tracks', [])
+            if isinstance(track, dict) and not track.get('muted')
+        )
+        if primary_opacity_requested:
+            alpha_segment, alpha_duration = _render_primary_alpha_layers(
+                job_id, project, settings, work, width, height, fps,
+            )
+            segments.append(alpha_segment)
+            clip_durations.append(alpha_duration)
+            clips = [{'transitionAfterMs': 0, 'transitionAfter': 'fade'}]
+        for index, clip in enumerate([] if primary_opacity_requested else clips):
             if cancel_events.get(job_id, threading.Event()).is_set():
                 with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
                 return
             asset_id = clip.get('assetId')
-            if not asset_id or not str(asset_id).isalnum(): raise RuntimeError('Clip senza assetId valido')
+            if not isinstance(asset_id, str) or not _valid_id(asset_id): raise RuntimeError('Clip senza assetId valido')
             matches=list(ASSETS.glob(str(asset_id)+'.*'))
             if not matches: raise RuntimeError(f'Asset non trovato: {asset_id}')
             src=matches[0]; duration=max(0.1, int(clip.get('durationMs',3000))/1000)
             segment=work/f'{index:04d}.mp4'
+            grade=clip.get('colorGrade') or {}
+            if not isinstance(grade, dict):
+                raise RuntimeError('Impostazioni color grading non valide')
+            def grade_value(name, fallback, minimum, maximum):
+                raw=grade.get(name, fallback)
+                if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+                    raise RuntimeError(f'Valore color grading non valido: {name}')
+                return max(minimum, min(maximum, float(raw)))
+            import math
             brightness=max(-1.0,min(1.0,float(clip.get('brightness',0.0))))
-            contrast=max(0.0,min(3.0,float(clip.get('contrast',1.0))))
-            saturation=max(0.0,min(3.0,float(clip.get('saturation',1.0))))
+            exposure=grade_value('exposure', 0.0, -5.0, 5.0)
+            contrast=grade_value('contrast', clip.get('contrast', 1.0), 0.0, 3.0)
+            saturation=grade_value('saturation', clip.get('saturation', 1.0), 0.0, 3.0)
+            temperature=grade_value('temperature', 0.0, -100.0, 100.0) / 200.0
+            tint=grade_value('tint', 0.0, -100.0, 100.0) / 200.0
+            highlights=grade_value('highlights', 0.0, -1.0, 1.0)
+            shadows=grade_value('shadows', 0.0, -1.0, 1.0)
             rotation=float(clip.get('rotationDegrees',0.0)) % 360.0
             filters=[f'scale={width}:{height}:force_original_aspect_ratio=decrease','pad={}:{}:(ow-iw)/2:(oh-ih)/2'.format(width,height),'setsar=1',f'eq=brightness={brightness}:contrast={contrast}:saturation={saturation}']
+            if exposure:
+                filters.append(f'exposure=exposure={exposure:.6f}')
+            if any((temperature, tint, highlights, shadows)):
+                red_shadow=max(-1.0,min(1.0,temperature-tint/2+shadows/2))
+                green_shadow=max(-1.0,min(1.0,tint+shadows/2))
+                blue_shadow=max(-1.0,min(1.0,-temperature-tint/2-shadows/2))
+                red_high=max(-1.0,min(1.0,temperature-tint/2+highlights/2))
+                green_high=max(-1.0,min(1.0,tint+highlights/2))
+                blue_high=max(-1.0,min(1.0,-temperature-tint/2-highlights/2))
+                filters.append(
+                    f'colorbalance=rs={red_shadow:.6f}:gs={green_shadow:.6f}:bs={blue_shadow:.6f}:'
+                    f'rh={red_high:.6f}:gh={green_high:.6f}:bh={blue_high:.6f}'
+                )
             if rotation:
                 import math
                 filters.append(f'rotate={math.radians(rotation):.6f}:ow={width}:oh={height}:c=black')
+            keyframes = clip.get('keyframes') or []
+            if not isinstance(keyframes, list) or len(keyframes) > 100:
+                raise RuntimeError('Numero di keyframe non valido (massimo 100 per clip)')
+            supported_properties = {'positionX', 'positionY', 'scale', 'rotation', 'opacity'}
+            if any(not isinstance(point, dict) or point.get('property') not in supported_properties for point in keyframes):
+                raise RuntimeError('Proprietà keyframe non supportata')
+            scale_expr = _keyframe_expression(keyframes, 'scale', 't')
+            position_x_expr = _keyframe_expression(keyframes, 'positionX', 't')
+            position_y_expr = _keyframe_expression(keyframes, 'positionY', 't')
+            rotation_expr = _keyframe_expression(keyframes, 'rotation', 't')
+            opacity_expr = _keyframe_expression(keyframes, 'opacity', 'T')
+            if scale_expr is not None:
+                filters.append(
+                    f"scale=w='max(2,ceil({width}*({scale_expr})/2)*2)':"
+                    f"h='max(2,ceil({height}*({scale_expr})/2)*2)':eval=frame"
+                )
+                filters.append(
+                    f"pad=w='max(iw,{width})':h='max(ih,{height})':"
+                    "x='(ow-iw)/2':y='(oh-ih)/2':color=black"
+                )
+                crop_x = f'(iw-ow)/2-({position_x_expr or "0"})'
+                crop_y = f'(ih-oh)/2-({position_y_expr or "0"})'
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{crop_x}))':"
+                    f"y='max(0,min(ih-oh,{crop_y}))'"
+                )
+            elif position_x_expr is not None or position_y_expr is not None:
+                # Add a transparent-free safety canvas so a position animation
+                # can move the image in either direction without changing output size.
+                filters.append(
+                    f'pad={width * 3}:{height * 3}:{width}:{height}:color=black'
+                )
+                filters.append(
+                    f"crop={width}:{height}:"
+                    f"x='max(0,min(iw-ow,{width}-({position_x_expr or '0'})))':"
+                    f"y='max(0,min(ih-oh,{height}-({position_y_expr or '0'})))'"
+                )
+            if rotation_expr is not None:
+                filters.append(
+                    f"rotate='({rotation_expr})*PI/180':ow={width}:oh={height}:c=black"
+                )
             filters.append(f'fps={fps}')
             common=['-vf',','.join(filters), '-an','-t',str(duration),'-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast']
             if clip.get('kind') == 'image':
@@ -150,7 +1744,7 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 cmd=[FFMPEG,'-y']
                 if source_start: cmd += ['-ss',str(source_start)]
                 cmd += ['-i',str(src),*common,str(segment)]
-            result=subprocess.run(cmd, capture_output=True, text=True, timeout=max(120,duration*10))
+            result=_run_ffmpeg(job_id, cmd, timeout=max(120,duration*10))
             if result.returncode: raise RuntimeError('FFmpeg: '+result.stderr[-1800:])
             segments.append(segment)
             clip_durations.append(duration)
@@ -168,13 +1762,17 @@ def _render_job(job_id: str, project: dict, settings: dict):
                 transitions.append((trans_type, trans_duration))
             else:
                 transitions.append((None, 0.0))
+        video_duration = max(
+            0.1,
+            sum(clip_durations) - sum(duration for _, duration in transitions),
+        )
         container=str(settings.get('container','mp4')).lower()
         ext=container if container in {'mp4','mov','avi','webm'} else 'mp4'
         codec=str(settings.get('codec','h264')).lower()
         vcodec={'h264':'libx264','h265':'libx265','vp9':'libvpx-vp9'}.get(codec,'libx264')
         output=OUTPUTS/f'{job_id}.{ext}'
-        cmd=[FFMPEG,'-y']
-        for segment in segments: cmd += ['-i', str(segment)]
+        cmd=[FFMPEG,'-y','-threads','1']
+        for segment in segments: cmd += ['-thread_queue_size', '1', '-i', str(segment)]
         graph=[]
         if len(segments) == 1:
             video_label='[0:v]'
@@ -197,12 +1795,12 @@ def _render_job(job_id: str, project: dict, settings: dict):
         audio_filters=[]
         for audio_index, clip in enumerate(audio_clips, start=audio_input_start):
             asset_id=clip.get('assetId')
-            if not asset_id or not str(asset_id).isalnum(): raise RuntimeError('Traccia audio senza assetId valido')
+            if not isinstance(asset_id, str) or not _valid_id(asset_id): raise RuntimeError('Traccia audio senza assetId valido')
             matches=list(ASSETS.glob(str(asset_id)+'.*'))
             if not matches: raise RuntimeError(f'Asset audio non trovato: {asset_id}')
             source_start=max(0, int(clip.get('sourceStartMs',0)))/1000.0
             if source_start: cmd += ['-ss', str(source_start)]
-            cmd += ['-i', str(matches[0])]
+            cmd += ['-thread_queue_size', '1', '-i', str(matches[0])]
             duration=max(0.1, int(clip.get('durationMs',3000))/1000)
             delay=max(0, int(clip.get('startMs',0)))
             volume=max(0.0, min(4.0, float(clip.get('volume',1.0))))
@@ -235,39 +1833,77 @@ def _render_job(job_id: str, project: dict, settings: dict):
                     color='#FFFFFF'
                 draw.multiline_text((4,4),text_value,fill=color,font=font,spacing=4,stroke_width=max(0,min(8,int(clip.get('strokeWidth',1)))),stroke_fill='#000000')
                 src=work/f'text_{overlay_index}.png'; canvas.save(src)
-                cmd += ['-loop','1','-t',str(duration),'-i',str(src)]
+                cmd += ['-thread_queue_size','1','-loop','1','-t',str(duration),'-i',str(src)]
             else:
                 asset_id=clip.get('assetId')
-                if not asset_id or not str(asset_id).isalnum(): raise RuntimeError('Overlay senza assetId valido')
+                if not isinstance(asset_id, str) or not _valid_id(asset_id): raise RuntimeError('Overlay senza assetId valido')
                 matches=list(ASSETS.glob(str(asset_id)+'.*'))
                 if not matches: raise RuntimeError(f'Asset overlay non trovato: {asset_id}')
                 src=matches[0]
-                if clip_kind == 'image': cmd += ['-loop','1','-t',str(duration),'-i',str(src)]
-                else: cmd += ['-stream_loop','-1','-t',str(duration),'-i',str(src)]
+                if clip_kind == 'image': cmd += ['-thread_queue_size','1','-loop','1','-t',str(duration),'-i',str(src)]
+                else: cmd += ['-thread_queue_size','1','-stream_loop','-1','-t',str(duration),'-i',str(src)]
             x=max(0,int(clip.get('x',0))); y=max(0,int(clip.get('y',0)))
             opacity=max(0.0,min(1.0,float(clip.get('opacity',1.0))))
             start=max(0,int(clip.get('startMs',0)))/1000.0
             end=start+duration
             prepared=f'[ov{overlay_index}]'; composed=f'[mix{overlay_index}]'
             rotation=float(clip.get('rotationDegrees',0.0)) % 360.0
-            import math
-            overlay_chain=f'scale={width_px}:{height_px},format=rgba,colorchannelmixer=aa={opacity}'
-            if rotation: overlay_chain += f',rotate={math.radians(rotation):.6f}:c=none:ow=rotw(iw):oh=roth(ih)'
+            overlay_keyframes=clip.get('keyframes') or []
+            if not isinstance(overlay_keyframes,list) or len(overlay_keyframes)>100:
+                raise RuntimeError('Numero di keyframe overlay non valido (massimo 100)')
+            supported_properties={'positionX','positionY','scale','rotation','opacity'}
+            if any(not isinstance(point,dict) or point.get('property') not in supported_properties for point in overlay_keyframes):
+                raise RuntimeError('Proprietà keyframe overlay non supportata')
+            # Overlay inputs are timestamped from zero; their own scale,
+            # rotation and alpha filters therefore use local stream time.
+            # Overlay x/y expressions are evaluated on the main timeline.
+            overlay_local_t='t'
+            overlay_local_T='T'
+            timeline_t=f'(t-{start:.6f})'
+            scale_expr=_keyframe_expression(overlay_keyframes,'scale',overlay_local_t)
+            x_expr=_keyframe_expression(overlay_keyframes,'positionX',timeline_t)
+            y_expr=_keyframe_expression(overlay_keyframes,'positionY',timeline_t)
+            rotation_expr=_keyframe_expression(overlay_keyframes,'rotation',overlay_local_t)
+            opacity_expr=_keyframe_expression(overlay_keyframes,'opacity',overlay_local_T)
+            scale_w=f"'{width_px}*({scale_expr})'" if scale_expr else str(width_px)
+            scale_h=f"'{height_px}*({scale_expr})'" if scale_expr else str(height_px)
+            overlay_chain=f'scale=w={scale_w}:h={scale_h}:eval=frame,format=rgba'
+            if opacity_expr is not None:
+                overlay_chain += f",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity:.6f})*({opacity_expr})'"
+            elif opacity != 1.0:
+                overlay_chain += f',colorchannelmixer=aa={opacity:.6f}'
+            if rotation_expr is not None:
+                overlay_chain += f",rotate='({rotation_expr})*PI/180':c=none:ow=rotw(iw):oh=roth(ih)"
+            elif rotation:
+                overlay_chain += f',rotate={math.radians(rotation):.6f}:c=none:ow=rotw(iw):oh=roth(ih)'
             fade_in=max(0.0,min(duration,float(clip.get('fadeInMs',0))/1000.0))
             fade_out=max(0.0,min(duration,float(clip.get('fadeOutMs',0))/1000.0))
             if fade_in: overlay_chain += f',fade=t=in:st=0:d={fade_in:.3f}:alpha=1'
             if fade_out: overlay_chain += f',fade=t=out:st={max(0.0,duration-fade_out):.3f}:d={fade_out:.3f}:alpha=1'
             overlay_filters.append(f'[{overlay_index}:v]{overlay_chain}{prepared}')
-            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x}:y={y}:enable='between(t,{start:.3f},{end:.3f})'{composed}")
+            x_position=f"'{x}+({x_expr})'" if x_expr is not None else str(x)
+            y_position=f"'{y}+({y_expr})'" if y_expr is not None else str(y)
+            # Do not retain the final overlay frame after its clip ends; this keeps
+            # framesync bounded and lets the base video continue independently.
+            overlay_filters.append(f"{current_video_label}{prepared}overlay=x={x_position}:y={y_position}:eval=frame:eof_action=pass:repeatlast=0:shortest=0:enable='between(t,{start:.3f},{end:.3f})'{composed}")
             current_video_label=composed
         if overlay_filters: video_label=current_video_label
-        cmd += ['-c:v',vcodec,'-r',str(fps)]
+        cmd += ['-c:v',vcodec,'-threads','1','-r',str(fps)]
         if audio_filters:
             labels=''.join(f'[a{i}]' for i in range(audio_input_start,audio_input_start+len(audio_clips)))
-            audio_filters.append(f'{labels}amix=inputs={len(audio_clips)}:duration=longest:dropout_transition=2,apad[aout]')
+            # Bound audio padding to the actual video timeline. An unbounded
+            # apad can keep producing samples after the video ends; FFmpeg may
+            # then exhaust its internal filter FIFO while -shortest is flushing.
+            audio_filters.append(
+                f'{labels}amix=inputs={len(audio_clips)}:duration=longest:'
+                f'dropout_transition=2,apad=whole_dur={video_duration:.6f}[aout]'
+            )
         all_filters=graph+overlay_filters+audio_filters
         if all_filters:
-            cmd += ['-filter_complex',';'.join(all_filters),'-map',(video_label if graph or overlay_filters else '0:v:0')]
+            # Keep the final overlay/audio graph within predictable memory
+            # bounds on mobile and container deployments.
+            # Limit both ordinary and complex filter pools on constrained runners.
+            cmd += ['-filter_threads','1','-filter_complex_threads','1','-filter_complex',';'.join(all_filters),'-map',(video_label if graph or overlay_filters else '0:v:0')]
             if audio_filters: cmd += ['-map','[aout]','-c:a','aac','-b:a','192k','-shortest']
             else: cmd += ['-an']
         else:
@@ -277,38 +1913,86 @@ def _render_job(job_id: str, project: dict, settings: dict):
         if cancel_events.get(job_id, threading.Event()).is_set():
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
             return
-        result=subprocess.run(cmd,capture_output=True,text=True,timeout=1800)
-        if result.returncode: raise RuntimeError('FFmpeg finale: '+result.stderr[-1800:])
+        result=_run_ffmpeg(job_id, cmd, timeout=1800)
+        if result.returncode:
+            logging.error('FFmpeg final filter graph: %s', ';'.join(all_filters))
+            raise RuntimeError('FFmpeg finale: '+result.stderr[-10000:])
         if cancel_events.get(job_id, threading.Event()).is_set():
             output.unlink(missing_ok=True)
             with lock: jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
         else:
-            with lock: jobs[job_id].update(state='completed',progress=1.0,message='Rendering completato',downloadUrl=f'/v1/outputs/{job_id}')
-    except Exception as exc:
-        with lock: jobs[job_id].update(state='failed',progress=1.0,message='Rendering non riuscito',error=traceback.format_exc())
+            try:
+                os.chmod(output, 0o600)
+            except OSError:
+                logging.warning('Unable to restrict rendered output permissions for job %s', job_id)
+            # Serialize the final state transition with DELETE /v1/jobs. A
+            # cancellation accepted before this lock must never become completed.
+            with lock:
+                if (
+                    cancel_events.get(job_id, threading.Event()).is_set()
+                    or jobs.get(job_id, {}).get('state') == 'cancelled'
+                ):
+                    output.unlink(missing_ok=True)
+                    jobs[job_id].update(
+                        state='cancelled', progress=0.0, message='Annullato'
+                    )
+                else:
+                    jobs[job_id].update(
+                        state='completed',
+                        progress=1.0,
+                        message='Rendering completato',
+                        downloadUrl=f'/v1/outputs/{job_id}',
+                    )
+    except Exception:
+        # Remove a partially written output when FFmpeg or post-processing fails.
+        if output is not None:
+            output.unlink(missing_ok=True)
+        # Keep detailed diagnostics in server logs, never expose tracebacks or
+        # filesystem paths through the client-facing job status endpoint.
+        logging.exception('Media render job %s failed', job_id)
+        with lock:
+            if (
+                cancel_events.get(job_id, threading.Event()).is_set()
+                or jobs.get(job_id, {}).get('state') == 'cancelled'
+            ):
+                jobs[job_id].update(
+                    state='cancelled', progress=0.0, message='Annullato'
+                )
+            else:
+                jobs[job_id].update(
+                    state='failed',
+                    progress=1.0,
+                    message='Rendering non riuscito',
+                    error='Errore interno durante il rendering. Consultare i log del server.',
+                )
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 @app.get('/v1/jobs/{job_id}')
-def get_job(job_id: str):
+def get_job(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock: data=jobs.get(job_id)
     if not data: raise HTTPException(404,'Job non trovato')
-    return data
+    # Never expose internal idempotency scope, keys or request fingerprints.
+    return {key: value for key, value in data.items() if not key.startswith('_')}
 
 @app.delete('/v1/jobs/{job_id}')
-def cancel_job(job_id: str):
+def cancel_job(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock:
         if job_id not in jobs: raise HTTPException(404,'Job non trovato')
         if jobs[job_id]['state'] in {'queued','rendering'}:
             cancel_events.setdefault(job_id, threading.Event()).set()
+            _stop_render_process(job_id)
             jobs[job_id].update(state='cancelled',message='Annullamento richiesto')
     return {'ok':True}
 
 @app.get('/v1/outputs/{job_id}')
-def download_output(job_id: str):
+def download_output(job_id: str, request: Request):
     if not _valid_id(job_id): raise HTTPException(400, 'Identificativo job non valido')
+    _require_resource_owner(request, 'job', job_id)
     with lock:
         job = jobs.get(job_id)
         if not job: raise HTTPException(404, 'Job non trovato')
@@ -317,6 +2001,669 @@ def download_output(job_id: str):
     if not matches: raise HTTPException(404,'Output non disponibile')
     return FileResponse(matches[0], filename='editore_video'+matches[0].suffix)
 
+def _magic_job(job_id: str, asset_paths: dict[str, Path], options: dict[str, Any]):
+    try:
+        with lock:
+            if cancel_events[job_id].is_set():
+                jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
+                return
+            jobs[job_id].update(state='rendering', progress=0.1, message='Analisi dei media')
+        plan = create_magic_plan(asset_paths, options, cancel_events[job_id])
+        with lock:
+            if cancel_events[job_id].is_set():
+                jobs[job_id].update(state='cancelled', progress=0.0, message='Annullato')
+            else:
+                jobs[job_id].update(
+                    state='succeeded', progress=1.0,
+                    message='Proposta MagicIAedit pronta', result=plan,
+                )
+    except MagicIAError as exc:
+        with lock:
+            state = 'cancelled' if cancel_events[job_id].is_set() else 'failed'
+            jobs[job_id].update(state=state, progress=0.0, message=str(exc))
+    except Exception:
+        with lock:
+            jobs[job_id].update(
+                state='failed', progress=0.0,
+                message='Errore interno durante l’elaborazione MagicIAedit',
+            )
+
+
 @app.post('/v1/ai/jobs')
-def ai_unavailable():
-    raise HTTPException(503, 'Provider AI non configurato: collegare un modello autorizzato prima di attivare i job AI.')
+def create_ai_job(
+    body: dict[str, Any],
+    request: Request,
+    idempotency_key: str | None = Header(
+        default=None, alias='Idempotency-Key', max_length=128
+    ),
+):
+    account = _request_account(request)
+    if not provider_configured():
+        raise HTTPException(
+            503,
+            'Provider cloud non configurato: impostare MAGICIA_API_BASE_URL, MAGICIA_MODEL e MAGICIA_API_KEY sul server.',
+        )
+    task = str(body.get('task', 'magicIAedit')).lower()
+    if task not in {'magiciaedit', 'magic_ia_edit'}:
+        raise HTTPException(422, 'Attività IA non supportata da questo endpoint.')
+    asset_ids = body.get('assetIds')
+    if asset_ids is None:
+        asset_ids = [body.get('assetId')]
+    if not isinstance(asset_ids, list) or not 1 <= len(asset_ids) <= 20:
+        raise HTTPException(422, 'Seleziona da 1 a 20 foto o video.')
+    if any(not isinstance(asset_id, str) or not _valid_id(asset_id) for asset_id in asset_ids):
+        raise HTTPException(422, 'Identificativo media non valido.')
+    if len(set(asset_ids)) != len(asset_ids):
+        raise HTTPException(422, 'La selezione contiene media duplicati.')
+
+    if account is not None:
+        for asset_id in asset_ids:
+            _require_resource_owner(request, 'asset', asset_id)
+    asset_paths: dict[str, Path] = {}
+    allowed = {'.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.webm', '.m4v'}
+    for asset_id in asset_ids:
+        matches = [
+            path for path in ASSETS.glob(asset_id + '.*')
+            if path.is_file() and path.suffix.lower() in allowed
+            and path.resolve().parent == ASSETS.resolve()
+        ]
+        if not matches:
+            raise HTTPException(404, 'Uno dei media selezionati non è disponibile.')
+        asset_paths[asset_id] = matches[0]
+
+    options = body.get('options', {})
+    if not isinstance(options, dict):
+        raise HTTPException(422, 'Opzioni MagicIAedit non valide.')
+
+    idempotent = idempotency_key is not None
+    job_id = uuid.uuid4().hex
+    if idempotent:
+        if (
+            not 8 <= len(idempotency_key) <= 128
+            or any(ord(character) < 33 or ord(character) > 126 for character in idempotency_key)
+        ):
+            raise HTTPException(400, 'Header Idempotency-Key non valido.')
+        try:
+            canonical_request = json.dumps(
+                {'task': task, 'assetIds': asset_ids, 'options': options},
+                ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, 'Richiesta MagicIAedit non valida.') from exc
+        fingerprint = hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+        scope_identity = account['userId'] if account is not None else 'local-development'
+        scope = hashlib.sha256(('magiciaedit:' + scope_identity).encode('utf-8')).hexdigest()
+        job_record = {
+            'state': 'queued',
+            'progress': 0.0,
+            'message': 'In coda',
+            '_idempotency_scope': scope,
+            '_idempotency_key': idempotency_key,
+            '_request_fingerprint': fingerprint,
+            # A restarted AI request has no resumable provider execution context.
+            # Keep the original failed job instead of silently charging a second
+            # quota reservation; the user can explicitly retry with a new key.
+            '_retry_infra_failure': False,
+        }
+        try:
+            job_id, created = jobs.create_idempotent_job(
+                job_id, job_record, scope, idempotency_key, fingerprint,
+            )
+        except ValueError as exc:
+            from backend.job_store import IdempotencyConflict
+            if isinstance(exc, IdempotencyConflict):
+                raise HTTPException(
+                    409,
+                    'La stessa Idempotency-Key è già stata usata con contenuti differenti.',
+                ) from exc
+            raise
+        if not created:
+            return {'jobId': job_id, 'replayed': True}
+
+    usage = None
+    if account is not None:
+        is_premium = _entitlement_store().has_premium(account['userId'])
+        limit = _ai_monthly_limit(is_premium)
+        try:
+            usage = _usage_store().reserve(account['userId'], job_id, limit)
+        except UsageLimitError as exc:
+            if idempotent:
+                jobs.pop(job_id, None)
+            raise HTTPException(
+                429,
+                detail={
+                    'code': 'monthly_ai_quota_exceeded',
+                    'message': 'Hai raggiunto il limite mensile di elaborazioni IA del tuo piano.',
+                    'limit': exc.limit,
+                    'period': exc.period,
+                },
+            ) from exc
+    try:
+        _claim_resource(request, 'job', job_id)
+    except Exception:
+        # Do not charge a monthly AI request if account ownership could not
+        # be recorded and the job therefore cannot be accepted.
+        if account is not None and usage is not None:
+            try:
+                _usage_store().release(account['userId'], job_id, usage['period'])
+            except Exception:
+                logging.exception('Unable to release MagicIAedit quota reservation')
+        if idempotent:
+            jobs.pop(job_id, None)
+        raise
+    with lock:
+        if not idempotent:
+            jobs[job_id] = {'state': 'queued', 'progress': 0.0, 'message': 'In coda'}
+        cancel_events[job_id] = threading.Event()
+    try:
+        worker = threading.Thread(
+            target=_magic_job, args=(job_id, asset_paths, options), daemon=True,
+        )
+        worker.start()
+    except Exception as exc:
+        # A failed worker launch must not leave a ghost queued job, an orphaned
+        # ownership claim, or a consumed monthly AI reservation.
+        with lock:
+            jobs.pop(job_id, None)
+            cancel_events.pop(job_id, None)
+        if account is not None:
+            try:
+                _account_store().release_media_resource('job', job_id, account['userId'])
+            except Exception:
+                logging.exception('Unable to release MagicIAedit job ownership after worker startup failure')
+            if usage is not None:
+                try:
+                    _usage_store().release(account['userId'], job_id, usage['period'])
+                except Exception:
+                    logging.exception('Unable to release MagicIAedit quota after worker startup failure')
+        raise HTTPException(
+            503, 'Impossibile avviare il processo MagicIAedit. Riprova più tardi.'
+        ) from exc
+    response = {'jobId': job_id}
+    if usage is not None:
+        response['usage'] = usage
+    if idempotent:
+        response['replayed'] = False
+    return response
+
+
+def _permission_policy() -> PermissionPolicy:
+    return PermissionPolicy(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+@app.get('/v1/owner/accounts/{user_id}/permissions')
+def owner_get_account_permissions(user_id: str, request: Request):
+    _require_owner(request)
+    account = _account_store().get_account(user_id)
+    if account is None:
+        raise HTTPException(404, 'Account non trovato.')
+    policy = _permission_policy()
+    return {
+        'userId': user_id,
+        'role': account['role'],
+        'effectivePermissions': policy.effective_permissions(user_id, account['role']),
+        'overrides': policy.list_overrides('owner', user_id),
+    }
+
+
+@app.put('/v1/owner/accounts/{user_id}/permissions')
+def owner_set_account_permission(user_id: str, body: OwnerPermissionOverride, request: Request):
+    owner = _require_owner(request)
+    account = _account_store().get_account(user_id)
+    if account is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        _permission_policy().set_override('owner', user_id, body.permission, body.effect)
+    except PolicyError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        owner['userId'], 'account.permission_override', user_id,
+        {'permission': body.permission, 'effect': body.effect},
+    )
+    policy = _permission_policy()
+    return {
+        'userId': user_id,
+        'role': account['role'],
+        'effectivePermissions': policy.effective_permissions(user_id, account['role']),
+        'overrides': policy.list_overrides('owner', user_id),
+    }
+
+
+@app.delete('/v1/owner/accounts/{user_id}/permissions/{permission}')
+def owner_remove_account_permission(user_id: str, permission: str, request: Request):
+    owner = _require_owner(request)
+    account = _account_store().get_account(user_id)
+    if account is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        removed = _permission_policy().remove_override('owner', user_id, permission)
+    except PolicyError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if removed:
+        _account_store().record_audit_event(
+            owner['userId'], 'account.permission_override_removed', user_id,
+            {'permission': permission},
+        )
+    policy = _permission_policy()
+    return {
+        'removed': removed,
+        'userId': user_id,
+        'effectivePermissions': policy.effective_permissions(user_id, account['role']),
+        'overrides': policy.list_overrides('owner', user_id),
+    }
+
+
+class OwnerSetRole(BaseModel):
+    role: str = Field(min_length=3, max_length=32)
+
+
+class OwnerCreateAccount(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    temporaryPassword: str = Field(min_length=12, max_length=1024)
+    role: str = Field(min_length=3, max_length=32)
+
+def _entitlement_store() -> EntitlementStore:
+    return EntitlementStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _referral_store() -> ReferralStore:
+    return ReferralStore(_account_store().database)
+
+
+def _credit_store() -> CreditStore:
+    return CreditStore(_account_store().database)
+
+
+def _backup_store() -> BackupStore:
+    return BackupStore(
+        _account_store().database,
+        os.getenv('MEDIA_BACKUP_DIR', str(ROOT / 'backups')),
+    )
+
+
+def _usage_store() -> UsageStore:
+    return UsageStore(os.getenv('MEDIA_AUTH_DB', str(ROOT / 'accounts.sqlite3')))
+
+
+def _ai_monthly_limit(is_premium: bool) -> int:
+    variable = 'MEDIA_PREMIUM_AI_MONTHLY_LIMIT' if is_premium else 'MEDIA_FREE_AI_MONTHLY_LIMIT'
+    default = 100 if is_premium else 10
+    raw = os.getenv(variable)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(503, f'Configurazione non valida: {variable}.') from exc
+    if not 1 <= value <= 100000:
+        raise HTTPException(503, f'Configurazione non valida: {variable}.')
+    return value
+
+
+class FamilyInvitationAccept(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+
+@app.post('/v1/account/family/invitations')
+def account_create_family_invitation(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _entitlement_store()
+    try:
+        family_id = store.create_family_for_grant_owner(account['userId'])
+        invitation = store.create_family_invitation(family_id, account['userId'])
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_created', None,
+        {'invitationId': invitation['invitationId'], 'expiresAt': invitation['expiresAt']},
+    )
+    return invitation
+
+
+@app.post('/v1/account/family/invitations/accept')
+def account_accept_family_invitation(body: FamilyInvitationAccept, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        family_id = _entitlement_store().accept_family_invitation(
+            body.token, account['userId']
+        )
+    except EntitlementError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_accepted', None,
+        {'familyId': family_id},
+    )
+    return {'familyId': family_id, 'accepted': True}
+
+
+@app.post('/v1/account/family/leave')
+def account_leave_family(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        family_id = _entitlement_store().leave_family(account['userId'])
+    except EntitlementError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if family_id is None:
+        return {'left': False, 'familyId': None}
+    _account_store().record_audit_event(
+        account['userId'], 'family.member_left', None,
+        {'familyId': family_id},
+    )
+    return {'left': True, 'familyId': family_id}
+
+
+@app.get('/v1/account/family/invitations')
+def account_list_family_invitations(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire gli inviti.')
+    try:
+        return {'invitations': _entitlement_store().list_family_invitations(
+            details['familyId'], account['userId']
+        )}
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@app.delete('/v1/account/family/invitations/{invitation_id}')
+def account_revoke_family_invitation(invitation_id: str, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire gli inviti.')
+    try:
+        revoked = _entitlement_store().revoke_family_invitation(
+            details['familyId'], account['userId'], invitation_id
+        )
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    if not revoked:
+        raise HTTPException(404, 'Invito non trovato o già utilizzato.')
+    _account_store().record_audit_event(
+        account['userId'], 'family.invitation_revoked', None,
+        {'familyId': details['familyId'], 'invitationId': invitation_id},
+    )
+    return {'invitationId': invitation_id, 'revoked': True}
+
+
+@app.get('/v1/account/family')
+def account_get_family(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    return _entitlement_store().family_details(account['userId']) or {
+        'familyId': None, 'ownerUserId': None, 'seatLimit': 0,
+        'isOwner': False, 'members': [],
+    }
+
+
+@app.delete('/v1/account/family/members/{member_user_id}')
+def account_remove_family_member(member_user_id: str, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    details = _entitlement_store().family_details(account['userId'])
+    if details is None or not details['isOwner']:
+        raise HTTPException(403, 'Solo il titolare può gestire i membri.')
+    if member_user_id == account['userId']:
+        raise HTTPException(422, 'Il titolare non può rimuovere sé stesso.')
+    try:
+        removed = _entitlement_store().remove_family_member(
+            details['familyId'], account['userId'], member_user_id
+        )
+    except EntitlementError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    if not removed:
+        raise HTTPException(404, 'Membro non trovato nella famiglia.')
+    _account_store().record_audit_event(
+        account['userId'], 'family.member_removed', member_user_id,
+        {'familyId': details['familyId']},
+    )
+    return {'familyId': details['familyId'], 'userId': member_user_id, 'removed': True}
+
+
+@app.get('/v1/account/referrals')
+def account_get_referrals(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _referral_store()
+    try:
+        code = store.create_or_get_code(account['userId'])
+        history = store.history(account['userId'])
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {'code': code, 'claims': history['claims']}
+
+
+@app.post('/v1/account/referrals/claim')
+def account_claim_referral(body: ReferralClaimRequest, request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        result = _referral_store().claim(account['userId'], body.code)
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return result
+
+
+@app.get('/v1/account/referrals/history')
+def account_referral_history(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    try:
+        return _referral_store().history(account['userId'])
+    except ReferralError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/backups')
+def owner_create_backup(request: Request):
+    _require_owner(request)
+    try:
+        return _backup_store().create()
+    except BackupError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get('/v1/owner/backups')
+def owner_list_backups(request: Request, limit: int = 50):
+    _require_owner(request)
+    return {'backups': _backup_store().list_backups(limit)}
+
+
+@app.post('/v1/owner/backups/{backup_id}/restore/prepare')
+def owner_prepare_backup_restore(backup_id: str, request: Request):
+    """Owner-only verified restore staging; never replaces the live database."""
+    _require_owner(request)
+    try:
+        return _backup_store().prepare_restore(backup_id)
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/backups/restore-staging/retention')
+def owner_prune_restore_staging(
+    request: Request,
+    max_age_seconds: int = Query(default=86400, ge=300, le=604800),
+    dry_run: bool = Query(default=True),
+):
+    """Owner-only expiry for isolated restore copies; preview is the default."""
+    _require_owner(request)
+    try:
+        return _backup_store().prune_restore_staging(
+            max_age_seconds=max_age_seconds,
+            dry_run=dry_run,
+        )
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/backups/retention')
+def owner_prune_backups(
+    request: Request,
+    retention_days: int = Query(default=90, ge=1, le=3650),
+    min_keep: int = Query(default=3, ge=1, le=100),
+    dry_run: bool = Query(default=True),
+):
+    """Owner-only backup cleanup; deletion requires an explicit dry_run=false."""
+    _require_owner(request)
+    try:
+        return _backup_store().prune(
+            retention_days=retention_days,
+            min_keep=min_keep,
+            dry_run=dry_run,
+        )
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/backups/{backup_id}/verify')
+def owner_verify_backup(backup_id: str, request: Request):
+    _require_owner(request)
+    try:
+        return _backup_store().verify(backup_id)
+    except BackupError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get('/v1/account/credits')
+def account_get_credits(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    store = _credit_store()
+    try:
+        return {
+            'balance': store.balance(account['userId']),
+            'transactions': store.history(account['userId'], limit),
+        }
+    except CreditError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post('/v1/owner/accounts/{user_id}/credits')
+def owner_grant_credits(user_id: str, body: OwnerCreditGrant, request: Request):
+    owner = _require_owner(request)
+    target = _account_store().get_account(user_id)
+    if target is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        result = _credit_store().grant(
+            'owner', owner['userId'], user_id, body.amount,
+            body.referenceId, body.reason,
+        )
+    except CreditError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        owner['userId'], 'credits.granted', user_id,
+        {'amount': body.amount, 'referenceId': body.referenceId, 'reason': body.reason.strip()},
+    )
+    return result
+
+
+@app.get('/v1/account/usage')
+def account_get_usage(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    _referral_store().mature_due()
+    is_premium = _entitlement_store().has_premium(account['userId'])
+    limit = _ai_monthly_limit(is_premium)
+    try:
+        return _usage_store().summary(account['userId'], limit)
+    except ValueError as exc:
+        raise HTTPException(422, 'Impossibile leggere il riepilogo utilizzo.') from exc
+
+
+@app.get('/v1/account/entitlement')
+def account_get_entitlement(request: Request):
+    account = _request_account(request)
+    if account is None:
+        raise HTTPException(401, 'Sessione account obbligatoria.')
+    _referral_store().mature_due()
+    details = _entitlement_store().entitlement_details(account['userId'])
+    valid_until = details['validUntil']
+    return {
+        'userId': account['userId'],
+        'tier': details['tier'],
+        'isPremium': details['isPremium'],
+        'plan': details['plan'],
+        'validUntil': (
+            time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(valid_until))
+            if valid_until is not None else None
+        ),
+        'source': details['source'],
+    }
+
+
+@app.post('/v1/owner/accounts/{user_id}/premium-grants')
+def owner_create_premium_grant(user_id: str, body: OwnerPremiumGrant, request: Request):
+    owner = _require_permission(request, "billing.grant")
+    target = _account_store().get_account(user_id)
+    if target is None:
+        raise HTTPException(404, 'Account non trovato.')
+    try:
+        store = _entitlement_store()
+        grant_id = store.grant(
+            'owner', owner['userId'], user_id, body.plan,
+            body.expiresAt, body.reason,
+        )
+    except EntitlementError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _account_store().record_audit_event(
+        owner['userId'], 'premium.grant_created', user_id,
+        {'grantId': grant_id, 'plan': body.plan, 'expiresAt': body.expiresAt, 'reason': body.reason.strip()},
+    )
+    return {
+        'grantId': grant_id,
+        'userId': user_id,
+        'plan': body.plan,
+        'expiresAt': body.expiresAt,
+        'reason': body.reason.strip(),
+    }
+
+
+@app.get('/v1/owner/accounts/{user_id}/premium-grants')
+def owner_list_premium_grants(user_id: str, request: Request, limit: int = 50):
+    actor = _require_permission(request, "billing.read")
+    # Basic collaborators can inspect only their own billing grants, even when
+    # billing.read is explicitly granted. Cross-account visibility is privileged.
+    if actor["role"] in {"user", "collaborator"} and user_id != actor["userId"]:
+        raise HTTPException(403, "Puoi consultare solo i tuoi dati di abbonamento.")
+    if _account_store().get_account(user_id) is None:
+        raise HTTPException(404, 'Account non trovato.')
+    return {'grants': _entitlement_store().list_grants('owner', user_id, limit)}
+
+
+@app.delete('/v1/owner/accounts/{user_id}/premium-grants/{grant_id}')
+def owner_revoke_premium_grant(user_id: str, grant_id: str, request: Request):
+    owner = _require_permission(request, "billing.grant")
+    if _account_store().get_account(user_id) is None:
+        raise HTTPException(404, 'Account non trovato.')
+    store = _entitlement_store()
+    matching = [item for item in store.list_grants('owner', user_id, 100)
+                if item['grant_id'] == grant_id]
+    if not matching:
+        raise HTTPException(404, 'Concessione Premium non trovata.')
+    revoked = store.revoke('owner', grant_id)
+    if revoked:
+        _account_store().record_audit_event(
+            owner['userId'], 'premium.grant_revoked', user_id,
+            {'grantId': grant_id, 'plan': matching[0]['plan']},
+        )
+    return {'grantId': grant_id, 'userId': user_id, 'revoked': revoked}
+
