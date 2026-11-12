@@ -41,6 +41,36 @@ class _PersistentJob(dict):
     def __delitem__(self, key: str) -> None:
         self._persist_mutation(lambda: dict.__delitem__(self, key))
 
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        if key in self:
+            return self[key]
+        return self._persist_mutation(lambda: dict.setdefault(self, key, default))
+
+    def pop(self, key: str, *default: Any) -> Any:
+        if len(default) > 1:
+            raise TypeError(f"pop expected at most 2 arguments, got {2 + len(default)}")
+        if key not in self and default:
+            return default[0]
+        if key not in self:
+            raise KeyError(key)
+        return self._persist_mutation(
+            lambda: dict.pop(self, key, *default)
+        )
+
+    def popitem(self) -> tuple[str, Any]:
+        if not self:
+            raise KeyError("popitem(): dictionary is empty")
+        return self._persist_mutation(lambda: dict.popitem(self))
+
+    def clear(self) -> None:
+        if not self:
+            return
+        self._persist_mutation(lambda: dict.clear(self))
+
+    def __ior__(self, other: Any) -> "_PersistentJob":
+        self.update(other)
+        return self
+
 
 class IdempotencyConflict(ValueError):
     """An idempotency key was reused for a different canonical request."""
