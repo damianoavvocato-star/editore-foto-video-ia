@@ -6,6 +6,10 @@
 
 > **Mappa delle decisioni e dell'intero prodotto:** [docs/MASTER_PROJECT_MAP.md](MASTER_PROJECT_MAP.md). Consultarla prima di pianificare nuovi blocchi: raccoglie requisiti, decisioni non modificabili, ruoli, funzioni, sequenza in 6 fasi e regole operative.
 
+
+
+> **Nota di rettifica avanzamento (12 novembre 2026):** il valore 32,76% riportato in alcune note operative successive non era supportato da una formula verificabile e non rappresenta una regressione dimostrata del prodotto. L'ultimo riferimento storico disponibile è **65% provvisorio e non certificato**, dichiarato il 6 novembre sulla base di stime per area. Non va interpretato come completamento verificato; il valore definitivo richiede una ricostruzione tecnica pesata del registro e delle evidenze. Le note storiche successive che ripetono 32,76% non costituiscono una nuova misurazione.
+
 ## Legenda
 
 - `done`: implementazione e test verificati nel perimetro dichiarato.
@@ -544,3 +548,12 @@ Il campo delle lingue di destinazione accetta codici separati da virgole, normal
 - Aggiunti test di regressione con errore di scrittura simulato per aggiornamento, assegnazione/cancellazione di campi e nuovo inserimento. **Non eseguiti**: il gate concordato resta il 35%; nessun test, analisi statica, CI o build è stato avviato.
 - Il cambiamento non modifica la semantica dei job già persistiti e non introduce worker distribuiti.
 - Avanzamento generale invariato: **32,76%**.
+
+
+## Job registry — copertura delle mutazioni standard del dizionario
+
+- Estesa la persistenza atomica alle mutazioni top-level setdefault, pop, popitem, clear e |=, oltre a update, assegnazione e cancellazione di campi già gestite.
+- Il helper transazionale restituisce ora il risultato dell'operazione, mantenendo la semantica attesa da setdefault, pop e popitem; in caso di errore SQLite ripristina lo snapshot precedente.
+- Aggiunti test di regressione per persistenza dopo riapertura e rollback simulato di tutte le nuove operazioni. **Test non eseguiti**: resta attivo il gate di verifica concordato; nessun test, analisi statica, CI o build è stato avviato in questo blocco.
+- Il perimetro riguarda le mutazioni del mapping al primo livello: modifiche in-place a oggetti annidati già restituiti (per esempio job["result"]["x"] = ...) non sono intercettate automaticamente e devono essere sostituite da aggiornamenti espliciti del campo superiore o affrontate con un modello immutabile in un blocco dedicato.
+- Nessuna voce di prodotto viene promossa a done; la percentuale resta **65% storico provvisorio, non certificato**, in attesa del ricalcolo oggettivo.
