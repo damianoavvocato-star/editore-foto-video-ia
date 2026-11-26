@@ -237,6 +237,7 @@ Le fondamenta di account, ruoli e sicurezza possono essere predisposte nella Fas
 ## 11. Collegamenti interni
 - Registro verificabile delle singole funzioni: `docs/MASTER_FEATURE_REGISTER.md`.
 - Audit approfondito: `docs/FEATURE_AUDIT_2026-11-08.md`.
+- Verbale di audit e stabilizzazione della Fase 1 (26 novembre 2026): `docs/PHASE1_AUDIT_2026-11-26.md`.
 - Roadmap e aree di sviluppo: `docs/DEVELOPMENT_PLAN_50_AREAS.md` e `docs/ROADMAP_FUTURE_FEATURES.md`.
 - Sicurezza: `docs/SECURITY_OPERATIONS.md` e `docs/ACCOUNT_AUTH_FOUNDATION.md`.
 - Studio IA: `docs/STUDIO_JOB_ORCHESTRATION.md`, `docs/SYNTHESIA_PROVIDER_INTEGRATION.md`.
