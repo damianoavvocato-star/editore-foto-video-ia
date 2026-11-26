@@ -199,16 +199,18 @@ flowchart TD
 - TeamStudio e flussi di approvazione.
 - Build e test distinti per Android, iOS, Windows, macOS e Linux; non dichiarare un target pronto senza build/installazione verificata.
 
-## 8. Sequenza di lavoro concordata: 6 fasi
+## 8. Sequenza ufficiale di lavoro concordata: 6 fasi
 
-La numerazione è una sequenza di controllo, non una promessa di completamento basata su percentuali non verificate.
+Questa è la numerazione canonica da seguire per la ripresa del progetto, come indicato nel file di continuità del backup del 12 novembre 2026. Le precedenti note con una diversa distribuzione delle aree sono riferimenti storici: non devono cambiare l'ordine qui definito.
 
-1. **Fase 1 — Fondamenta e architettura:** repository, struttura app/backend, modelli, navigazione, account, sicurezza di base e CI.
-2. **Fase 2 — Editor e media:** importazione, timeline, strumenti manuali, rendering, player, export e gestione progetti.
-3. **Fase 3 — IA e Studio:** MagicIAedit, prompt senza media, pipeline IA, bozze/coda, voce, traduzione e generazione reale tramite provider.
-4. **Fase 4 — Account, pannelli e business:** Proprietario, Amministratore, Assistenza, Collaboratore, Premium, pagamenti, referral, crediti e famiglia.
-5. **Fase 5 — Hardening e completezza:** sicurezza, privacy, isolamento, backup, recovery, localizzazione, test estesi, accessibilità, marketing e verifica multipiattaforma.
-6. **Fase 6 — APK finale:** solo dopo il completamento e la verifica delle fasi precedenti; creazione APK come ultima fase. Non anticipare APK per comodità o per far sembrare il progetto più avanti.
+1. **Fase 1 — Audit e stabilizzazione:** verificare backup, branch, commit, struttura, dipendenze, documentazione, CI e regressioni; stabilire una base affidabile senza perdere funzionalità.
+2. **Fase 2 — Editor core, progetti e persistenza:** completare importazione media, libreria, timeline, editing non distruttivo, player, autosalvataggio, recupero e gestione dei progetti.
+3. **Fase 3 — Backend, rendering, audio ed export:** completare API, job durevoli, FFmpeg, pipeline audio/video, cancellazione e retry, formati di esportazione e collegamento reale Flutter/backend.
+4. **Fase 4 — IA MagicIAedit, lingue, condivisione, Premium e referral:** rendere operative MagicIAedit, MagicLink e Studio IA con provider reali; completare traduzione, voce/doppiaggio, localizzazione, condivisione, Premium, crediti, famiglia e referral.
+5. **Fase 5 — Test, sicurezza, carico e compatibilità piattaforme:** campagne complete ai traguardi concordati, hardening, privacy, isolamento account, backup/restore, prestazioni, accessibilità e verifiche sui dispositivi/piattaforme supportati.
+6. **Fase 6 — APK finale:** solo dopo il completamento e la verifica delle fasi 1–5. La creazione e la verifica dell'APK sono l'ultima attività; non anticipare build o artefatti APK.
+
+Le fondamenta di account, ruoli e sicurezza possono essere predisposte nella Fase 1; le funzioni commerciali Premium/referral sono completate nella Fase 4 e il relativo hardening è verificato nella Fase 5.
 
 ## 9. Regole operative per ogni sessione di sviluppo
 1. Prima leggere il codice e lo stato CI attuali; non presumere che il repository sia rimasto invariato.
@@ -243,16 +245,15 @@ La numerazione è una sequenza di controllo, non una promessa di completamento b
 
 ## 12. Regola concordata: sviluppo e test per soglie del 5%
 
-A partire dal 10 novembre 2026, il lavoro segue un ciclo a soglie:
-- Da **32,76%** fino a **34,99%**: soltanto sviluppo, integrazione e documentazione. Niente test automatici, analisi statica o preflight.
-- A **35%, 40%, 45%, 50%** e poi ogni 5 punti fino al **100%**: una campagna completa di verifica e correzione di tutti i problemi rilevati.
-- Tra una soglia e la successiva: solo sviluppo, senza ripetere i test.
-- Il progresso è calcolato sulle funzionalità effettivamente implementate secondo i criteri del registro, non sul numero di schermate o righe di codice. Le funzionalità non testate non vengono marcate `done`.
-- GitHub Actions non deve avviare i job di test su ogni commit/PR. La campagna completa si avvia manualmente impostando `run_full_validation=true` nel workflow **Flutter checks**.
-- Il job APK resta separato e non deve essere abilitato prima della fase 6.
+Il lavoro segue il ciclo di verifica a milestone concordato con l'utente:
+- Le prime soglie di campagna sono **10%, 15%, 20% e 25%**; successivamente le campagne complete proseguono ogni 5 punti percentuali (30%, 35%, 40% e così via fino al 100%).
+- Tra una milestone e la successiva si procede con sviluppo, integrazione e documentazione senza ripetere continuamente le campagne complete.
+- Le funzionalità non testate non vengono marcate `done`; il progresso si calcola sui criteri del registro e sulle evidenze, non su schermate o righe di codice.
+- GitHub Actions non deve eseguire le campagne complete automaticamente a ogni commit/PR. L'avvio è manuale tramite `run_full_validation=true` nel workflow **Flutter checks**.
+- I controlli Android di preflight non producono APK. Il workflow non deve contenere un job di build APK prima della Fase 6.
+- La build APK sarà introdotta/abilitata esclusivamente quando la Fase 6 sarà formalmente aperta.
 
-La prossima campagna autorizzata è al **35,00%**. La percentuale generale corrente resta **32,76%** fino a un aggiornamento sostenuto da nuove funzionalità completate; nessun test viene anticipato per inseguire la soglia.
-
+La percentuale generale **32,76%** resta un riferimento storico provvisorio, non una misurazione certificata. La prossima campagna completa pianificata è al **35,00%**; l'evidenza del precedente gate del 30% non viene dichiarata ricostruita in questo audit. Le verifiche diagnostiche svolte durante l'audit sono riportate nel relativo verbale e non promuovono automaticamente funzionalità a `done`.
 
 ### MagicLink — stato sviluppo aggiornato
 
