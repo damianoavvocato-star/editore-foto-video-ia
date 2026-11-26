@@ -102,3 +102,24 @@ Commit aggiunti al solo ramo `feature/magiciaedit-cloud-foundation` dopo il base
 - `4e9d71889cf36643ec4e78b67ffb2389361af6a9` — collegamento del verbale nella mappa principale.
 
 Checkpoint del ramo al momento del collegamento del verbale nella mappa principale: `4e9d71889cf36643ec4e78b67ffb2389361af6a9`. La PR n. 1 resta aperta e in bozza; `main` resta al commit `93870b529d2244f4efd4e25a5108ae00375b37ca`. Il successivo aggiornamento di questo verbale è stato registrato nel commit `5b1867dfdc38f50f7ca00311a523a9ff9a6716fe`; la HEAD corrente va sempre letta dal ramo remoto.
+
+
+## 9. Baseline del registro funzionalità
+
+Il registro `docs/MASTER_FEATURE_REGISTER.md` contiene 58 voci. La distribuzione attuale è:
+
+| Stato nel registro | Voci |
+|---|---:|
+| `done` | 2 |
+| `partial` | 34 |
+| `missing` | 19 |
+| `blocked` | 3 |
+
+Le tre voci `blocked` sono:
+- Provider IA MagicIAedit reale.
+- Generazione di immagini/video e varianti.
+- Android installabile e APK finale (mantenuto bloccato fino alla Fase 6).
+
+Tra le voci `missing` figurano pagamenti reali tramite store, miniserie complete multi-episodio, AI Director/MagicIA Brain, ASR, traduzione con glossario, TTS/doppiaggio, lip-sync, OCR, miglioramento foto/video, pubblicazione social, analytics e build iOS/desktop.
+
+Questa è la classificazione corrente del registro, non una certificazione indipendente di ogni funzione. Le voci non vengono promosse a `done` sulla base dei soli test diagnostici di questo audit.
