@@ -101,4 +101,4 @@ Commit aggiunti al solo ramo `feature/magiciaedit-cloud-foundation` dopo il base
 - `933dbdec83ce5acf8342d37f6965ae0e795189b8` — aggiunta del presente verbale.
 - `4e9d71889cf36643ec4e78b67ffb2389361af6a9` — collegamento del verbale nella mappa principale.
 
-HEAD del ramo al termine di questo aggiornamento documentale: `4e9d71889cf36643ec4e78b67ffb2389361af6a9`. Il branch resta aperto nella PR n. 1; `main` resta al commit `93870b529d2244f4efd4e25a5108ae00375b37ca`.
+Checkpoint del ramo al momento del collegamento del verbale nella mappa principale: `4e9d71889cf36643ec4e78b67ffb2389361af6a9`. La PR n. 1 resta aperta e in bozza; `main` resta al commit `93870b529d2244f4efd4e25a5108ae00375b37ca`. Il successivo aggiornamento di questo verbale è stato registrato nel commit `5b1867dfdc38f50f7ca00311a523a9ff9a6716fe`; la HEAD corrente va sempre letta dal ramo remoto.
