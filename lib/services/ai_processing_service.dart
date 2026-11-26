@@ -10,6 +10,7 @@ enum AiTaskKind {
   autoCaptions,
   sceneDetection,
   smartCrop,
+  magicIAedit,
 }
 
 enum AiJobState { queued, running, succeeded, failed, cancelled }
@@ -23,6 +24,7 @@ class AiJobProgress {
     this.message = '',
     this.resultPath,
     this.error,
+    this.result,
   });
 
   final String jobId;
@@ -32,6 +34,7 @@ class AiJobProgress {
   final String message;
   final String? resultPath;
   final Object? error;
+  final Map<String, dynamic>? result;
 
   bool get isTerminal => state == AiJobState.succeeded ||
       state == AiJobState.failed ||
@@ -43,17 +46,24 @@ class AiTaskRequest {
     required this.jobId,
     required this.task,
     required this.inputPath,
+    this.inputPaths = const [],
     this.options = const {},
   });
 
   final String jobId;
   final AiTaskKind task;
   final String inputPath;
+  final List<String> inputPaths;
   final Map<String, Object?> options;
+
+  List<String> get mediaPaths => inputPaths.isEmpty ? [inputPath] : inputPaths;
 
   void validate() {
     if (jobId.trim().isEmpty) throw ArgumentError('jobId è obbligatorio.');
-    if (inputPath.trim().isEmpty) throw ArgumentError('inputPath è obbligatorio.');
+    if (mediaPaths.isEmpty || mediaPaths.any((path) => path.trim().isEmpty)) {
+      throw ArgumentError('È richiesto almeno un percorso media valido.');
+    }
+    if (mediaPaths.length > 20) throw ArgumentError('MagicIAedit accetta al massimo 20 media.');
     if (options.keys.any((key) => key.trim().isEmpty)) {
       throw ArgumentError('Le chiavi delle opzioni non possono essere vuote.');
     }
@@ -78,24 +88,29 @@ class AiProcessingService {
       throw StateError('Esiste già un job con ID ${request.jobId}.');
     }
 
-    late Stream<AiJobProgress> stream;
-    stream = backend.run(request).transform(
-      StreamTransformer<AiJobProgress, AiJobProgress>.fromHandlers(
-        handleData: (event, sink) {
-          sink.add(event);
-          if (event.isTerminal) _activeJobs.remove(request.jobId);
-        },
-        handleError: (error, stack, sink) {
-          _activeJobs.remove(request.jobId);
-          sink.addError(error, stack);
-        },
-        handleDone: (sink) {
-          _activeJobs.remove(request.jobId);
-          sink.close();
-        },
-      ),
-    );
-    return stream;
+    try {
+      return backend.run(request).transform(
+        StreamTransformer<AiJobProgress, AiJobProgress>.fromHandlers(
+          handleData: (event, sink) {
+            sink.add(event);
+            if (event.isTerminal) _activeJobs.remove(request.jobId);
+          },
+          handleError: (error, stack, sink) {
+            _activeJobs.remove(request.jobId);
+            sink.addError(error, stack);
+          },
+          handleDone: (sink) {
+            _activeJobs.remove(request.jobId);
+            sink.close();
+          },
+        ),
+      );
+    } catch (_) {
+      // A backend may throw before it can even return a stream (for example,
+      // when its native channel is unavailable). Do not leave a phantom job.
+      _activeJobs.remove(request.jobId);
+      rethrow;
+    }
   }
 
   Future<void> cancel(String jobId) async {

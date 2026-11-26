@@ -1,0 +1,368 @@
+"""Durable, private storage for asynchronous media job status.
+
+Queued/running jobs are marked failed on process restart because their worker
+threads cannot be resumed safely. Completed MagicIAedit proposals and render
+metadata remain available across restarts.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import time
+from contextlib import contextmanager
+from typing import Iterator
+from pathlib import Path
+from typing import Any
+
+
+class _PersistentJob(dict):
+    def __init__(self, job_id: str, values: dict[str, Any], registry: "JobRegistry"):
+        super().__init__(values)
+        self._job_id = job_id
+        self._registry = registry
+
+    def _persist_mutation(self, mutation: Any) -> Any:
+        previous = dict(self)
+        try:
+            result = mutation()
+            self._registry._save(self._job_id, self)
+            return result
+        except Exception:
+            dict.clear(self)
+            dict.update(self, previous)
+            raise
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        self._persist_mutation(lambda: dict.update(self, *args, **kwargs))
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._persist_mutation(lambda: dict.__setitem__(self, key, value))
+
+    def __delitem__(self, key: str) -> None:
+        self._persist_mutation(lambda: dict.__delitem__(self, key))
+
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        if key in self:
+            return self[key]
+        return self._persist_mutation(lambda: dict.setdefault(self, key, default))
+
+    def pop(self, key: str, *default: Any) -> Any:
+        if len(default) > 1:
+            raise TypeError(f"pop expected at most 2 arguments, got {2 + len(default)}")
+        if key not in self and default:
+            return default[0]
+        if key not in self:
+            raise KeyError(key)
+        return self._persist_mutation(
+            lambda: dict.pop(self, key, *default)
+        )
+
+    def popitem(self) -> tuple[str, Any]:
+        if not self:
+            raise KeyError("popitem(): dictionary is empty")
+        return self._persist_mutation(lambda: dict.popitem(self))
+
+    def clear(self) -> None:
+        if not self:
+            return
+        self._persist_mutation(lambda: dict.clear(self))
+
+    def __ior__(self, other: Any) -> "_PersistentJob":
+        self.update(other)
+        return self
+
+
+class IdempotencyConflict(ValueError):
+    """An idempotency key was reused for a different canonical request."""
+
+
+class JobRegistry(dict[str, dict[str, Any]]):
+    """Dict-compatible registry that persists every job state transition."""
+
+    ACTIVE_STATES = {"queued", "rendering"}
+
+    def __init__(self, database: str | Path):
+        super().__init__()
+        self.database = Path(database)
+        self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self.database.parent, 0o700)
+        except OSError:
+            pass
+        with self._connection() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS media_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS render_idempotency (
+                    scope TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    job_id TEXT NOT NULL UNIQUE,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY(scope, idempotency_key)
+                )
+                """
+            )
+            legacy_rows = connection.execute(
+                "SELECT job_id, payload, updated_at FROM media_jobs ORDER BY updated_at"
+            ).fetchall()
+            # Migrate keys written by the earlier process-local implementation
+            # so deployment does not forget previously accepted requests.
+            for legacy_job_id, legacy_payload, updated_at in legacy_rows:
+                try:
+                    legacy_values = json.loads(legacy_payload)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(legacy_values, dict):
+                    continue
+                scope = legacy_values.get("_idempotency_scope")
+                key = legacy_values.get("_idempotency_key")
+                fingerprint = legacy_values.get("_request_fingerprint")
+                if all(isinstance(value, str) and value for value in (scope, key, fingerprint)):
+                    connection.execute(
+                        """INSERT OR IGNORE INTO render_idempotency(
+                               scope, idempotency_key, fingerprint, job_id, created_at
+                           ) VALUES (?, ?, ?, ?, ?)""",
+                        (scope, key, fingerprint, legacy_job_id, updated_at),
+                    )
+            rows = [(job_id, payload) for job_id, payload, _ in legacy_rows]
+        # SQLite creates the database using the process umask, which may be
+        # more permissive than this service's private-media policy. Restrict it
+        # immediately, including on first startup before any job is written.
+        self._restrict_database_permissions()
+        for job_id, payload in rows:
+            try:
+                values = json.loads(payload)
+                if not isinstance(values, dict):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            record = _PersistentJob(job_id, values, self)
+            dict.__setitem__(self, job_id, record)
+        # A process restart destroys daemon workers and cancellation events.
+        # Never report an orphaned active job as still running.
+        for job_id, record in list(self.items()):
+            if record.get("state") in self.ACTIVE_STATES:
+                record.update(
+                    state="failed",
+                    progress=0.0,
+                    message="Elaborazione interrotta dal riavvio del server. Ripeti l'operazione.",
+                    error="worker_interrupted",
+                )
+
+    def _restrict_database_permissions(self) -> None:
+        try:
+            os.chmod(self.database, 0o600)
+        except OSError:
+            # Some filesystems do not expose POSIX permission bits.
+            pass
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database, timeout=10)
+        connection.execute("PRAGMA busy_timeout = 10000")
+        return connection
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+    def get(self, job_id: str, default: Any = None) -> Any:
+        """Refresh a job snapshot from SQLite before returning it.
+
+        This lets a process observe state transitions persisted by another
+        registry instance. Worker execution and cancellation events remain
+        process-local; this is not a distributed worker queue.
+        """
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM media_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        if row is None:
+            # Another registry instance may have removed this durable job.
+            # Do not leak a stale in-memory snapshot after cross-instance deletion.
+            dict.pop(self, job_id, None)
+            return default
+        try:
+            values = json.loads(row[0])
+            if not isinstance(values, dict):
+                return dict.get(self, job_id, default)
+        except (TypeError, ValueError):
+            return dict.get(self, job_id, default)
+        record = _PersistentJob(job_id, values, self)
+        dict.__setitem__(self, job_id, record)
+        return record
+
+    def _save(self, job_id: str, values: dict[str, Any]) -> None:
+        payload = json.dumps(values, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO media_jobs(job_id, payload, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    payload=excluded.payload,
+                    updated_at=excluded.updated_at
+                """,
+                (job_id, payload, time.time()),
+            )
+        self._restrict_database_permissions()
+
+    def create_idempotent_job(
+        self,
+        job_id: str,
+        values: dict[str, Any],
+        scope: str,
+        idempotency_key: str,
+        fingerprint: str,
+    ) -> tuple[str, bool]:
+        """Atomically reserve an idempotency key and persist its job in SQLite.
+
+        The unique (scope, key) constraint and BEGIN IMMEDIATE make this safe
+        across concurrent registry instances sharing the same SQLite database.
+        Returns (canonical_job_id, created); raises IdempotencyConflict when
+        the key was already reserved for a different request fingerprint.
+        """
+        payload_values = dict(values)
+        payload = json.dumps(
+            payload_values, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """SELECT job_id, fingerprint FROM render_idempotency
+                   WHERE scope=? AND idempotency_key=?""",
+                (scope, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                existing_job_id, existing_fingerprint = existing
+                if existing_fingerprint != fingerprint:
+                    connection.rollback()
+                    raise IdempotencyConflict(
+                        "Idempotency key was reused with a different request."
+                    )
+                existing_row = connection.execute(
+                    "SELECT payload FROM media_jobs WHERE job_id = ?",
+                    (existing_job_id,),
+                ).fetchone()
+                try:
+                    existing_values = json.loads(existing_row[0]) if existing_row else {}
+                except (TypeError, ValueError):
+                    existing_values = {}
+                # A worker cannot survive a process restart, and a worker
+                # launch can fail before it starts. Permit an atomic retry only
+                # for these infrastructure failures; ordinary render failures
+                # and all active/completed jobs keep normal idempotent replay.
+                if (
+                    isinstance(existing_values, dict)
+                    and existing_values.get("_retry_infra_failure", True)
+                    and existing_values.get("state") == "failed"
+                    and existing_values.get("error") in {
+                        "worker_interrupted", "worker_start_failed"
+                    }
+                ):
+                    connection.execute(
+                        """INSERT INTO media_jobs(job_id, payload, updated_at)
+                           VALUES (?, ?, ?)""",
+                        (job_id, payload, time.time()),
+                    )
+                    connection.execute(
+                        """UPDATE render_idempotency
+                           SET job_id = ?, created_at = ?
+                           WHERE scope = ? AND idempotency_key = ?""",
+                        (job_id, time.time(), scope, idempotency_key),
+                    )
+                else:
+                    connection.rollback()
+                    return existing_job_id, False
+            else:
+                connection.execute(
+                    """INSERT INTO media_jobs(job_id, payload, updated_at)
+                       VALUES (?, ?, ?)""",
+                    (job_id, payload, time.time()),
+                )
+                connection.execute(
+                    """INSERT INTO render_idempotency(
+                           scope, idempotency_key, fingerprint, job_id, created_at
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    (scope, idempotency_key, fingerprint, job_id, time.time()),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        dict.__setitem__(self, job_id, _PersistentJob(job_id, payload_values, self))
+        self._restrict_database_permissions()
+        return job_id, True
+
+    def __setitem__(self, job_id: str, values: dict[str, Any]) -> None:
+        record = _PersistentJob(job_id, dict(values), self)
+        # Persist first: a failed write must not publish an in-memory job that
+        # disappears on restart or misleads readers in this process.
+        self._save(job_id, record)
+        dict.__setitem__(self, job_id, record)
+
+    def pop(self, job_id: str, *default: Any) -> Any:
+        if len(default) > 1:
+            raise TypeError(f"pop expected at most 2 arguments, got {2 + len(default)}")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT payload FROM media_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                if dict.__contains__(self, job_id):
+                    return dict.pop(self, job_id)
+                if default:
+                    return default[0]
+                raise KeyError(job_id)
+            try:
+                values = json.loads(row[0])
+                if not isinstance(values, dict):
+                    values = {}
+            except (TypeError, ValueError):
+                values = {}
+            connection.execute("DELETE FROM media_jobs WHERE job_id = ?", (job_id,))
+            connection.execute("DELETE FROM render_idempotency WHERE job_id = ?", (job_id,))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        dict.pop(self, job_id, None)
+        return values
+
+    def clear(self) -> None:
+        # Commit durable deletion before changing this instance's cache. This
+        # keeps memory and SQLite consistent if the transaction cannot commit.
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM media_jobs")
+            connection.execute("DELETE FROM render_idempotency")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        dict.clear(self)

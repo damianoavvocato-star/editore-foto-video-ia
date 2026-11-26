@@ -2,11 +2,103 @@ import 'dart:convert';
 
 enum MediaKind { video, image, audio, text }
 
+/// Animatable clip properties stored in project-local timeline time.
+enum KeyframeProperty { positionX, positionY, scale, rotation, opacity }
+
+class EditorKeyframe {
+  const EditorKeyframe({
+    required this.timeMs,
+    required this.property,
+    required this.value,
+  }) : assert(timeMs >= 0);
+
+  final int timeMs;
+  final KeyframeProperty property;
+  final double value;
+
+  Map<String, Object?> toJson() => {
+        'timeMs': timeMs,
+        'property': property.name,
+        'value': value,
+      };
+
+  factory EditorKeyframe.fromJson(Map<String, dynamic> json) {
+    final propertyName = json['property'];
+    final property = KeyframeProperty.values.where(
+      (candidate) => candidate.name == propertyName,
+    );
+    final rawValue = json['value'];
+    final rawTime = json['timeMs'];
+    if (property.isEmpty || rawTime is! int || rawTime < 0 ||
+        rawValue is! num || !rawValue.toDouble().isFinite) {
+      throw const FormatException('Fotogramma chiave non valido.');
+    }
+    return EditorKeyframe(
+      timeMs: rawTime,
+      property: property.first,
+      value: rawValue.toDouble(),
+    );
+  }
+}
+
 MediaKind _mediaKindFromJson(Object? value) {
   for (final kind in MediaKind.values) {
     if (kind.name == value) return kind;
   }
   throw FormatException('Tipo di contenuto multimediale non supportato: $value');
+}
+
+/// Per-clip color controls persisted with the editable project.
+class ClipColorGrade {
+  const ClipColorGrade({
+    this.exposure = 0,
+    this.contrast = 1,
+    this.saturation = 1,
+    this.temperature = 0,
+    this.tint = 0,
+    this.highlights = 0,
+    this.shadows = 0,
+  });
+
+  final double exposure;
+  final double contrast;
+  final double saturation;
+  final double temperature;
+  final double tint;
+  final double highlights;
+  final double shadows;
+
+  Map<String, Object?> toJson() => {
+        'exposure': exposure,
+        'contrast': contrast,
+        'saturation': saturation,
+        'temperature': temperature,
+        'tint': tint,
+        'highlights': highlights,
+        'shadows': shadows,
+      };
+
+  factory ClipColorGrade.fromJson(Map<String, dynamic> json) {
+    double read(String key, double fallback, double min, double max) {
+      final raw = json[key];
+      if (raw == null) return fallback;
+      if (raw is! num || !raw.toDouble().isFinite ||
+          raw.toDouble() < min || raw.toDouble() > max) {
+        throw FormatException('Valore colore non valido: $key');
+      }
+      return raw.toDouble();
+    }
+
+    return ClipColorGrade(
+      exposure: read('exposure', 0, -5, 5),
+      contrast: read('contrast', 1, 0, 2),
+      saturation: read('saturation', 1, 0, 2),
+      temperature: read('temperature', 0, -100, 100),
+      tint: read('tint', 0, -100, 100),
+      highlights: read('highlights', 0, -1, 1),
+      shadows: read('shadows', 0, -1, 1),
+    );
+  }
 }
 
 class EditorClip {
@@ -16,10 +108,13 @@ class EditorClip {
     required this.kind,
     required this.startMs,
     required this.durationMs,
+    this.sourceStartMs = 0,
     this.title = '',
     this.speed = 1,
     this.transitionAfterMs = 0,
     this.transitionAfter = 'fade',
+    this.keyframes = const [],
+    this.colorGrade = const ClipColorGrade(),
   });
 
   final String id;
@@ -27,21 +122,29 @@ class EditorClip {
   final MediaKind kind;
   final int startMs;
   final int durationMs;
+  /// Offset within the original source file, distinct from timeline startMs.
+  final int sourceStartMs;
   final String title;
   final double speed;
   /// Transition applied after this clip when joining the next clip.
   final int transitionAfterMs;
   final String transitionAfter;
+  /// Property animation points, expressed relative to this clip's start.
+  final List<EditorKeyframe> keyframes;
+  final ClipColorGrade colorGrade;
 
   int get endMs => startMs + durationMs;
 
   EditorClip copyWith({
     int? startMs,
     int? durationMs,
+    int? sourceStartMs,
     String? title,
     double? speed,
     int? transitionAfterMs,
     String? transitionAfter,
+    List<EditorKeyframe>? keyframes,
+    ClipColorGrade? colorGrade,
   }) =>
       EditorClip(
         id: id,
@@ -49,10 +152,13 @@ class EditorClip {
         kind: kind,
         startMs: startMs ?? this.startMs,
         durationMs: durationMs ?? this.durationMs,
+        sourceStartMs: sourceStartMs ?? this.sourceStartMs,
         title: title ?? this.title,
         speed: speed ?? this.speed,
         transitionAfterMs: transitionAfterMs ?? this.transitionAfterMs,
         transitionAfter: transitionAfter ?? this.transitionAfter,
+        keyframes: keyframes ?? this.keyframes,
+        colorGrade: colorGrade ?? this.colorGrade,
       );
 
   Map<String, Object?> toJson() => {
@@ -61,10 +167,13 @@ class EditorClip {
         'kind': kind.name,
         'startMs': startMs,
         'durationMs': durationMs,
+        'sourceStartMs': sourceStartMs,
         'title': title,
         'speed': speed,
         'transitionAfterMs': transitionAfterMs,
         'transitionAfter': transitionAfter,
+        'keyframes': keyframes.map((keyframe) => keyframe.toJson()).toList(),
+        'colorGrade': colorGrade.toJson(),
       };
 
   factory EditorClip.fromJson(Map<String, dynamic> json) => EditorClip(
@@ -73,10 +182,19 @@ class EditorClip {
         kind: _mediaKindFromJson(json['kind']),
         startMs: json['startMs'] as int? ?? 0,
         durationMs: json['durationMs'] as int? ?? 3000,
+        sourceStartMs: json['sourceStartMs'] as int? ?? 0,
         title: json['title'] as String? ?? '',
         speed: (json['speed'] as num?)?.toDouble() ?? 1,
         transitionAfterMs: json['transitionAfterMs'] as int? ?? 0,
         transitionAfter: json['transitionAfter'] as String? ?? 'fade',
+        keyframes: (json['keyframes'] as List<dynamic>? ?? [])
+            .map((item) => EditorKeyframe.fromJson(item as Map<String, dynamic>))
+            .toList(),
+        colorGrade: json['colorGrade'] == null
+            ? const ClipColorGrade()
+            : ClipColorGrade.fromJson(
+                json['colorGrade'] as Map<String, dynamic>,
+              ),
       );
 }
 

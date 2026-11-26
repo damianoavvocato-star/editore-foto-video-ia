@@ -1,4 +1,7 @@
-# Fase 4 — stato
+# Stato storico del blocco backend/media (precedente etichetta: Fase 4)
+
+> **Nota di numerazione:** questo file conserva gli appunti storici sul rendering, audio ed export. Nel piano ufficiale a sei fasi approvato nel backup del 12 novembre 2026, queste attività appartengono alla **Fase 3 — Backend, rendering, audio ed export**. La Fase 4 corrente riguarda MagicIAedit, lingue, condivisione, Premium e referral. I conteggi di test riportati sotto sono storici e non rappresentano l'esito dell'audit del 26 novembre 2026.
+
 
 ## Verificato
 - Backend FFmpeg per rendering di clip e transizioni.
@@ -14,7 +17,7 @@
 - Integrazione end-to-end completa tra interfaccia Flutter e backend non verificata.
 - Test Flutter non eseguibili in questo ambiente perché Flutter/Dart non sono installati.
 
-La fase 4 resta aperta.
+Il blocco backend/media documentato in questo file resta aperto.
 
 ## Revisione 33 – gestione avvio esportazione
 - Corretto un caso in cui il backend di rendering poteva lanciare un'eccezione sincrona prima di restituire lo stream: ora il coordinatore emette un evento `failed`, chiude lo stream e libera lo slot di esportazione.
