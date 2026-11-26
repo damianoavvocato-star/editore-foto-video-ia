@@ -144,7 +144,6 @@ class BackupStore:
                     raise BackupError("Backup oltre la dimensione massima consentita.")
         except (tarfile.TarError, OSError) as exc:
             raise BackupError("Archivio backup danneggiato.") from exc
-        timestamp = self._validated_timestamp(now)
         stage_dir = self.directory / "restore-staging"
         stage_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
@@ -210,6 +209,7 @@ class BackupStore:
             raise BackupError("Durata delle copie temporanee non valida.")
         if not isinstance(dry_run, bool):
             raise BackupError("Modalità anteprima non valida.")
+        timestamp = self._validated_timestamp(now)
         stage_dir = self.directory / "restore-staging"
         if stage_dir.is_symlink() or not stage_dir.is_dir():
             return {"dryRun": dry_run, "eligibleCount": 0, "deletedCount": 0, "eligibleStageIds": [], "deletedStageIds": []}
