@@ -88,3 +88,17 @@ Da completare prima di dichiarare la Fase 1 conclusa:
 4. verificare nuovamente HEAD, stato PR e workflow prima di passare alla fase successiva.
 
 Vincoli invariati: non modificare `main`, non unire la PR senza autorizzazione, non creare APK prima della Fase 6.
+
+
+## 8. Tracciabilità delle correzioni dell'audit
+
+Commit aggiunti al solo ramo `feature/magiciaedit-cloud-foundation` dopo il baseline `58f7b3176d02866c53766328a228efdd6309b110`:
+
+- `831081b0c2ae39f70bec9f52cb99577fd6be9cb1` — isolamento dei test di rendering.
+- `756db7325c2d696fd20cccda8e3d286fac3b042e` — rimozione del job APK fino alla Fase 6.
+- `906f37ee7b8cd57020407d29f714696d7b317fc9` — allineamento del piano alle sei fasi ufficiali.
+- `4ce8116475bee03027926ed6e0e5b929bc30a91a` — chiarimento della numerazione storica in `PHASE4_STATUS.md`.
+- `933dbdec83ce5acf8342d37f6965ae0e795189b8` — aggiunta del presente verbale.
+- `4e9d71889cf36643ec4e78b67ffb2389361af6a9` — collegamento del verbale nella mappa principale.
+
+HEAD del ramo al termine di questo aggiornamento documentale: `4e9d71889cf36643ec4e78b67ffb2389361af6a9`. Il branch resta aperto nella PR n. 1; `main` resta al commit `93870b529d2244f4efd4e25a5108ae00375b37ca`.
