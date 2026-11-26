@@ -4,6 +4,28 @@ from pathlib import Path
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg/ffprobe required')
 class RenderEffectsTest(unittest.TestCase):
+    def setUp(self):
+        # Keep the durable job registry outside per-test media directories.
+        # Render tests remove their media directory in finally blocks; a
+        # registry initialized there would become unusable in the next test.
+        from backend import server
+        from backend.job_store import JobRegistry
+
+        self._server = server
+        self._previous_server_state = (
+            server.ROOT, server.ASSETS, server.OUTPUTS, server.jobs, server.cancel_events
+        )
+        self._registry_root = Path(tempfile.mkdtemp(prefix='editore_effects_registry_'))
+        server.jobs = JobRegistry(self._registry_root / 'jobs.sqlite3')
+        server.cancel_events = {}
+
+    def tearDown(self):
+        (
+            self._server.ROOT, self._server.ASSETS, self._server.OUTPUTS,
+            self._server.jobs, self._server.cancel_events,
+        ) = self._previous_server_state
+        shutil.rmtree(self._registry_root, ignore_errors=True)
+
     def test_color_adjustment_and_overlay_fades_render(self):
         root=tempfile.mkdtemp(prefix='editore_effects_')
         previous=os.environ.get('MEDIA_DATA_DIR')
