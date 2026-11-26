@@ -56,7 +56,8 @@ class CreditStore:
             raise CreditError("Motivazione non valida.")
 
     def balance(self, user_id: str) -> dict:
-        if not isinstance(user_id, str) or not user_id.strip() or len(user_id) > 128:
+        if (not isinstance(user_id, str) or not user_id.strip()
+                or user_id != user_id.strip() or len(user_id) > 128):
             raise CreditError("Account non valido.")
         with self._connect() as db:
             row = db.execute(
@@ -144,7 +145,8 @@ class CreditStore:
                 "applied": True, "kind": kind}
 
     def history(self, user_id: str, limit: int = 50) -> list[dict]:
-        if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+        if (not isinstance(user_id, str) or not user_id.strip()
+                or user_id != user_id.strip() or len(user_id) > 128):
             raise CreditError("Account non valido.")
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
             raise CreditError("Limite storico non valido: deve essere compreso tra 1 e 100.")
